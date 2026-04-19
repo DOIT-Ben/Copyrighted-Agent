@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from app.core.domain.enums import MaterialType
+from app.core.parsers.code_material import CodeMaterialParser
+from app.core.parsers.doc_binary import DocBinaryParser
+from app.core.parsers.docx_parser import DocxParser
+from app.core.parsers.pdf_parser import PdfParser
+from app.core.parsers.quality import assess_parse_quality
+from app.core.privacy.desensitization import desensitize_text
+from app.core.utils.text import (
+    clean_text,
+    extract_company_name,
+    extract_software_name,
+    extract_version,
+    strip_control_chars,
+)
+
+
+def parse_material(file_path: str | Path, material_type: str) -> dict:
+    file_path = Path(file_path)
+    suffix = file_path.suffix.lower()
+    file_header_bytes = file_path.read_bytes()[:8]
+
+    if suffix == ".docx":
+        parser = DocxParser()
+        parser_name = "DocxParser"
+    elif suffix == ".pdf":
+        parser = PdfParser()
+        parser_name = "PdfParser"
+    elif material_type == MaterialType.SOURCE_CODE.value:
+        parser = CodeMaterialParser()
+        parser_name = "CodeMaterialParser"
+    else:
+        parser = DocBinaryParser()
+        parser_name = "DocBinaryParser"
+
+    raw_text = strip_control_chars(parser.parse(file_path))
+    cleaned_text = clean_text(raw_text)
+    quality = assess_parse_quality(
+        raw_text=raw_text,
+        clean_text=cleaned_text,
+        parser_name=parser_name,
+        file_header_bytes=file_header_bytes,
+    )
+    metadata = {
+        "software_name": extract_software_name(cleaned_text),
+        "version": extract_version(cleaned_text),
+        "company_name": extract_company_name(cleaned_text),
+        "line_count": len(cleaned_text.splitlines()) if cleaned_text else 0,
+        "parser_name": parser_name,
+        "parse_quality": quality,
+        "garbled_ratio": quality["garbled_ratio"],
+    }
+    privacy = desensitize_text(cleaned_text, metadata=metadata)
+    metadata["privacy"] = privacy["summary"]
+    return {
+        "raw_text": raw_text,
+        "clean_text": cleaned_text,
+        "desensitized_text": privacy["text"],
+        "metadata": metadata,
+        "parser_name": parser_name,
+        "privacy": privacy,
+        "quality": quality,
+    }

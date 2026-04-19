@@ -1,0 +1,62 @@
+{
+  "generated_at": "2026-04-20T04:05:48",
+  "status": "blocked",
+  "summary": "Real-provider validation is blocked.",
+  "recommended_action": "Provide a valid Mode A ZIP path before rerunning release validation.",
+  "config": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "data_root": "data/runtime",
+    "sqlite_path": "data/runtime/soft_review.db",
+    "log_path": "data/runtime/logs/app.jsonl",
+    "retention_days": 14,
+    "ai_enabled": true,
+    "ai_provider": "external_http",
+    "ai_require_desensitized": true,
+    "ai_timeout_seconds": 30,
+    "ai_endpoint": "http://127.0.0.1:18011/review",
+    "ai_model": "MiniMax-M2.7-highspeed",
+    "ai_api_key_env": "MINIMAX_API_KEY",
+    "ai_fallback_to_mock": true
+  },
+  "provider_probe": {
+    "status": "pass",
+    "probe_status": "ok",
+    "summary": "Latest safe provider probe completed successfully.",
+    "recommended_action": "Provider smoke passed. You can continue with non-user-data gateway validation while keeping the desensitized boundary enabled.",
+    "phase": "probe_passed"
+  },
+  "release_gate": {
+    "status": "pass",
+    "summary": "Release gate is satisfied for the current environment.",
+    "recommended_action": "",
+    "mode": "external_http"
+  },
+  "mode_a_smoke": {
+    "label": "mode_a_smoke",
+    "attempted": false,
+    "status": "blocked",
+    "path": "input\\杞憲鏉愭枡\\2501_杞憲鏉愭枡.zip",
+    "summary": "Mode A smoke sample path does not exist.",
+    "recommended_action": "Provide a valid Mode A ZIP path before rerunning release validation."
+  },
+  "mode_b_smoke": {
+    "label": "mode_b_smoke",
+    "attempted": false,
+    "status": "blocked",
+    "path": "input\\鍚堜綔鍗忚",
+    "summary": "Mode B smoke sample path does not exist.",
+    "recommended_action": "Provide a valid Mode B directory or ZIP path before rerunning release validation."
+  },
+  "paths": {
+    "mode_a_path": "input\\杞憲鏉愭枡\\2501_杞憲鏉愭枡.zip",
+    "mode_b_path": "input\\鍚堜綔鍗忚",
+    "dev_root": "docs\\dev"
+  },
+  "artifacts": {
+    "latest_json_path": "docs\\dev\\real-provider-validation-latest.json",
+    "latest_markdown_path": "docs\\dev\\real-provider-validation-latest.md",
+    "history_json_path": "docs\\dev\\history\\real_provider_validation_20260420_040548.json",
+    "history_markdown_path": "docs\\dev\\history\\real_provider_validation_20260420_040548.md"
+  }
+}

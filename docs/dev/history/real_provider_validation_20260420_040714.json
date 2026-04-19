@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-04-20T04:07:14",
+  "status": "pass",
+  "summary": "Real-provider validation passed for probe, release gate, and sample smokes.",
+  "recommended_action": "",
+  "config": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "data_root": "data/runtime",
+    "sqlite_path": "data/runtime/soft_review.db",
+    "log_path": "data/runtime/logs/app.jsonl",
+    "retention_days": 14,
+    "ai_enabled": true,
+    "ai_provider": "external_http",
+    "ai_require_desensitized": true,
+    "ai_timeout_seconds": 30,
+    "ai_endpoint": "http://127.0.0.1:18011/review",
+    "ai_model": "MiniMax-M2.7-highspeed",
+    "ai_api_key_env": "MINIMAX_API_KEY",
+    "ai_fallback_to_mock": true
+  },
+  "provider_probe": {
+    "status": "pass",
+    "probe_status": "ok",
+    "summary": "Latest safe provider probe completed successfully.",
+    "recommended_action": "Provider smoke passed. You can continue with non-user-data gateway validation while keeping the desensitized boundary enabled.",
+    "phase": "probe_passed"
+  },
+  "release_gate": {
+    "status": "pass",
+    "summary": "Release gate is satisfied for the current environment.",
+    "recommended_action": "",
+    "mode": "external_http"
+  },
+  "mode_a_smoke": {
+    "label": "mode_a_smoke",
+    "attempted": true,
+    "status": "pass",
+    "path": "D:\\Code\\软著智能体\\input\\软著材料\\2501_软著材料.zip",
+    "submission_id": "sub_f6c70fcbad",
+    "submission_status": "completed",
+    "review_provider": "external_http",
+    "review_resolution": "minimax_bridge_success",
+    "metrics": {
+      "materials": 4,
+      "cases": 1,
+      "reports": 1,
+      "types": {
+        "info_form": 1,
+        "agreement": 1,
+        "source_code": 1,
+        "software_doc": 1
+      },
+      "needs_review": 0,
+      "low_quality": 0,
+      "redactions": 43,
+      "unknown": 0,
+      "review_reasons": {
+        "clean_text_ready": 4
+      },
+      "legacy_doc_buckets": {
+        "usable_text": 4
+      }
+    },
+    "summary": "Mode A smoke passed.",
+    "recommended_action": ""
+  },
+  "mode_b_smoke": {
+    "label": "mode_b_smoke",
+    "attempted": true,
+    "status": "pass",
+    "path": "D:\\Code\\软著智能体\\input\\合作协议",
+    "aggregate": {
+      "packages": 1,
+      "materials": 11,
+      "cases": 11,
+      "reports": 1,
+      "needs_review": 0,
+      "low_quality": 0,
+      "redactions": 152,
+      "unknown": 0,
+      "review_reasons": {
+        "clean_text_ready": 10,
+        "text_too_short": 1
+      },
+      "legacy_doc_buckets": {
+        "usable_text": 9
+      }
+    },
+    "entries": [
+      {
+        "name": "合作协议",
+        "metrics": {
+          "materials": 11,
+          "cases": 11,
+          "reports": 1,
+          "types": {
+            "agreement": 11
+          },
+          "needs_review": 0,
+          "low_quality": 0,
+          "redactions": 152,
+          "unknown": 0,
+          "review_reasons": {
+            "clean_text_ready": 10,
+            "text_too_short": 1
+          },
+          "legacy_doc_buckets": {
+            "usable_text": 9
+          }
+        }
+      }
+    ],
+    "summary": "Mode B smoke passed.",
+    "recommended_action": ""
+  },
+  "paths": {
+    "mode_a_path": "D:\\Code\\软著智能体\\input\\软著材料\\2501_软著材料.zip",
+    "mode_b_path": "D:\\Code\\软著智能体\\input\\合作协议",
+    "dev_root": "docs\\dev"
+  },
+  "artifacts": {
+    "latest_json_path": "docs\\dev\\real-provider-validation-latest.json",
+    "latest_markdown_path": "docs\\dev\\real-provider-validation-latest.md",
+    "history_json_path": "docs\\dev\\history\\real_provider_validation_20260420_040714.json",
+    "history_markdown_path": "docs\\dev\\history\\real_provider_validation_20260420_040714.md"
+  }
+}

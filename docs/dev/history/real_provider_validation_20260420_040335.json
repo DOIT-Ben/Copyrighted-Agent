@@ -1,0 +1,62 @@
+{
+  "generated_at": "2026-04-20T04:03:35",
+  "status": "blocked",
+  "summary": "Real-provider validation is blocked.",
+  "recommended_action": "Keep mock mode for normal local work, or create config\\local.json / env overrides and switch ai_provider to external_http when you are ready for a live probe.",
+  "config": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "data_root": "data/runtime",
+    "sqlite_path": "data/runtime/soft_review.db",
+    "log_path": "data/runtime/logs/app.jsonl",
+    "retention_days": 14,
+    "ai_enabled": false,
+    "ai_provider": "mock",
+    "ai_require_desensitized": true,
+    "ai_timeout_seconds": 30,
+    "ai_endpoint": "",
+    "ai_model": "",
+    "ai_api_key_env": "",
+    "ai_fallback_to_mock": true
+  },
+  "provider_probe": {
+    "status": "blocked",
+    "probe_status": "skipped",
+    "summary": "Live external_http probe skipped because provider=mock.",
+    "recommended_action": "Keep mock mode for normal local work, or create config\\local.json / env overrides and switch ai_provider to external_http when you are ready for a live probe.",
+    "phase": "probe_skipped"
+  },
+  "release_gate": {
+    "status": "warning",
+    "summary": "Release gate is not fully satisfied yet; warnings remain.",
+    "recommended_action": "Switch ai_provider to external_http and fill the real endpoint, model, and key mapping when ready.",
+    "mode": "mock_local"
+  },
+  "mode_a_smoke": {
+    "label": "mode_a_smoke",
+    "attempted": false,
+    "status": "blocked",
+    "summary": "Real-provider probe did not pass, so sample smokes were not executed.",
+    "recommended_action": "Fix provider readiness and rerun the release validation command.",
+    "path": "input\\杞憲鏉愭枡\\2501_杞憲鏉愭枡.zip"
+  },
+  "mode_b_smoke": {
+    "label": "mode_b_smoke",
+    "attempted": false,
+    "status": "blocked",
+    "summary": "Real-provider probe did not pass, so sample smokes were not executed.",
+    "recommended_action": "Fix provider readiness and rerun the release validation command.",
+    "path": "input\\鍚堜綔鍗忚"
+  },
+  "paths": {
+    "mode_a_path": "input\\杞憲鏉愭枡\\2501_杞憲鏉愭枡.zip",
+    "mode_b_path": "input\\鍚堜綔鍗忚",
+    "dev_root": "docs\\dev"
+  },
+  "artifacts": {
+    "latest_json_path": "docs\\dev\\real-provider-validation-latest.json",
+    "latest_markdown_path": "docs\\dev\\real-provider-validation-latest.md",
+    "history_json_path": "docs\\dev\\history\\real_provider_validation_20260420_040335.json",
+    "history_markdown_path": "docs\\dev\\history\\real_provider_validation_20260420_040335.md"
+  }
+}

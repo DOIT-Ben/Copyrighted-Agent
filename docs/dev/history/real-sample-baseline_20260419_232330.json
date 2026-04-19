@@ -1,0 +1,253 @@
+{
+  "snapshot": {
+    "generated_at": "2026-04-19T23:23:30",
+    "targets": [
+      {
+        "label": "mode_a_real",
+        "mode": "single_case_package",
+        "path": "input\\软著材料",
+        "entries": [
+          {
+            "name": "2501_软著材料.zip",
+            "metrics": {
+              "materials": 4,
+              "cases": 1,
+              "reports": 1,
+              "types": {
+                "info_form": 1,
+                "agreement": 1,
+                "source_code": 1,
+                "software_doc": 1
+              },
+              "needs_review": 0,
+              "low_quality": 0,
+              "redactions": 43,
+              "unknown": 0,
+              "review_reasons": {
+                "clean_text_ready": 4
+              },
+              "legacy_doc_buckets": {
+                "usable_text": 4
+              }
+            }
+          },
+          {
+            "name": "2502_软著材料.zip",
+            "metrics": {
+              "materials": 4,
+              "cases": 1,
+              "reports": 1,
+              "types": {
+                "agreement": 1,
+                "software_doc": 1,
+                "source_code": 1,
+                "info_form": 1
+              },
+              "needs_review": 0,
+              "low_quality": 0,
+              "redactions": 44,
+              "unknown": 0,
+              "review_reasons": {
+                "clean_text_ready": 4
+              },
+              "legacy_doc_buckets": {
+                "usable_text": 4
+              }
+            }
+          },
+          {
+            "name": "2504_软著材料.zip",
+            "metrics": {
+              "materials": 4,
+              "cases": 1,
+              "reports": 1,
+              "types": {
+                "info_form": 1,
+                "agreement": 1,
+                "source_code": 1,
+                "software_doc": 1
+              },
+              "needs_review": 0,
+              "low_quality": 0,
+              "redactions": 40,
+              "unknown": 0,
+              "review_reasons": {
+                "clean_text_ready": 3,
+                "text_too_short": 1
+              },
+              "legacy_doc_buckets": {
+                "usable_text": 2
+              }
+            }
+          },
+          {
+            "name": "2505_软著材料.zip",
+            "metrics": {
+              "materials": 4,
+              "cases": 1,
+              "reports": 1,
+              "types": {
+                "info_form": 1,
+                "agreement": 1,
+                "source_code": 1,
+                "software_doc": 1
+              },
+              "needs_review": 0,
+              "low_quality": 0,
+              "redactions": 44,
+              "unknown": 0,
+              "review_reasons": {
+                "clean_text_ready": 4
+              },
+              "legacy_doc_buckets": {
+                "usable_text": 2
+              }
+            }
+          },
+          {
+            "name": "2508_软著材料.zip",
+            "metrics": {
+              "materials": 4,
+              "cases": 1,
+              "reports": 1,
+              "types": {
+                "info_form": 1,
+                "agreement": 1,
+                "source_code": 1,
+                "software_doc": 1
+              },
+              "needs_review": 0,
+              "low_quality": 0,
+              "redactions": 44,
+              "unknown": 0,
+              "review_reasons": {
+                "clean_text_ready": 4
+              },
+              "legacy_doc_buckets": {
+                "usable_text": 4
+              }
+            }
+          },
+          {
+            "name": "2510_软著材料.zip",
+            "metrics": {
+              "materials": 4,
+              "cases": 1,
+              "reports": 1,
+              "types": {
+                "agreement": 1,
+                "software_doc": 1,
+                "source_code": 1,
+                "info_form": 1
+              },
+              "needs_review": 0,
+              "low_quality": 0,
+              "redactions": 37,
+              "unknown": 0,
+              "review_reasons": {
+                "clean_text_ready": 4
+              },
+              "legacy_doc_buckets": {
+                "usable_text": 2
+              }
+            }
+          }
+        ],
+        "aggregate": {
+          "packages": 6,
+          "materials": 24,
+          "cases": 6,
+          "reports": 6,
+          "needs_review": 0,
+          "low_quality": 0,
+          "redactions": 252,
+          "unknown": 0,
+          "review_reasons": {
+            "clean_text_ready": 23,
+            "text_too_short": 1
+          },
+          "legacy_doc_buckets": {
+            "usable_text": 18
+          }
+        }
+      },
+      {
+        "label": "mode_b_real",
+        "mode": "batch_same_material",
+        "path": "input\\合作协议",
+        "entries": [
+          {
+            "name": "合作协议",
+            "metrics": {
+              "materials": 11,
+              "cases": 11,
+              "reports": 1,
+              "types": {
+                "agreement": 11
+              },
+              "needs_review": 0,
+              "low_quality": 0,
+              "redactions": 152,
+              "unknown": 0,
+              "review_reasons": {
+                "clean_text_ready": 10,
+                "text_too_short": 1
+              },
+              "legacy_doc_buckets": {
+                "usable_text": 9
+              }
+            }
+          }
+        ],
+        "aggregate": {
+          "packages": 1,
+          "materials": 11,
+          "cases": 11,
+          "reports": 1,
+          "needs_review": 0,
+          "low_quality": 0,
+          "redactions": 152,
+          "unknown": 0,
+          "review_reasons": {
+            "clean_text_ready": 10,
+            "text_too_short": 1
+          },
+          "legacy_doc_buckets": {
+            "usable_text": 9
+          }
+        }
+      }
+    ]
+  },
+  "comparison": {
+    "generated_at": "2026-04-19T23:23:30",
+    "comparisons": [
+      {
+        "label": "mode_a_real",
+        "has_previous": true,
+        "delta": {
+          "materials": 0,
+          "cases": 0,
+          "reports": 0,
+          "unknown": 0,
+          "needs_review": 0,
+          "low_quality": 0,
+          "redactions": 0
+        }
+      },
+      {
+        "label": "mode_b_real",
+        "has_previous": true,
+        "delta": {
+          "materials": 0,
+          "cases": 0,
+          "reports": 0,
+          "unknown": 0,
+          "needs_review": 0,
+          "low_quality": 0,
+          "redactions": 0
+        }
+      }
+    ]
+  }
+}

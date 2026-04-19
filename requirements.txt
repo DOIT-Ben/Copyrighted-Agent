@@ -1,0 +1,23 @@
+# 目标 Web 运行时依赖
+fastapi>=0.115.0
+uvicorn>=0.30.0
+jinja2>=3.1.4
+python-multipart>=0.0.9
+
+# 测试
+pytest>=8.3.0
+
+# 文档解析
+python-docx>=1.1.0
+PyPDF2>=3.0.0
+pymupdf>=1.23.0
+
+# 文本与集成工具
+regex>=2023.0.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+click>=8.1.0
+
+# 说明：
+# 当前仓库内已提供本地 `fastapi/` 与 `pytest/` 兼容层，
+# 因此在受限环境里即使未成功安装官方依赖，MVP 仍可运行与回归。
