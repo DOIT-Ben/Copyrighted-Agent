@@ -19,46 +19,46 @@
 
 ### Phase 2. Launch And Validation Tooling
 
-- [ ] 新增本地启动脚本目录 `scripts/`
-- [ ] 新增 `scripts/start_mock_web.ps1`
-- [ ] 新增 `scripts/start_real_bridge.ps1`
-- [ ] 新增 `scripts/start_real_web.ps1`
-- [ ] 新增 `scripts/run_real_validation.ps1`
-- [ ] 新增 `scripts/show_stack_status.ps1`
-- [ ] 用实际命令验证脚本至少能正确输出 / 启动 / 指向当前仓库根目录
+- [x] 新增本地启动脚本目录 `scripts/`
+- [x] 新增 `scripts/start_mock_web.ps1`
+- [x] 新增 `scripts/start_real_bridge.ps1`
+- [x] 新增 `scripts/start_real_web.ps1`
+- [x] 新增 `scripts/run_real_validation.ps1`
+- [x] 新增 `scripts/show_stack_status.ps1`
+- [x] 用实际命令验证脚本至少能正确输出 / 启动 / 指向当前仓库根目录
 
 ### Phase 3. Product Surface Alignment
 
-- [ ] 更新 `/ops` 页面命令区，加入脚本入口
-- [ ] 在 `/ops` 页面中补充真实 bridge / real web / validation 的可复制命令
-- [ ] 检查 `/ops` 页面是否仍保留既有契约字符串
-- [ ] 视需要对 `page_submission.py` 做最小维护性整理，避免后续再出现大型页面难维护问题
+- [x] 更新 `/ops` 页面命令区，加入脚本入口
+- [x] 在 `/ops` 页面中补充真实 bridge / real web / validation 的可复制命令
+- [x] 检查 `/ops` 页面是否仍保留既有契约字符串
+- [x] 评估 `page_submission.py` 的维护性整理需求，本轮以脚本、运行、文档和回归闭环为优先，暂不做额外结构改造
 
 ### Phase 4. Documentation Alignment
 
-- [ ] 更新 `README.md`
-- [ ] 更新 `docs/dev/09-runbook.md`
-- [ ] 让 README / runbook / `/ops` 页面三处命令保持一致
-- [ ] 明确 mock 模式与 real 模式的区别
-- [ ] 明确 bridge、web、validation 的推荐执行顺序
+- [x] 更新 `README.md`
+- [x] 更新 `docs/dev/09-runbook.md`
+- [x] 让 README / runbook / `/ops` 页面三处命令保持一致
+- [x] 明确 mock 模式与 real 模式的区别
+- [x] 明确 bridge、web、validation 的推荐执行顺序
 
 ### Phase 5. Real Validation And Regression
 
-- [ ] 复核 `config/local.json` 与 `config/local.minimax_bridge.example.json`
-- [ ] 复核 18011 bridge 端口状态
-- [ ] 运行一次真实 provider 验证
-- [ ] 启动并验证 Web 页面可访问
-- [ ] 运行全量自动化回归
-- [ ] 如发现回归问题，直接修复并重新验证
+- [x] 复核 `config/local.json` 与 `config/local.minimax_bridge.example.json`
+- [x] 复核 18011 bridge 端口状态
+- [x] 运行一次真实 provider 验证
+- [x] 启动并验证 Web 页面可访问
+- [x] 运行全量自动化回归
+- [x] 如发现回归问题，直接修复并重新验证
 
 ### Phase 6. Delivery Closure
 
-- [ ] 写入本轮 build log
-- [ ] 写入本轮 validation log
-- [ ] 写入本轮 issues / fixes
-- [ ] 新增 `.gitignore`
-- [ ] 初始化 git 仓库
-- [ ] 执行一次提交，保留本轮交付快照
+- [x] 写入本轮 build log
+- [x] 写入本轮 validation log
+- [x] 写入本轮 issues / fixes
+- [x] 新增 `.gitignore`
+- [x] 初始化 git 仓库
+- [x] 执行 git 提交，保留本轮交付快照
 
 ## Acceptance Criteria
 
