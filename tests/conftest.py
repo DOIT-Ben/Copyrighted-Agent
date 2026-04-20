@@ -26,6 +26,22 @@ def reset_runtime_store():
 
 
 @pytest.fixture
+def default_mock_ai_runtime(monkeypatch, request):
+    if request.node.get_closest_marker("live_ai_config"):
+        yield
+        return
+
+    monkeypatch.setenv("SOFT_REVIEW_AI_ENABLED", "false")
+    monkeypatch.setenv("SOFT_REVIEW_AI_PROVIDER", "mock")
+    monkeypatch.setenv("SOFT_REVIEW_AI_REQUIRE_DESENSITIZED", "true")
+    monkeypatch.setenv("SOFT_REVIEW_AI_FALLBACK_TO_MOCK", "true")
+    monkeypatch.delenv("SOFT_REVIEW_AI_ENDPOINT", raising=False)
+    monkeypatch.delenv("SOFT_REVIEW_AI_MODEL", raising=False)
+    monkeypatch.delenv("SOFT_REVIEW_AI_API_KEY_ENV", raising=False)
+    yield
+
+
+@pytest.fixture
 def api_client():
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
