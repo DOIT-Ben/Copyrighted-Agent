@@ -113,16 +113,13 @@ class FastAPI:
         body: bytes | None = None,
     ):
         headers = headers or {}
+        query_params = {}
+        if "?" in path:
+            path, query_string = path.split("?", 1)
+            query_params = {key: values[-1] for key, values in parse_qs(query_string).items()}
         route, path_params = self._find_route(method, path)
         if route is None:
             return PlainTextResponse("Not Found", status_code=404)
-
-        query_params = {}
-        if "?" in path:
-            path_only, query_string = path.split("?", 1)
-            route, path_params = self._find_route(method, path_only)
-            path = path_only
-            query_params = {key: values[-1] for key, values in parse_qs(query_string).items()}
         request = Request(
             method=method.upper(),
             path=path,
@@ -150,6 +147,9 @@ class FastAPI:
     def __call__(self, environ, start_response):
         method = environ.get("REQUEST_METHOD", "GET")
         path = environ.get("PATH_INFO", "/")
+        query_string = environ.get("QUERY_STRING", "")
+        if query_string:
+            path = f"{path}?{query_string}"
         headers = {}
         for key, value in environ.items():
             if key.startswith("HTTP_"):
@@ -208,4 +208,3 @@ __all__ = [
     "Response",
     "UploadFile",
 ]
-

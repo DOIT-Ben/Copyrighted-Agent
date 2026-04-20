@@ -167,6 +167,30 @@ def empty_state(title: str, note: str) -> str:
     )
 
 
+def notice_banner(
+    title: str,
+    message: str,
+    tone: str = "info",
+    *,
+    icon_name: str = "spark",
+    meta: list[str] | None = None,
+) -> str:
+    meta_html = ""
+    if meta:
+        meta_html = '<div class="notice-meta-row">' + "".join(
+            f'<span class="helper-chip">{escape_html(item)}</span>' for item in meta
+        ) + "</div>"
+    return (
+        f'<section class="notice-banner notice-banner-{escape_html(tone)}">'
+        f'<div class="notice-banner-icon">{icon(icon_name, "icon icon-md")}</div>'
+        '<div class="notice-banner-copy">'
+        f"<strong>{escape_html(title)}</strong>"
+        f"<p>{escape_html(message)}</p>"
+        f"{meta_html}"
+        "</div></section>"
+    )
+
+
 def panel(
     title: str,
     body: str,
@@ -283,6 +307,7 @@ def layout(
     content: str,
     header_note: str = "",
     page_links: list[tuple[str, str, str]] | None = None,
+    workspace_notice: str = "",
 ) -> str:
     mode_count = len(MODE_LABELS)
     type_count = len([key for key in TYPE_LABELS if key != "unknown"])
@@ -381,6 +406,7 @@ def layout(
         </div>
         <div class="workspace-header-meta">{header_meta}</div>
       </header>
+      {workspace_notice}
       <section class="workspace-trust-grid" aria-label="System trust signals">
         {release_cards}
       </section>
@@ -406,6 +432,7 @@ __all__ = [
     "metric_card",
     "mode_label",
     "nav_link",
+    "notice_banner",
     "panel",
     "pill",
     "read_text_file",

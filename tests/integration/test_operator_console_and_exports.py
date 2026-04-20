@@ -138,16 +138,26 @@ def test_html_operator_actions_and_download_endpoints_work(api_client, mode_a_zi
         data={"material_id": material_id, "material_type": "agreement", "note": "html action"},
     )
     assert change_response.status_code == 303
+    change_location = change_response.headers.get("Location", "")
+    assert "notice=material_type_updated" in change_location
+    assert "#correction-audit" in change_location
 
-    submission_page = api_client.get(f"/submissions/{submission_id}")
+    submission_page = api_client.get(change_location.split("#", 1)[0])
     assert "change_material_type" in submission_page.text
     assert "Artifact Browser" in submission_page.text
+    assert "Material type updated" in submission_page.text
 
     rerun_response = api_client.post(
         f"/submissions/{submission_id}/actions/rerun-review",
         data={"case_id": case_id, "note": "refresh"},
     )
     assert rerun_response.status_code == 303
+    rerun_location = rerun_response.headers.get("Location", "")
+    assert "notice=case_review_rerun" in rerun_location
+    assert "#export-center" in rerun_location
+
+    rerun_page = api_client.get(rerun_location.split("#", 1)[0])
+    assert "Case review rerun" in rerun_page.text
 
     report_download = api_client.get(f"/downloads/reports/{report_id}")
     assert report_download.status_code == 200

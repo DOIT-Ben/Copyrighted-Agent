@@ -108,6 +108,7 @@ def test_browser_mode_a_workflow_covers_upload_correction_report_and_ops(mode_a_
         )
         assert change_response["status"] == 200
         assert "Correction Audit" in change_response["text"]
+        assert "Material type updated" in change_response["text"]
 
         rerun_response = _post_form(
             f"{live_server_url}/submissions/{submission_id}/actions/rerun-review",
@@ -115,6 +116,7 @@ def test_browser_mode_a_workflow_covers_upload_correction_report_and_ops(mode_a_
         )
         assert rerun_response["status"] == 200
         assert "Correction Audit" in rerun_response["text"]
+        assert "Case review rerun" in rerun_response["text"]
 
         report_response = _request(f"{live_server_url}/reports/{report_id}")
         assert report_response["status"] == 200
@@ -163,6 +165,7 @@ def test_browser_mode_b_workflow_supports_case_regroup_after_batch_upload(mode_b
             },
         )
         assert create_a["status"] == 200
+        assert "Case created" in create_a["text"]
 
         create_b = _post_form(
             f"{live_server_url}/submissions/{submission_id}/actions/create-case",
@@ -190,12 +193,14 @@ def test_browser_mode_b_workflow_supports_case_regroup_after_batch_upload(mode_b
         )
         assert merge_response["status"] == 200
         assert "Correction Audit" in merge_response["text"]
+        assert "Cases merged" in merge_response["text"]
 
         rerun_response = _post_form(
             f"{live_server_url}/submissions/{submission_id}/actions/rerun-review",
             {"case_id": case_ids[0], "note": "browser e2e rerun mode b"},
         )
         assert rerun_response["status"] == 200
+        assert "Case review rerun" in rerun_response["text"]
 
         submission_after_merge = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}")["body"])
         assert submission_after_merge["case_ids"] == [case_ids[0]]

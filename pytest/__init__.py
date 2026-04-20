@@ -35,6 +35,7 @@ def raises(expected_exception):
 def fixture(func=None, **_kwargs):
     def decorator(target):
         target._pytest_fixture = True
+        target._pytest_fixture_kwargs = dict(_kwargs)
         return target
 
     if func is not None:
@@ -88,4 +89,3 @@ class _MarkNamespace:
 
 
 mark = _MarkNamespace()
-

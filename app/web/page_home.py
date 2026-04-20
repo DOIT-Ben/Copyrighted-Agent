@@ -64,15 +64,22 @@ def render_home_page() -> str:
             <option value="single_case_package">single_case_package / 同一软著，多份材料</option>
             <option value="batch_same_material">batch_same_material / 不同软著，同类材料</option>
           </select>
+          <span class="field-hint">Mode A handles one project bundle. Mode B handles one material class across multiple projects before regrouping.</span>
         </label>
         <label class="field">
           <span>ZIP Package</span>
           <input type="file" name="file" accept=".zip" required>
+          <span class="field-hint">After submit, the console opens the new submission workspace automatically. Live-provider review can make this step take longer.</span>
         </label>
       </div>
       <div class="operator-note">
         <strong>浏览器端导入说明</strong>
         <span>Mode A 用于同一个项目材料成组导入，Mode B 用于同类材料批量归档后再重组。</span>
+      </div>
+      <div class="helper-chip-row">
+        <span class="helper-chip">Opens submission detail after upload</span>
+        <span class="helper-chip">Keeps desensitization boundary first</span>
+        <span class="helper-chip">Live review may add a short delay</span>
       </div>
       <div class="inline-actions">
         <button class="button-primary" type="submit">%s开始导入</button>

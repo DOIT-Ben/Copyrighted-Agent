@@ -25,7 +25,7 @@ def reset_runtime_store():
     store.reset()
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def default_mock_ai_runtime(monkeypatch, request):
     if request.node.get_closest_marker("live_ai_config"):
         yield

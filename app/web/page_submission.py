@@ -14,6 +14,7 @@ from app.web.view_helpers import (
     link,
     metric_card,
     mode_label,
+    notice_banner,
     panel,
     pill,
     report_label,
@@ -159,6 +160,7 @@ def render_submission_detail(
     cases: list[dict],
     reports: list[dict],
     parse_results: list[dict],
+    notice: dict | None = None,
 ) -> str:
     parse_lookup = _build_parse_lookup(parse_results)
     corrections = _submission_corrections(submission.get("id", ""))
@@ -290,16 +292,22 @@ def render_submission_detail(
       <strong>Operator Console</strong>
       <span>Manual actions stay auditable and are designed to re-run review rather than mutate hidden state.</span>
     </div>
+    <div class="operator-note">
+      <strong>Action Behavior</strong>
+      <span>Every submit returns to this submission with a confirmation banner. Create, merge, and rerun actions may take longer when live AI review is enabled.</span>
+    </div>
     <div class="helper-chip-row">
       <span class="helper-chip">change_material_type</span>
       <span class="helper-chip">assign_case</span>
       <span class="helper-chip">create_case_from_materials</span>
       <span class="helper-chip">merge_cases</span>
       <span class="helper-chip">rerun-review</span>
+      <span class="helper-chip">Returns to updated panel</span>
     </div>
     <div class="control-grid">
       <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/change-type" method="post">
         <strong>change_material_type</strong>
+        <span class="field-hint">Use when the classifier chose the wrong material type. After save, the console returns to the correction audit.</span>
         <label class="field"><span>Material</span><select name="material_id">{material_options}</select></label>
         <label class="field"><span>Type</span><select name="material_type">
           <option value="agreement">agreement</option>
@@ -308,43 +316,57 @@ def render_submission_detail(
           <option value="software_doc">software_doc</option>
         </select></label>
         <label class="field"><span>Note</span><input type="text" name="note" placeholder="why this material type changed"></label>
-        <button class="button-secondary button-compact" type="submit">{icon('wrench', 'icon icon-sm')}Apply Type Change</button>
+        <button class="button-secondary button-compact" type="submit">{icon('wrench', 'icon icon-sm')}Apply And Refresh</button>
       </form>
 
       <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/assign-case" method="post">
         <strong>assign_case</strong>
+        <span class="field-hint">Move one material into an existing case. If the case list is empty, create a case first.</span>
         <label class="field"><span>Material</span><select name="material_id">{material_options}</select></label>
         <label class="field"><span>Case</span><select name="case_id">{case_options}</select></label>
         <label class="field"><span>Note</span><input type="text" name="note" placeholder="assignment reason"></label>
-        <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}Assign To Case</button>
+        <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}Assign And Refresh</button>
       </form>
 
       <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/create-case" method="post">
         <strong>create_case_from_materials</strong>
+        <span class="field-hint">Create a grouped case from one or more material IDs. Use comma-separated IDs when you want to seed a case with multiple materials.</span>
         <label class="field"><span>Material IDs</span><input type="text" name="material_ids" value="{escape_html(default_material_ids)}"></label>
         <label class="field"><span>Case Name</span><input type="text" name="case_name" value="{escape_html(submission.get('filename', 'New Case'))}"></label>
         <label class="field"><span>Version</span><input type="text" name="version"></label>
         <label class="field"><span>Company</span><input type="text" name="company_name"></label>
         <label class="field"><span>Note</span><input type="text" name="note" placeholder="new case rationale"></label>
-        <button class="button-secondary button-compact" type="submit">{icon('lock', 'icon icon-sm')}Create Case</button>
+        <button class="button-secondary button-compact" type="submit">{icon('lock', 'icon icon-sm')}Create And Refresh</button>
       </form>
 
       <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/merge-cases" method="post">
         <strong>merge_cases</strong>
+        <span class="field-hint">Keep the target case, absorb the source case, and refresh the grouped result in place.</span>
         <label class="field"><span>Source</span><select name="source_case_id">{case_options}</select></label>
         <label class="field"><span>Target</span><select name="target_case_id">{case_options}</select></label>
         <label class="field"><span>Note</span><input type="text" name="note" placeholder="merge reason"></label>
-        <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}Merge Cases</button>
+        <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}Merge And Refresh</button>
       </form>
 
       <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/rerun-review" method="post">
         <strong>rerun-review</strong>
+        <span class="field-hint">Use after corrections or regrouping when the risk queue, report, or AI supplement needs a fresh pass.</span>
         <label class="field"><span>Case</span><select name="case_id">{case_options}</select></label>
         <label class="field"><span>Note</span><input type="text" name="note" placeholder="why review needs rerun"></label>
-        <button class="button-secondary button-compact" type="submit">{icon('refresh', 'icon icon-sm')}Rerun Review</button>
+        <button class="button-secondary button-compact" type="submit">{icon('refresh', 'icon icon-sm')}Rerun And Refresh</button>
       </form>
     </div>
     """
+
+    workspace_notice = ""
+    if notice:
+        workspace_notice = notice_banner(
+            notice.get("title", "Update Ready"),
+            notice.get("message", "The submission view was refreshed."),
+            tone=notice.get("tone", "info"),
+            icon_name=notice.get("icon_name", "check"),
+            meta=notice.get("meta"),
+        )
 
     content = f"""
     <section class="kpi-grid">
@@ -386,4 +408,5 @@ def render_submission_detail(
             ("#operator-console", "Operator Console", "wrench"),
             ("#export-center", "Export Center", "download"),
         ],
+        workspace_notice=workspace_notice,
     )

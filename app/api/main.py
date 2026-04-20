@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlencode
 from wsgiref.simple_server import make_server
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
@@ -63,6 +64,58 @@ def _build_ops_report(config) -> dict:
     startup_report["provider_probe_last_failure"] = latest_failed_provider_probe_status(config)
     startup_report["release_gate"] = evaluate_release_gate(config, startup_report=startup_report)
     return startup_report
+
+
+SUBMISSION_NOTICE_MAP = {
+    "material_type_updated": {
+        "title": "Material type updated",
+        "message": "The selected material type was updated and the correction audit trail is ready for review.",
+        "tone": "success",
+        "icon_name": "check",
+        "meta": ["Correction logged", "Submission refreshed"],
+    },
+    "material_assigned": {
+        "title": "Material assigned to case",
+        "message": "The selected material was moved into the chosen case and the grouped registry has been refreshed.",
+        "tone": "success",
+        "icon_name": "merge",
+        "meta": ["Case registry updated", "Operator action logged"],
+    },
+    "case_created": {
+        "title": "Case created",
+        "message": "A new grouped case was created from the selected materials. Downstream review may take longer when live AI is enabled.",
+        "tone": "success",
+        "icon_name": "lock",
+        "meta": ["Case registry updated", "Review chain preserved"],
+    },
+    "cases_merged": {
+        "title": "Cases merged",
+        "message": "The source case was merged into the target case and the submission view now reflects the consolidated grouping.",
+        "tone": "success",
+        "icon_name": "merge",
+        "meta": ["Grouping updated", "Audit trail preserved"],
+    },
+    "case_review_rerun": {
+        "title": "Case review rerun",
+        "message": "The selected case review was rerun. Fresh report and AI signals are now reflected where available.",
+        "tone": "info",
+        "icon_name": "refresh",
+        "meta": ["Review refreshed", "Export center may update"],
+    },
+}
+
+
+def _submission_notice_payload(code: str) -> dict | None:
+    return SUBMISSION_NOTICE_MAP.get(str(code or "").strip())
+
+
+def _submission_notice_location(submission_id: str, code: str, *, focus: str = "") -> str:
+    base = f"/submissions/{submission_id}"
+    query = urlencode({"notice": code}) if code else ""
+    fragment = f"#{focus}" if focus else ""
+    if not query:
+        return f"{base}{fragment}"
+    return f"{base}?{query}{fragment}"
 
 
 def create_app(testing: bool = False):
@@ -269,7 +322,7 @@ def create_app(testing: bool = False):
             "change_material_type_html",
             {"submission_id": submission_id, "material_id": material_id, "material_type": material_type, "by": corrected_by},
         )
-        return RedirectResponse(f"/submissions/{submission_id}", status_code=303)
+        return RedirectResponse(_submission_notice_location(submission_id, "material_type_updated", focus="correction-audit"), status_code=303)
 
     @app.post("/submissions/{submission_id}/actions/assign-case")
     def assign_case_page(request: Request, submission_id: str):
@@ -287,7 +340,7 @@ def create_app(testing: bool = False):
             "assign_material_to_case_html",
             {"submission_id": submission_id, "material_id": material_id, "case_id": case_id, "by": corrected_by},
         )
-        return RedirectResponse(f"/submissions/{submission_id}", status_code=303)
+        return RedirectResponse(_submission_notice_location(submission_id, "material_assigned", focus="case-registry"), status_code=303)
 
     @app.post("/submissions/{submission_id}/actions/create-case")
     def create_case_page(request: Request, submission_id: str):
@@ -316,7 +369,7 @@ def create_app(testing: bool = False):
             "create_case_from_materials_html",
             {"submission_id": submission_id, "material_ids": material_ids, "case_name": case_name, "by": corrected_by},
         )
-        return RedirectResponse(f"/submissions/{submission_id}", status_code=303)
+        return RedirectResponse(_submission_notice_location(submission_id, "case_created", focus="case-registry"), status_code=303)
 
     @app.post("/submissions/{submission_id}/actions/merge-cases")
     def merge_cases_page(request: Request, submission_id: str):
@@ -334,7 +387,7 @@ def create_app(testing: bool = False):
             "merge_cases_html",
             {"submission_id": submission_id, "source_case_id": source_case_id, "target_case_id": target_case_id, "by": corrected_by},
         )
-        return RedirectResponse(f"/submissions/{submission_id}", status_code=303)
+        return RedirectResponse(_submission_notice_location(submission_id, "cases_merged", focus="case-registry"), status_code=303)
 
     @app.post("/submissions/{submission_id}/actions/rerun-review")
     def rerun_review_page(request: Request, submission_id: str):
@@ -348,7 +401,7 @@ def create_app(testing: bool = False):
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         log_event("rerun_case_review_html", {"submission_id": submission_id, "case_id": case_id, "by": corrected_by})
-        return RedirectResponse(f"/submissions/{submission_id}", status_code=303)
+        return RedirectResponse(_submission_notice_location(submission_id, "case_review_rerun", focus="export-center"), status_code=303)
 
     @app.get("/downloads/reports/{report_id}")
     def download_report(request: Request, report_id: str):
@@ -412,7 +465,8 @@ def create_app(testing: bool = False):
         cases = [store.cases[item_id].to_dict() for item_id in submission.case_ids if item_id in store.cases]
         reports = [store.report_artifacts[item_id].to_dict() for item_id in submission.report_ids if item_id in store.report_artifacts]
         parse_results = [store.parse_results[item_id].to_dict() for item_id in submission.material_ids if item_id in store.parse_results]
-        return HTMLResponse(render_submission_detail(submission.to_dict(), materials, cases, reports, parse_results))
+        notice = _submission_notice_payload(request.query_params.get("notice", ""))
+        return HTMLResponse(render_submission_detail(submission.to_dict(), materials, cases, reports, parse_results, notice=notice))
 
     @app.get("/cases/{case_id}")
     def case_detail(request: Request, case_id: str):
