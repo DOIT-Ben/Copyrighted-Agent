@@ -298,6 +298,38 @@ def render_submission_detail(
         ]
     )
 
+    triage_body = """
+    <div class="sequence-board">
+      <article class="sequence-step">
+        <span class="sequence-index">1</span>
+        <div>
+          <strong>先看待复核队列</strong>
+          <p>把需要人工判断的材料先挑出来，避免后面在项目和报告里反复返工。</p>
+        </div>
+      </article>
+      <article class="sequence-step">
+        <span class="sequence-index">2</span>
+        <div>
+          <strong>再核对材料矩阵</strong>
+          <p>确认材料类型、版本、软件名和解析质量是否可信，再决定是否需要纠偏。</p>
+        </div>
+      </article>
+      <article class="sequence-step">
+        <span class="sequence-index">3</span>
+        <div>
+          <strong>最后人工干预与重跑</strong>
+          <p>先改材料，再调分组，最后重跑审查并进入导出中心。</p>
+        </div>
+      </article>
+    </div>
+    <div class="inline-actions">
+      <a class="button-secondary button-compact" href="#needs-review">{icon('alert', 'icon icon-sm')}看待复核</a>
+      <a class="button-secondary button-compact" href="#material-matrix">{icon('cluster', 'icon icon-sm')}看材料矩阵</a>
+      <a class="button-secondary button-compact" href="#operator-console">{icon('wrench', 'icon icon-sm')}去人工干预</a>
+      <a class="button-secondary button-compact" href="#export-center">{icon('download', 'icon icon-sm')}去导出中心</a>
+    </div>
+    """
+
     needs_review_body = (
         '<div class="status-stack">'
         + "".join(
@@ -338,57 +370,90 @@ def render_submission_detail(
       <span class="helper-chip">再调分组</span>
       <span class="helper-chip">最后重跑审查</span>
     </div>
-    <div class="control-grid">
-      <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/change-type" method="post">
-        <strong>更正材料类型</strong>
-        <span class="field-hint">当系统识别错材料类型时使用。保存后会自动回到“更正审计”。</span>
-        <label class="field"><span>材料</span><select name="material_id">{material_options}</select></label>
-        <label class="field"><span>类型</span><select name="material_type">
-          <option value="agreement">合作协议</option>
-          <option value="source_code">源代码</option>
-          <option value="info_form">信息采集表</option>
-          <option value="software_doc">软件说明文档</option>
-        </select></label>
-        <label class="field"><span>备注</span><input type="text" name="note" placeholder="说明为什么要改类型"></label>
-        <button class="button-secondary button-compact" type="submit">{icon('wrench', 'icon icon-sm')}保存并刷新</button>
-      </form>
+    <div class="operator-group-grid">
+      <details class="operator-group" open>
+        <summary>
+          <span class="operator-group-index">1</span>
+          <div>
+            <strong>材料纠偏</strong>
+            <small>先把识别错的材料类型和归属修正掉。</small>
+          </div>
+        </summary>
+        <div class="control-grid">
+          <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/change-type" method="post">
+            <strong>更正材料类型</strong>
+            <span class="field-hint">当系统识别错材料类型时使用。保存后会自动回到“更正审计”。</span>
+            <label class="field"><span>材料</span><select name="material_id">{material_options}</select></label>
+            <label class="field"><span>类型</span><select name="material_type">
+              <option value="agreement">合作协议</option>
+              <option value="source_code">源代码</option>
+              <option value="info_form">信息采集表</option>
+              <option value="software_doc">软件说明文档</option>
+            </select></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="说明为什么要改类型"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('wrench', 'icon icon-sm')}保存并刷新</button>
+          </form>
 
-      <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/assign-case" method="post">
-        <strong>指派到项目</strong>
-        <span class="field-hint">把某份材料归入已有项目。如果项目列表为空，先创建项目。</span>
-        <label class="field"><span>材料</span><select name="material_id">{material_options}</select></label>
-        <label class="field"><span>目标项目</span><select name="case_id">{case_options}</select></label>
-        <label class="field"><span>备注</span><input type="text" name="note" placeholder="记录这次归组原因"></label>
-        <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}提交并刷新</button>
-      </form>
+          <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/assign-case" method="post">
+            <strong>指派到项目</strong>
+            <span class="field-hint">把某份材料归入已有项目。如果项目列表为空，先创建项目。</span>
+            <label class="field"><span>材料</span><select name="material_id">{material_options}</select></label>
+            <label class="field"><span>目标项目</span><select name="case_id">{case_options}</select></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="记录这次归组原因"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}提交并刷新</button>
+          </form>
+        </div>
+      </details>
 
-      <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/create-case" method="post">
-        <strong>创建项目</strong>
-        <span class="field-hint">从一份或多份材料创建新项目。若想一次带入多份材料，可填写逗号分隔的材料 ID。</span>
-        <label class="field"><span>材料 ID</span><input type="text" name="material_ids" value="{escape_html(default_material_ids)}"></label>
-        <label class="field"><span>项目名称</span><input type="text" name="case_name" value="{escape_html(submission.get('filename', '新项目'))}"></label>
-        <label class="field"><span>版本号</span><input type="text" name="version"></label>
-        <label class="field"><span>公司名称</span><input type="text" name="company_name"></label>
-        <label class="field"><span>备注</span><input type="text" name="note" placeholder="记录创建原因"></label>
-        <button class="button-secondary button-compact" type="submit">{icon('lock', 'icon icon-sm')}创建并刷新</button>
-      </form>
+      <details class="operator-group">
+        <summary>
+          <span class="operator-group-index">2</span>
+          <div>
+            <strong>项目编排</strong>
+            <small>创建新项目，或者把拆散的项目重新合并。</small>
+          </div>
+        </summary>
+        <div class="control-grid">
+          <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/create-case" method="post">
+            <strong>创建项目</strong>
+            <span class="field-hint">从一份或多份材料创建新项目。若想一次带入多份材料，可填写逗号分隔的材料 ID。</span>
+            <label class="field"><span>材料 ID</span><input type="text" name="material_ids" value="{escape_html(default_material_ids)}"></label>
+            <label class="field"><span>项目名称</span><input type="text" name="case_name" value="{escape_html(submission.get('filename', '新项目'))}"></label>
+            <label class="field"><span>版本号</span><input type="text" name="version"></label>
+            <label class="field"><span>公司名称</span><input type="text" name="company_name"></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="记录创建原因"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('lock', 'icon icon-sm')}创建并刷新</button>
+          </form>
 
-      <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/merge-cases" method="post">
-        <strong>合并项目</strong>
-        <span class="field-hint">保留目标项目，把源项目并入目标项目，适用于同一软著被拆散的情况。</span>
-        <label class="field"><span>源项目</span><select name="source_case_id">{case_options}</select></label>
-        <label class="field"><span>目标项目</span><select name="target_case_id">{case_options}</select></label>
-        <label class="field"><span>备注</span><input type="text" name="note" placeholder="记录合并原因"></label>
-        <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}合并并刷新</button>
-      </form>
+          <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/merge-cases" method="post">
+            <strong>合并项目</strong>
+            <span class="field-hint">保留目标项目，把源项目并入目标项目，适用于同一软著被拆散的情况。</span>
+            <label class="field"><span>源项目</span><select name="source_case_id">{case_options}</select></label>
+            <label class="field"><span>目标项目</span><select name="target_case_id">{case_options}</select></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="记录合并原因"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}合并并刷新</button>
+          </form>
+        </div>
+      </details>
 
-      <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/rerun-review" method="post">
-        <strong>重新审查项目</strong>
-        <span class="field-hint">完成更正或重组后使用，让风险结果、报告和 AI 补充意见都重新生成。</span>
-        <label class="field"><span>项目</span><select name="case_id">{case_options}</select></label>
-        <label class="field"><span>备注</span><input type="text" name="note" placeholder="说明为什么重跑"></label>
-        <button class="button-secondary button-compact" type="submit">{icon('refresh', 'icon icon-sm')}重跑并刷新</button>
-      </form>
+      <details class="operator-group">
+        <summary>
+          <span class="operator-group-index">3</span>
+          <div>
+            <strong>复核重跑</strong>
+            <small>在项目更正之后，统一重新生成结果。</small>
+          </div>
+        </summary>
+        <div class="control-grid">
+          <form class="operator-form" action="/submissions/{escape_html(submission.get('id', ''))}/actions/rerun-review" method="post">
+            <strong>重新审查项目</strong>
+            <span class="field-hint">完成更正或重组后使用，让风险结果、报告和 AI 补充意见都重新生成。</span>
+            <label class="field"><span>项目</span><select name="case_id">{case_options}</select></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="说明为什么重跑"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('refresh', 'icon icon-sm')}重跑并刷新</button>
+          </form>
+        </div>
+      </details>
     </div>
     """
 
@@ -403,6 +468,7 @@ def render_submission_detail(
         )
 
     content = f"""
+    {panel('这个批次先怎么处理', triage_body, kicker='推荐顺序', extra_class='span-12 panel-soft', icon_name='spark', description='先把复核和纠偏顺序走对，再看项目与导出，整体会更稳。', panel_id='triage-flow')}
     <section class="kpi-grid">
       {metric_card('材料数', str(len(materials)), '当前批次已识别的材料数量', 'info', icon_name='file')}
       {metric_card('项目数', str(len(cases)), '当前批次已形成的项目数量', 'success', icon_name='lock')}

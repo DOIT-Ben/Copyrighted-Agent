@@ -498,7 +498,40 @@ def render_ops_page(config: dict, self_check: dict) -> str:
 
     command_panel_body = support_commands + ops_pairs
 
+    flight_plan_body = """
+    <div class="sequence-board">
+      <article class="sequence-step">
+        <span class="sequence-index">1</span>
+        <div>
+          <strong>先看发布闸门</strong>
+          <p>先判断当前环境能不能推进真实模型验证，再决定是否继续深入。</p>
+        </div>
+      </article>
+      <article class="sequence-step">
+        <span class="sequence-index">2</span>
+        <div>
+          <strong>再看通道与探针</strong>
+          <p>确认提供方是否就绪，再区分“环境未就绪”还是“真实调用失败”。</p>
+        </div>
+      </article>
+      <article class="sequence-step">
+        <span class="sequence-index">3</span>
+        <div>
+          <strong>最后看趋势与回滚点</strong>
+          <p>结合基线、备份和低质量数量，决定是否进入联调或先回收现场。</p>
+        </div>
+      </article>
+    </div>
+    <div class="inline-actions">
+      <a class="button-secondary button-compact" href="#release-gate">先看发布闸门</a>
+      <a class="button-secondary button-compact" href="#provider-readiness">再看通道就绪</a>
+      <a class="button-secondary button-compact" href="#probe-history">查看探针历史</a>
+      <a class="button-secondary button-compact" href="#trend-watch">最后看质量趋势</a>
+    </div>
+    """
+
     content = f"""
+    {panel('这页应该怎么看', flight_plan_body, kicker='运维顺序', extra_class='span-12 panel-soft', icon_name='bar', description='把运维和联调动作按顺序串起来，减少来回跳页和误判。', panel_id='ops-flight-plan')}
     <section class="kpi-grid">
       {metric_card('发布闸门', status_label(str(release_gate.get('status', 'warning'))), '用于判断是否进入真实模型发布验证', status_tone(release_gate.get('status', 'warning')), icon_name='shield')}
       {metric_card('启动自检', status_label(str(self_check.get('status', 'warning'))), '检查路径可写、配置与安全边界', status_tone(self_check.get('status', 'warning')), icon_name='check')}

@@ -68,6 +68,28 @@ def render_home_page() -> str:
       <span class="helper-chip">\u672c\u5730\u8131\u654f</span>
       <span class="helper-chip">\u4ea7\u7269\u53ef\u8ffd\u6eaf</span>
     </div>
+    <div class="compare-grid">
+      <article class="compare-card compare-card-featured">
+        <span class="compare-card-label">推荐起点</span>
+        <strong>模式 A：单项目整包</strong>
+        <p>一个 ZIP 里包含同一个软著项目的多类材料时，用这个模式最稳，导入后可以直接进入完整项目视图。</p>
+        <ul class="checklist">
+          <li>信息采集表、源代码、说明文档、合作协议都在同一个包里</li>
+          <li>希望一次生成项目级结论和批次视图</li>
+          <li>适合正式审查前的完整整理</li>
+        </ul>
+      </article>
+      <article class="compare-card">
+        <span class="compare-card-label">批量归档</span>
+        <strong>模式 B：同类材料批量归档</strong>
+        <p>多个软著的同类文件需要先统一入库、再人工重组时，先走这个模式，再在批次详情里做归组和复核。</p>
+        <ul class="checklist">
+          <li>手上是多个项目的合作协议或同类文档</li>
+          <li>先建档，再做分组与纠偏</li>
+          <li>适合批量清点与归档前处理</li>
+        </ul>
+      </article>
+    </div>
     <form class="admin-form" action="/upload" method="post" enctype="multipart/form-data">
       <div class="control-grid">
         <label class="field">
@@ -92,6 +114,10 @@ def render_home_page() -> str:
         <span class="helper-chip">\u5bfc\u5165\u540e\u81ea\u52a8\u6253\u5f00\u6279\u6b21\u8be6\u60c5</span>
         <span class="helper-chip">\u59cb\u7ec8\u5148\u8fc7\u8131\u654f\u8fb9\u754c</span>
         <span class="helper-chip">\u771f\u5b9e\u6a21\u578b\u53ef\u80fd\u7565\u6162</span>
+      </div>
+      <div class="operator-note">
+        <strong>提交前检查</strong>
+        <span>确认 ZIP 内没有可执行文件，中文文件名尽量保持语义清晰，真实模型联调场景下建议优先用完整材料包做第一轮验证。</span>
       </div>
       <div class="inline-actions">
         <button class="button-primary" type="submit">%s\u5f00\u59cb\u5bfc\u5165</button>
@@ -172,11 +198,38 @@ def render_home_page() -> str:
         else empty_state("\u6682\u65e0\u5bfc\u5165\u8bb0\u5f55", "\u4e0a\u4f20 ZIP \u540e\uff0c\u8fd9\u91cc\u4f1a\u51fa\u73b0\u6700\u8fd1\u7684\u6279\u6b21\u548c\u8fd0\u884c\u52a8\u6001\u3002")
     )
 
+    start_body = """
+    <div class="sequence-board">
+      <article class="sequence-step">
+        <span class="sequence-index">1</span>
+        <div>
+          <strong>先选导入模式</strong>
+          <p>整包走模式 A，同类批量走模式 B，避免后面重复重组。</p>
+        </div>
+      </article>
+      <article class="sequence-step">
+        <span class="sequence-index">2</span>
+        <div>
+          <strong>再看批次详情</strong>
+          <p>导入完成后先看待复核队列和材料矩阵，不要直接跳到导出。</p>
+        </div>
+      </article>
+      <article class="sequence-step">
+        <span class="sequence-index">3</span>
+        <div>
+          <strong>最后做人工纠偏</strong>
+          <p>改材料类型、调分组、重跑审查，再进入报告和交付。</p>
+        </div>
+      </article>
+    </div>
+    """
+
     content = f"""
+    {panel('开始前看这里', start_body, kicker='操作顺序', extra_class='span-12 panel-soft', icon_name='spark', description='先把正确的导入路径走对，后面的复核和导出会顺很多。', panel_id='start-here')}
     <section class="kpi-grid">{kpis}</section>
     <section class="dashboard-grid">
-      {panel('导入台', import_body, kicker='总控台', extra_class='span-7 panel-primary', icon_name='upload', description='从这里进入主处理链路：上传、分类、审查、输出。', panel_id='import-console')}
-      {panel('可信信号', trust_body, kicker='本地安全', extra_class='span-5', icon_name='shield', description='先建立信任边界，再让操作人员进入分析工作流。', panel_id='trust-signals')}
+      {panel('导入台', import_body, kicker='总控台', extra_class='span-8 panel-primary', icon_name='upload', description='从这里进入主处理链路：上传、分类、审查、输出。', panel_id='import-console')}
+      {panel('可信信号', trust_body, kicker='本地安全', extra_class='span-4', icon_name='shield', description='先建立信任边界，再让操作人员进入分析工作流。', panel_id='trust-signals')}
       {panel('流程总览', process_body, kicker='处理链路', extra_class='span-7', icon_name='bar', description='工作台重点不是宣传文案，而是让每个处理节点一眼可见。', panel_id='pipeline-analysis')}
       {panel('模式说明', mode_body, kicker='导入模式', extra_class='span-5', icon_name='layers', description='两种导入模式分别对应两类真实工作场景。', panel_id='mode-matrix')}
       {panel('最近导入', recent_body, kicker='运行动态', extra_class='span-12', icon_name='clock', description='最近导入的批次、状态和规模会沉淀到这里。', panel_id='recent-imports')}

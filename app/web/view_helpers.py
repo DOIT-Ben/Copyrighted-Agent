@@ -169,19 +169,41 @@ def download_chip(path: str, label: str) -> str:
 
 def nav_link(path: str, label: str, active: bool = False, *, icon_name: str = "dashboard") -> str:
     active_class = " nav-link-active" if active else ""
+    current_attr = ' aria-current="page"' if active else ""
     return (
-        f'<a class="nav-link{active_class}" href="{escape_html(path)}">'
+        f'<a class="nav-link{active_class}" href="{escape_html(path)}"{current_attr}>'
         f'{icon(icon_name, "icon")}'
         f"<span>{escape_html(label)}</span>"
         "</a>"
     )
 
 
+def _table_cell(header: str, cell: str, index: int) -> str:
+    if index == 0:
+        value = f'<div class="table-cell-value table-cell-value-title">{cell}</div>'
+    else:
+        value = f'<div class="table-cell-value">{cell}</div>'
+    return (
+        f'<td data-label="{escape_html(header)}">'
+        f'<span class="table-cell-label">{escape_html(header)}</span>'
+        f"{value}"
+        "</td>"
+    )
+
+
 def table(headers: list[str], rows: list[list[str]]) -> str:
     if not rows:
         return empty_state("\u6682\u65e0\u6570\u636e", "\u5f53\u524d\u89c6\u56fe\u8fd8\u6ca1\u6709\u53ef\u663e\u793a\u7684\u5185\u5bb9\u3002")
-    head = "".join(f"<th>{escape_html(item)}</th>" for item in headers)
-    body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
+    head = "".join(f'<th scope="col">{escape_html(item)}</th>' for item in headers)
+    body = "".join(
+        "<tr>"
+        + "".join(
+            _table_cell(headers[index] if index < len(headers) else f"col_{index + 1}", cell, index)
+            for index, cell in enumerate(row)
+        )
+        + "</tr>"
+        for row in rows
+    )
     return (
         '<div class="table-wrap"><table class="data-table">'
         f"<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>"
@@ -248,7 +270,7 @@ def panel(
     class_name = f"panel {extra_class}".strip()
     id_attr = f' id="{escape_html(panel_id)}"' if panel_id else ""
     return (
-        f'<section{id_attr} class="{class_name}"><div class="panel-head"><div>'
+        f'<section{id_attr} class="{class_name}"><div class="panel-head"><div class="panel-head-copy">'
         f"{kicker_html}<h2>{escape_html(title)}</h2>{description_html}</div>"
         f'<div class="panel-head-icon">{icon(icon_name, "icon icon-lg")}</div>'
         f"</div>{body}</section>"
@@ -392,6 +414,7 @@ def layout(
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">\u8df3\u5230\u4e3b\u5185\u5bb9</a>
   <div class="admin-shell">
     <aside class="sidebar">
       <a class="sidebar-brand" href="/">
@@ -431,7 +454,7 @@ def layout(
       </section>
     </aside>
 
-    <main class="workspace">
+    <main id="main-content" class="workspace">
       <section class="workspace-rail" aria-label="Release context">
         <div class="workspace-rail-copy">
           {_breadcrumb(active_nav, header_tag)}
