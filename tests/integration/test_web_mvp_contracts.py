@@ -9,8 +9,8 @@ import pytest
 def test_home_page_renders_upload_controls(api_client):
     response = api_client.get("/")
     assert response.status_code == 200
-    assert "Control Center" in response.text
-    assert "Import Console" in response.text
+    assert "总控台" in response.text
+    assert "导入台" in response.text
     assert 'action="/upload"' in response.text
 
 
@@ -43,8 +43,8 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
     submission_page = api_client.get(location)
     assert submission_page.status_code == 200
     assert mode_a_zip_path.name in submission_page.text
-    assert "Material Matrix" in submission_page.text
-    assert "Needs Review" in submission_page.text
+    assert "材料矩阵" in submission_page.text
+    assert "待复核队列" in submission_page.text
 
     submission_id = location.rsplit("/", 1)[-1]
     submission_payload = api_client.get(f"/api/submissions/{submission_id}").json()
@@ -53,14 +53,14 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
 
     case_page = api_client.get(f"/cases/{submission_payload['case_ids'][0]}")
     assert case_page.status_code == 200
-    assert "Risk Queue" in case_page.text
-    assert "AI Supplement" in case_page.text
+    assert "风险队列" in case_page.text
+    assert "AI 辅助研判" in case_page.text
 
     report_page = api_client.get(f"/reports/{submission_payload['report_ids'][0]}")
     assert report_page.status_code == 200
-    assert "Report Reader" in report_page.text
+    assert "报告阅读器" in report_page.text
 
     index_page = api_client.get("/submissions")
     assert index_page.status_code == 200
     assert mode_a_zip_path.name in index_page.text
-    assert "Batch Registry" in index_page.text
+    assert "批次台账" in index_page.text

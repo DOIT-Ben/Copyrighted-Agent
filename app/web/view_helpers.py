@@ -4,36 +4,69 @@ from pathlib import Path
 
 from app.core.utils.text import escape_html
 
+
 SECTION_LINKS = {
-    "home": ("/", "Control Center", "dashboard"),
-    "submissions": ("/submissions", "Batch Registry", "layers"),
-    "ops": ("/ops", "Support / Ops", "terminal"),
+    "home": ("/", "\u603b\u63a7\u53f0", "dashboard"),
+    "submissions": ("/submissions", "\u6279\u6b21\u603b\u89c8", "layers"),
+    "ops": ("/ops", "\u8fd0\u7ef4\u4e2d\u5fc3", "terminal"),
 }
 
 
 MODE_LABELS = {
-    "single_case_package": "single_case_package / 同一软著，多份材料",
-    "batch_same_material": "batch_same_material / 不同软著，同类材料",
+    "single_case_package": "\u6a21\u5f0f A\uff1a\u5355\u9879\u76ee\u6574\u5305",
+    "batch_same_material": "\u6a21\u5f0f B\uff1a\u540c\u7c7b\u6279\u91cf\u5f52\u6863",
 }
 
 TYPE_LABELS = {
-    "agreement": "合作协议",
-    "source_code": "源代码",
-    "info_form": "信息采集表",
-    "software_doc": "软件说明文档",
-    "unknown": "未识别",
+    "agreement": "\u5408\u4f5c\u534f\u8bae",
+    "source_code": "\u6e90\u4ee3\u7801",
+    "info_form": "\u4fe1\u606f\u91c7\u96c6\u8868",
+    "software_doc": "\u8f6f\u4ef6\u8bf4\u660e\u6587\u6863",
+    "unknown": "\u5f85\u8bc6\u522b",
 }
 
 REPORT_LABELS = {
-    "material_markdown": "材料审查报告",
-    "case_markdown": "项目综合报告",
-    "batch_markdown": "批次汇总报告",
+    "material_markdown": "\u6750\u6599\u5ba1\u67e5\u62a5\u544a",
+    "case_markdown": "\u9879\u76ee\u7efc\u5408\u62a5\u544a",
+    "batch_markdown": "\u6279\u6b21\u6c47\u603b\u62a5\u544a",
 }
 
 SEVERITY_LABELS = {
-    "severe": "严重",
-    "moderate": "中等",
-    "minor": "轻微",
+    "severe": "\u4e25\u91cd",
+    "moderate": "\u4e2d\u7b49",
+    "minor": "\u8f83\u8f7b",
+}
+
+STATUS_LABELS = {
+    "ok": "\u6b63\u5e38",
+    "completed": "\u5df2\u5b8c\u6210",
+    "healthy": "\u5065\u5eb7",
+    "pass": "\u901a\u8fc7",
+    "grouped": "\u5df2\u5f52\u7ec4",
+    "success": "\u6210\u529f",
+    "ready": "\u5c31\u7eea",
+    "warning": "\u544a\u8b66",
+    "processing": "\u5904\u7406\u4e2d",
+    "running": "\u8fd0\u884c\u4e2d",
+    "needs_review": "\u5f85\u590d\u6838",
+    "skipped": "\u5df2\u8df3\u8fc7",
+    "minor": "\u8f83\u8f7b",
+    "moderate": "\u4e2d\u7b49",
+    "failed": "\u5931\u8d25",
+    "error": "\u9519\u8bef",
+    "blocked": "\u963b\u585e",
+    "danger": "\u9ad8\u98ce\u9669",
+    "severe": "\u4e25\u91cd",
+    "info": "\u4fe1\u606f",
+    "active": "\u5df2\u542f\u7528",
+    "idle": "\u7a7a\u95f2",
+    "not_run": "\u672a\u6267\u884c",
+    "not_configured": "\u672a\u914d\u7f6e",
+    "mock_mode": "\u672c\u5730\u6a21\u62df",
+    "ready_for_probe": "\u53ef\u8fdb\u884c\u63a2\u9488",
+    "probe_passed": "\u63a2\u9488\u901a\u8fc7",
+    "probe_failed": "\u63a2\u9488\u5931\u8d25",
+    "probe_skipped": "\u63a2\u9488\u8df3\u8fc7",
 }
 
 ICON_PATHS = {
@@ -87,6 +120,15 @@ def severity_label(severity: str) -> str:
     return SEVERITY_LABELS.get(severity, severity or "-")
 
 
+def status_label(status: str) -> str:
+    normalized = str(status or "").strip().lower()
+    if not normalized:
+        return "-"
+    if normalized in STATUS_LABELS:
+        return STATUS_LABELS[normalized]
+    return str(status).replace("_", " ")
+
+
 def status_tone(status: str) -> str:
     normalized = str(status or "").lower()
     if normalized in {"ok", "completed", "healthy", "pass", "grouped", "success", "ready"}:
@@ -137,7 +179,7 @@ def nav_link(path: str, label: str, active: bool = False, *, icon_name: str = "d
 
 def table(headers: list[str], rows: list[list[str]]) -> str:
     if not rows:
-        return empty_state("No Data", "There is nothing to show in this view yet.")
+        return empty_state("\u6682\u65e0\u6570\u636e", "\u5f53\u524d\u89c6\u56fe\u8fd8\u6ca1\u6709\u53ef\u663e\u793a\u7684\u5185\u5bb9\u3002")
     head = "".join(f"<th>{escape_html(item)}</th>" for item in headers)
     body = "".join("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
     return (
@@ -231,10 +273,10 @@ def read_text_file(path_value: str) -> str:
 
 
 def _breadcrumb(active_nav: str, header_tag: str) -> str:
-    current_path, current_label, _ = SECTION_LINKS.get(active_nav, ("/", "Control Center", "dashboard"))
+    current_path, current_label, _ = SECTION_LINKS.get(active_nav, ("/", "\u603b\u63a7\u53f0", "dashboard"))
     return (
         '<nav class="workspace-breadcrumbs" aria-label="Breadcrumb">'
-        '<a href="/">Console</a>'
+        '<a href="/">\u5de5\u4f5c\u53f0</a>'
         '<span>/</span>'
         f'<a href="{escape_html(current_path)}">{escape_html(current_label)}</a>'
         '<span>/</span>'
@@ -311,19 +353,22 @@ def layout(
 ) -> str:
     mode_count = len(MODE_LABELS)
     type_count = len([key for key in TYPE_LABELS if key != "unknown"])
-    release_note = header_note or "Keep intake, review, export, and operator decisions visible from one trusted surface."
+    release_note = header_note or "\u4ece\u540c\u4e00\u4e2a\u53ef\u4fe1\u5de5\u4f5c\u9762\u4e2d\uff0c\u76f4\u63a5\u770b\u5230\u5bfc\u5165\u3001\u5ba1\u67e5\u3001\u5bfc\u51fa\u4e0e\u4eba\u5de5\u51b3\u7b56\u3002"
     current_section = SECTION_LINKS.get(active_nav, ("/", header_tag, "dashboard"))[1]
+    home_label = SECTION_LINKS["home"][1]
+    submissions_label = SECTION_LINKS["submissions"][1]
+    ops_label = SECTION_LINKS["ops"][1]
     release_cards = "".join(
         [
             _release_card(
-                "Local Redaction",
-                "AI requests stay behind the desensitization boundary before they leave the workstation.",
+                "\u672c\u5730\u8131\u654f",
+                "\u6240\u6709\u975e mock \u8c03\u7528\u90fd\u5148\u8fc7\u8131\u654f\u8fb9\u754c\uff0c\u518d\u79bb\u5f00\u672c\u673a\u3002",
                 "success",
                 "shield",
             ),
             _release_card(
-                "Traceable Chain",
-                "Submission, case, report, and artifact links remain visible for audit and replay.",
+                "\u53ef\u8ffd\u6eaf\u94fe\u8def",
+                "\u6279\u6b21\u3001\u9879\u76ee\u3001\u62a5\u544a\u4e0e\u4ea7\u7269\u94fe\u8def\u5728\u9875\u9762\u4e0a\u6301\u7eed\u53ef\u89c1\u3002",
                 "info",
                 "report",
             ),
@@ -352,36 +397,36 @@ def layout(
       <a class="sidebar-brand" href="/">
         <span class="sidebar-brand-mark">{icon("dashboard", "icon icon-md")}</span>
         <span class="sidebar-brand-copy">
-          <strong>软著审查台</strong>
-          <small>Admin Analysis Console</small>
+          <strong>\u8f6f\u8457\u5206\u6790\u5e73\u53f0</strong>
+          <small>\u4e2d\u6587\u7ba1\u7406\u53f0</small>
         </span>
       </a>
 
       <section class="sidebar-section">
-        <span class="sidebar-label">Navigation</span>
+        <span class="sidebar-label">\u5bfc\u822a</span>
         <nav class="sidebar-nav" aria-label="Main navigation">
-          {nav_link("/", "Control Center", active_nav == "home", icon_name="dashboard")}
-          {nav_link("/submissions", "Batch Registry", active_nav == "submissions", icon_name="layers")}
-          {nav_link("/ops", "Support / Ops", active_nav == "ops", icon_name="terminal")}
+          {nav_link("/", home_label, active_nav == "home", icon_name="dashboard")}
+          {nav_link("/submissions", submissions_label, active_nav == "submissions", icon_name="layers")}
+          {nav_link("/ops", ops_label, active_nav == "ops", icon_name="terminal")}
         </nav>
       </section>
 
       <section class="sidebar-section">
-        <span class="sidebar-label">Workflow</span>
+        <span class="sidebar-label">\u5904\u7406\u6d41\u7a0b</span>
         <div class="sidebar-list">
-          <div class="sidebar-item">{icon("upload", "icon icon-sm")}<span>ZIP 导入</span></div>
-          <div class="sidebar-item">{icon("cluster", "icon icon-sm")}<span>自动分类</span></div>
-          <div class="sidebar-item">{icon("shield", "icon icon-sm")}<span>规则审查</span></div>
-          <div class="sidebar-item">{icon("report", "icon icon-sm")}<span>报告回看</span></div>
+          <div class="sidebar-item">{icon("upload", "icon icon-sm")}<span>ZIP \u5bfc\u5165</span></div>
+          <div class="sidebar-item">{icon("cluster", "icon icon-sm")}<span>\u81ea\u52a8\u5f52\u7c7b</span></div>
+          <div class="sidebar-item">{icon("shield", "icon icon-sm")}<span>\u89c4\u5219\u5ba1\u67e5</span></div>
+          <div class="sidebar-item">{icon("report", "icon icon-sm")}<span>\u62a5\u544a\u4ea4\u4ed8</span></div>
         </div>
       </section>
 
       <section class="sidebar-section sidebar-signal">
-        <span class="sidebar-label">System Baseline</span>
+        <span class="sidebar-label">\u8fd0\u884c\u57fa\u7ebf</span>
         <div class="sidebar-mini-kpi">
-          <div><strong>{mode_count}</strong><span>导入模式</span></div>
-          <div><strong>{type_count}</strong><span>核心材料</span></div>
-          <div><strong>safe</strong><span>AI 边界</span></div>
+          <div><strong>{mode_count}</strong><span>\u5bfc\u5165\u6a21\u5f0f</span></div>
+          <div><strong>{type_count}</strong><span>\u6838\u5fc3\u6750\u6599</span></div>
+          <div><strong>safe</strong><span>\u5b89\u5168\u8fb9\u754c</span></div>
         </div>
       </section>
     </aside>
@@ -391,7 +436,7 @@ def layout(
         <div class="workspace-rail-copy">
           {_breadcrumb(active_nav, header_tag)}
           <div class="workspace-rail-summary">
-            <strong>Release Readiness</strong>
+            <strong>\u53d1\u5e03\u51c6\u5907\u5ea6</strong>
             <span>{escape_html(release_note)}</span>
           </div>
         </div>
@@ -439,6 +484,7 @@ __all__ = [
     "render_stylesheet",
     "report_label",
     "severity_label",
+    "status_label",
     "status_tone",
     "table",
     "type_label",

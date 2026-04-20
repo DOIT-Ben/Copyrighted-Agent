@@ -26,10 +26,10 @@ def test_submission_detail_exposes_operator_console_and_export_sections(api_clie
     response = api_client.get(f"/submissions/{submission_id}")
 
     assert response.status_code == 200
-    assert "Operator Console" in response.text
-    assert "Export Center" in response.text
-    assert "Artifact Browser" in response.text
-    assert "Import Digest" in response.text
+    assert "人工干预台" in response.text
+    assert "导出中心" in response.text
+    assert "产物浏览" in response.text
+    assert "导入摘要" in response.text
     assert "浏览器端导入说明" in api_client.get("/").text
 
 
@@ -40,17 +40,16 @@ def test_ops_page_exposes_self_check_and_support_artifacts(api_client):
     response = api_client.get("/ops")
 
     assert response.status_code == 200
-    assert "Support / Ops" in response.text
-    assert "Release Gate" in response.text
-    assert "Startup Self Check" in response.text
-    assert "Provider Readiness" in response.text
-    assert "Latest Backup" in response.text
-    assert "Latest Baseline" in response.text
-    assert "Latest Probe" in response.text
-    assert "Provider Checklist" in response.text
-    assert "Probe Observatory" in response.text or "Latest Provider Probe" in response.text
-    assert "Probe History" in response.text
-    assert "Trend Watch" in response.text or "Baseline History" in response.text
+    assert "运维中心" in response.text
+    assert "发布闸门" in response.text
+    assert "启动自检" in response.text
+    assert "模型通道就绪度" in response.text
+    assert "最新备份" in response.text
+    assert "最新基线" in response.text
+    assert "最新探针" in response.text
+    assert "探针观测" in response.text
+    assert "探针历史" in response.text
+    assert "质量趋势" in response.text
     assert "/downloads/logs/app" in response.text
     assert "app.tools.runtime_cleanup" in response.text
     assert "app.tools.runtime_backup" in response.text or "runtime_backup" in response.text
@@ -63,8 +62,8 @@ def test_ops_page_exposes_self_check_and_support_artifacts(api_client):
     assert "scripts\\run_real_validation.ps1" in response.text
     assert "scripts\\show_stack_status.ps1" in response.text
     assert "app.tools.minimax_bridge" in response.text or "minimax_bridge" in response.text
-    assert "Real Provider Smoke" in response.text
-    assert "Rolling Baseline" in response.text
+    assert "真实通道冒烟" in response.text
+    assert "滚动基线" in response.text
 
 
 @pytest.mark.integration
@@ -143,9 +142,9 @@ def test_html_operator_actions_and_download_endpoints_work(api_client, mode_a_zi
     assert "#correction-audit" in change_location
 
     submission_page = api_client.get(change_location.split("#", 1)[0])
-    assert "change_material_type" in submission_page.text
-    assert "Artifact Browser" in submission_page.text
-    assert "Material type updated" in submission_page.text
+    assert "更正审计" in submission_page.text
+    assert "产物浏览" in submission_page.text
+    assert "材料类型已更新" in submission_page.text
 
     rerun_response = api_client.post(
         f"/submissions/{submission_id}/actions/rerun-review",
@@ -157,7 +156,7 @@ def test_html_operator_actions_and_download_endpoints_work(api_client, mode_a_zi
     assert "#export-center" in rerun_location
 
     rerun_page = api_client.get(rerun_location.split("#", 1)[0])
-    assert "Case review rerun" in rerun_page.text
+    assert "项目审查已重跑" in rerun_page.text
 
     report_download = api_client.get(f"/downloads/reports/{report_id}")
     assert report_download.status_code == 200

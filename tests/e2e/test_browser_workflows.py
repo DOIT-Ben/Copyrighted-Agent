@@ -91,8 +91,8 @@ def test_browser_mode_a_workflow_covers_upload_correction_report_and_ops(mode_a_
 
         assert upload_response["status"] == 200
         assert "/submissions/" in upload_response["url"]
-        assert "Import Digest" in upload_response["text"]
-        assert "Operator Console" in upload_response["text"]
+        assert "导入摘要" in upload_response["text"]
+        assert "人工干预台" in upload_response["text"]
 
         submission_id = upload_response["url"].rstrip("/").rsplit("/", 1)[-1]
         submission_payload = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}")["body"])
@@ -107,20 +107,20 @@ def test_browser_mode_a_workflow_covers_upload_correction_report_and_ops(mode_a_
             {"material_id": material_id, "material_type": "agreement", "note": "browser e2e"},
         )
         assert change_response["status"] == 200
-        assert "Correction Audit" in change_response["text"]
-        assert "Material type updated" in change_response["text"]
+        assert "更正审计" in change_response["text"]
+        assert "材料类型已更新" in change_response["text"]
 
         rerun_response = _post_form(
             f"{live_server_url}/submissions/{submission_id}/actions/rerun-review",
             {"case_id": case_id, "note": "browser e2e rerun"},
         )
         assert rerun_response["status"] == 200
-        assert "Correction Audit" in rerun_response["text"]
-        assert "Case review rerun" in rerun_response["text"]
+        assert "更正审计" in rerun_response["text"]
+        assert "项目审查已重跑" in rerun_response["text"]
 
         report_response = _request(f"{live_server_url}/reports/{report_id}")
         assert report_response["status"] == 200
-        assert "Report Reader" in report_response["text"]
+        assert "报告阅读器" in report_response["text"]
 
         log_download = _request(f"{live_server_url}/downloads/logs/app")
         assert log_download["status"] == 200
@@ -128,8 +128,8 @@ def test_browser_mode_a_workflow_covers_upload_correction_report_and_ops(mode_a_
 
         ops_response = _request(f"{live_server_url}/ops")
         assert ops_response["status"] == 200
-        assert "Startup Self Check" in ops_response["text"]
-        assert "Support / Ops" in ops_response["text"]
+        assert "启动自检" in ops_response["text"]
+        assert "运维中心" in ops_response["text"]
 
 
 def test_browser_mode_b_workflow_supports_case_regroup_after_batch_upload(mode_b_ambiguous_zip_path):
@@ -148,7 +148,7 @@ def test_browser_mode_b_workflow_supports_case_regroup_after_batch_upload(mode_b
 
         assert upload_response["status"] == 200
         assert "/submissions/" in upload_response["url"]
-        assert "Import Digest" in upload_response["text"]
+        assert "导入摘要" in upload_response["text"]
 
         submission_id = upload_response["url"].rstrip("/").rsplit("/", 1)[-1]
         files_payload = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}/files")["body"])
@@ -158,20 +158,20 @@ def test_browser_mode_b_workflow_supports_case_regroup_after_batch_upload(mode_b
             f"{live_server_url}/submissions/{submission_id}/actions/create-case",
             {
                 "material_ids": material_ids[0],
-                "case_name": "Mode B Case A",
+                "case_name": "模式B项目A",
                 "version": "V1.0",
                 "company_name": "测试公司A",
                 "note": "browser e2e create a",
             },
         )
         assert create_a["status"] == 200
-        assert "Case created" in create_a["text"]
+        assert "新项目已创建" in create_a["text"]
 
         create_b = _post_form(
             f"{live_server_url}/submissions/{submission_id}/actions/create-case",
             {
                 "material_ids": material_ids[1],
-                "case_name": "Mode B Case B",
+                "case_name": "模式B项目B",
                 "version": "V1.0",
                 "company_name": "测试公司B",
                 "note": "browser e2e create b",
@@ -192,19 +192,19 @@ def test_browser_mode_b_workflow_supports_case_regroup_after_batch_upload(mode_b
             },
         )
         assert merge_response["status"] == 200
-        assert "Correction Audit" in merge_response["text"]
-        assert "Cases merged" in merge_response["text"]
+        assert "更正审计" in merge_response["text"]
+        assert "项目已合并" in merge_response["text"]
 
         rerun_response = _post_form(
             f"{live_server_url}/submissions/{submission_id}/actions/rerun-review",
             {"case_id": case_ids[0], "note": "browser e2e rerun mode b"},
         )
         assert rerun_response["status"] == 200
-        assert "Case review rerun" in rerun_response["text"]
+        assert "项目审查已重跑" in rerun_response["text"]
 
         submission_after_merge = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}")["body"])
         assert submission_after_merge["case_ids"] == [case_ids[0]]
 
         case_page = _request(f"{live_server_url}/cases/{case_ids[0]}")
         assert case_page["status"] == 200
-        assert "AI Supplement" in case_page["text"]
+        assert "AI 辅助研判" in case_page["text"]

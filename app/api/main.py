@@ -68,39 +68,39 @@ def _build_ops_report(config) -> dict:
 
 SUBMISSION_NOTICE_MAP = {
     "material_type_updated": {
-        "title": "Material type updated",
-        "message": "The selected material type was updated and the correction audit trail is ready for review.",
+        "title": "材料类型已更新",
+        "message": "选中的材料类型已完成更正，相关留痕已同步写入更正审计。",
         "tone": "success",
         "icon_name": "check",
-        "meta": ["Correction logged", "Submission refreshed"],
+        "meta": ["已记录留痕", "批次页已刷新"],
     },
     "material_assigned": {
-        "title": "Material assigned to case",
-        "message": "The selected material was moved into the chosen case and the grouped registry has been refreshed.",
+        "title": "材料已归入项目",
+        "message": "选中的材料已移入目标项目，项目分组结果已刷新。",
         "tone": "success",
         "icon_name": "merge",
-        "meta": ["Case registry updated", "Operator action logged"],
+        "meta": ["项目分组已更新", "人工操作已留痕"],
     },
     "case_created": {
-        "title": "Case created",
-        "message": "A new grouped case was created from the selected materials. Downstream review may take longer when live AI is enabled.",
+        "title": "新项目已创建",
+        "message": "系统已基于选中材料创建新项目。若开启真实模型，后续审查耗时可能略有上升。",
         "tone": "success",
         "icon_name": "lock",
-        "meta": ["Case registry updated", "Review chain preserved"],
+        "meta": ["项目分组已更新", "审查链路已保留"],
     },
     "cases_merged": {
-        "title": "Cases merged",
-        "message": "The source case was merged into the target case and the submission view now reflects the consolidated grouping.",
+        "title": "项目已合并",
+        "message": "源项目已并入目标项目，当前批次页已呈现新的聚合结果。",
         "tone": "success",
         "icon_name": "merge",
-        "meta": ["Grouping updated", "Audit trail preserved"],
+        "meta": ["分组结果已更新", "审计链路已保留"],
     },
     "case_review_rerun": {
-        "title": "Case review rerun",
-        "message": "The selected case review was rerun. Fresh report and AI signals are now reflected where available.",
+        "title": "项目审查已重跑",
+        "message": "选中的项目已重新审查，新的报告和 AI 信号会在可用时同步显示。",
         "tone": "info",
         "icon_name": "refresh",
-        "meta": ["Review refreshed", "Export center may update"],
+        "meta": ["审查结果已刷新", "导出中心可能更新"],
     },
 }
 
@@ -134,7 +134,7 @@ def create_app(testing: bool = False):
             )
         except OSError:
             pass
-    app = FastAPI(title="软著审查台")
+    app = FastAPI(title="软著分析平台")
 
     @app.get("/")
     def home(request: Request):
@@ -199,14 +199,14 @@ def create_app(testing: bool = False):
     def api_get_submission(request: Request, submission_id: str):
         submission = store.submissions.get(submission_id)
         if not submission:
-            raise HTTPException(404, "Submission not found")
+            raise HTTPException(404, "未找到批次")
         return JSONResponse(submission.to_dict())
 
     @app.get("/api/submissions/{submission_id}/corrections")
     def api_get_submission_corrections(request: Request, submission_id: str):
         submission = store.submissions.get(submission_id)
         if not submission:
-            raise HTTPException(404, "Submission not found")
+            raise HTTPException(404, "未找到批次")
         corrections = [store.corrections[item_id].to_dict() for item_id in submission.correction_ids if item_id in store.corrections]
         return JSONResponse({"corrections": corrections})
 
@@ -214,7 +214,7 @@ def create_app(testing: bool = False):
     def api_get_submission_files(request: Request, submission_id: str):
         submission = store.submissions.get(submission_id)
         if not submission:
-            raise HTTPException(404, "Submission not found")
+            raise HTTPException(404, "未找到批次")
         materials = [store.materials[item_id].to_dict() for item_id in submission.material_ids if item_id in store.materials]
         return JSONResponse({"files": materials})
 
@@ -222,14 +222,14 @@ def create_app(testing: bool = False):
     def api_get_case(request: Request, case_id: str):
         case = store.cases.get(case_id)
         if not case:
-            raise HTTPException(404, "Case not found")
+            raise HTTPException(404, "未找到项目")
         return JSONResponse(case.to_dict())
 
     @app.get("/api/jobs/{job_id}")
     def api_get_job(request: Request, job_id: str):
         job = store.jobs.get(job_id)
         if not job:
-            raise HTTPException(404, "Job not found")
+            raise HTTPException(404, "未找到任务")
         return JSONResponse(job.to_dict())
 
     @app.post("/api/materials/{material_id}/type")
@@ -238,7 +238,7 @@ def create_app(testing: bool = False):
         note = request.form_data.get("note", "")
         corrected_by = request.form_data.get("corrected_by", "local")
         if not material_type:
-            raise HTTPException(422, "Missing material_type")
+            raise HTTPException(422, "缺少 material_type")
         try:
             result = change_material_type(material_id, material_type, corrected_by=corrected_by, note=note)
         except ValueError as exc:
@@ -251,7 +251,7 @@ def create_app(testing: bool = False):
         note = request.form_data.get("note", "")
         corrected_by = request.form_data.get("corrected_by", "local")
         if not case_id:
-            raise HTTPException(422, "Missing case_id")
+            raise HTTPException(422, "缺少 case_id")
         try:
             result = assign_material_to_case(material_id, case_id, corrected_by=corrected_by, note=note)
         except ValueError as exc:
@@ -268,7 +268,7 @@ def create_app(testing: bool = False):
         corrected_by = request.form_data.get("corrected_by", "local")
         material_ids = [item.strip() for item in material_ids_raw.split(",") if item.strip()]
         if not material_ids:
-            raise HTTPException(422, "Missing material_ids")
+            raise HTTPException(422, "缺少 material_ids")
         try:
             result = create_case_from_materials(
                 submission_id,
@@ -289,7 +289,7 @@ def create_app(testing: bool = False):
         note = request.form_data.get("note", "")
         corrected_by = request.form_data.get("corrected_by", "local")
         if not target_case_id:
-            raise HTTPException(422, "Missing target_case_id")
+            raise HTTPException(422, "缺少 target_case_id")
         try:
             result = merge_cases(case_id, target_case_id, corrected_by=corrected_by, note=note)
         except ValueError as exc:
@@ -313,7 +313,7 @@ def create_app(testing: bool = False):
         note = request.form_data.get("note", "")
         corrected_by = request.form_data.get("corrected_by", "operator_ui")
         if not material_id or not material_type:
-            raise HTTPException(422, "Missing material_id or material_type")
+            raise HTTPException(422, "缺少 material_id 或 material_type")
         try:
             change_material_type(material_id, material_type, corrected_by=corrected_by, note=note)
         except ValueError as exc:
@@ -331,7 +331,7 @@ def create_app(testing: bool = False):
         note = request.form_data.get("note", "")
         corrected_by = request.form_data.get("corrected_by", "operator_ui")
         if not material_id or not case_id:
-            raise HTTPException(422, "Missing material_id or case_id")
+            raise HTTPException(422, "缺少 material_id 或 case_id")
         try:
             assign_material_to_case(material_id, case_id, corrected_by=corrected_by, note=note)
         except ValueError as exc:
@@ -352,7 +352,7 @@ def create_app(testing: bool = False):
         corrected_by = request.form_data.get("corrected_by", "operator_ui")
         material_ids = [item.strip() for item in material_ids_raw.split(",") if item.strip()]
         if not material_ids:
-            raise HTTPException(422, "Missing material_ids")
+            raise HTTPException(422, "缺少 material_ids")
         try:
             create_case_from_materials(
                 submission_id,
@@ -378,7 +378,7 @@ def create_app(testing: bool = False):
         note = request.form_data.get("note", "")
         corrected_by = request.form_data.get("corrected_by", "operator_ui")
         if not source_case_id or not target_case_id:
-            raise HTTPException(422, "Missing source_case_id or target_case_id")
+            raise HTTPException(422, "缺少 source_case_id 或 target_case_id")
         try:
             merge_cases(source_case_id, target_case_id, corrected_by=corrected_by, note=note)
         except ValueError as exc:
@@ -395,7 +395,7 @@ def create_app(testing: bool = False):
         note = request.form_data.get("note", "")
         corrected_by = request.form_data.get("corrected_by", "operator_ui")
         if not case_id:
-            raise HTTPException(422, "Missing case_id")
+            raise HTTPException(422, "缺少 case_id")
         try:
             rerun_case_review(case_id, corrected_by=corrected_by, note=note)
         except ValueError as exc:
@@ -460,7 +460,7 @@ def create_app(testing: bool = False):
     def submission_detail(request: Request, submission_id: str):
         submission = store.submissions.get(submission_id)
         if not submission:
-            raise HTTPException(404, "Submission not found")
+            raise HTTPException(404, "未找到批次")
         materials = [store.materials[item_id].to_dict() for item_id in submission.material_ids if item_id in store.materials]
         cases = [store.cases[item_id].to_dict() for item_id in submission.case_ids if item_id in store.cases]
         reports = [store.report_artifacts[item_id].to_dict() for item_id in submission.report_ids if item_id in store.report_artifacts]
@@ -472,7 +472,7 @@ def create_app(testing: bool = False):
     def case_detail(request: Request, case_id: str):
         case = store.cases.get(case_id)
         if not case:
-            raise HTTPException(404, "Case not found")
+            raise HTTPException(404, "未找到项目")
         materials = [store.materials[item_id].to_dict() for item_id in case.material_ids if item_id in store.materials]
         report = store.report_artifacts.get(case.report_id)
         review_result = store.review_results.get(case.review_result_id)
@@ -489,7 +489,7 @@ def create_app(testing: bool = False):
     def report_page(request: Request, report_id: str):
         report = store.report_artifacts.get(report_id)
         if not report:
-            raise HTTPException(404, "Report not found")
+            raise HTTPException(404, "未找到报告")
         return HTMLResponse(render_report_page(report.to_dict()))
 
     return app
@@ -501,7 +501,7 @@ def main():
     host = config.host
     port = config.port
     with make_server(host, port, app) as server:
-        print(f"Soft copyright review MVP running at http://{host}:{port}")
+        print(f"软著分析平台运行中: http://{host}:{port}")
         server.serve_forever()
 
 
