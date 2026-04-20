@@ -156,11 +156,11 @@ def render_home_page() -> str:
     content = f"""
     <section class="kpi-grid">{kpis}</section>
     <section class="dashboard-grid">
-      {panel('Import Console', import_body, kicker='Control Center', extra_class='span-7 panel-primary', icon_name='upload', description='从这里进入主处理链路：上传、分类、审查、输出。')}
-      {panel('Trust Signals', trust_body, kicker='Local Safety', extra_class='span-5', icon_name='shield', description='先建立信任边界，再让操作员进入分析工作流。')}
-      {panel('Pipeline Analysis', process_body, kicker='Pipeline Analysis', extra_class='span-7', icon_name='bar', description='工作台比营销文案更重要，流程节点必须一眼可见。')}
-      {panel('Mode Matrix', mode_body, kicker='Import Modes', extra_class='span-5', icon_name='layers', description='两种导入模式服务两类真实工作方式。')}
-      {panel('Recent Imports', recent_body, kicker='Runtime Feed', extra_class='span-12', icon_name='clock', description='最近导入的批次、状态和规模都会沉淀到这里。')}
+      {panel('Import Console', import_body, kicker='Control Center', extra_class='span-7 panel-primary', icon_name='upload', description='从这里进入主处理链路：上传、分类、审查、输出。', panel_id='import-console')}
+      {panel('Trust Signals', trust_body, kicker='Local Safety', extra_class='span-5', icon_name='shield', description='先建立信任边界，再让操作员进入分析工作流。', panel_id='trust-signals')}
+      {panel('Pipeline Analysis', process_body, kicker='Pipeline Analysis', extra_class='span-7', icon_name='bar', description='工作台比营销文案更重要，流程节点必须一眼可见。', panel_id='pipeline-analysis')}
+      {panel('Mode Matrix', mode_body, kicker='Import Modes', extra_class='span-5', icon_name='layers', description='两种导入模式服务两类真实工作方式。', panel_id='mode-matrix')}
+      {panel('Recent Imports', recent_body, kicker='Runtime Feed', extra_class='span-12', icon_name='clock', description='最近导入的批次、状态和规模都会沉淀到这里。', panel_id='recent-imports')}
     </section>
     """
 
@@ -172,4 +172,10 @@ def render_home_page() -> str:
         header_subtitle="Use the admin console to import ZIP packages, compare intake modes, and review the current runtime state.",
         header_meta=header_meta,
         content=content,
+        header_note="Start with import intake, confirm the trust boundary, then move directly into recent batches and downstream review.",
+        page_links=[
+            ("#import-console", "Import Console", "upload"),
+            ("#pipeline-analysis", "Pipeline", "bar"),
+            ("#recent-imports", "Recent Imports", "clock"),
+        ],
     )

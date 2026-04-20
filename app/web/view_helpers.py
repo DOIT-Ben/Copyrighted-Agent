@@ -4,6 +4,12 @@ from pathlib import Path
 
 from app.core.utils.text import escape_html
 
+SECTION_LINKS = {
+    "home": ("/", "Control Center", "dashboard"),
+    "submissions": ("/submissions", "Batch Registry", "layers"),
+    "ops": ("/ops", "Support / Ops", "terminal"),
+}
+
 
 MODE_LABELS = {
     "single_case_package": "single_case_package / 同一软著，多份材料",
@@ -169,12 +175,14 @@ def panel(
     extra_class: str = "",
     icon_name: str = "dashboard",
     description: str = "",
+    panel_id: str = "",
 ) -> str:
     kicker_html = f'<span class="panel-kicker">{escape_html(kicker)}</span>' if kicker else ""
     description_html = f"<p>{escape_html(description)}</p>" if description else ""
     class_name = f"panel {extra_class}".strip()
+    id_attr = f' id="{escape_html(panel_id)}"' if panel_id else ""
     return (
-        f'<section class="{class_name}"><div class="panel-head"><div>'
+        f'<section{id_attr} class="{class_name}"><div class="panel-head"><div>'
         f"{kicker_html}<h2>{escape_html(title)}</h2>{description_html}</div>"
         f'<div class="panel-head-icon">{icon(icon_name, "icon icon-lg")}</div>'
         f"</div>{body}</section>"
@@ -198,6 +206,64 @@ def read_text_file(path_value: str) -> str:
         return ""
 
 
+def _breadcrumb(active_nav: str, header_tag: str) -> str:
+    current_path, current_label, _ = SECTION_LINKS.get(active_nav, ("/", "Control Center", "dashboard"))
+    return (
+        '<nav class="workspace-breadcrumbs" aria-label="Breadcrumb">'
+        '<a href="/">Console</a>'
+        '<span>/</span>'
+        f'<a href="{escape_html(current_path)}">{escape_html(current_label)}</a>'
+        '<span>/</span>'
+        f"<strong>{escape_html(header_tag)}</strong>"
+        "</nav>"
+    )
+
+
+def _shortcut_link(path: str, label: str, icon_name: str) -> str:
+    return (
+        f'<a class="workspace-shortcut" href="{escape_html(path)}">'
+        f'{icon(icon_name, "icon icon-sm")}'
+        f"<span>{escape_html(label)}</span>"
+        "</a>"
+    )
+
+
+def _workspace_shortcuts(active_nav: str, page_links: list[tuple[str, str, str]] | None) -> str:
+    items: list[tuple[str, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for key in ("home", "submissions", "ops"):
+        path, label, icon_name = SECTION_LINKS[key]
+        marker = (path, label)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        items.append((path, label, icon_name))
+
+    for path, label, icon_name in page_links or []:
+        marker = (path, label)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        items.append((path, label, icon_name))
+
+    return '<div class="workspace-shortcuts">' + "".join(
+        _shortcut_link(path, label, icon_name) for path, label, icon_name in items
+    ) + "</div>"
+
+
+def _release_card(title: str, note: str, tone: str, icon_name: str) -> str:
+    return (
+        f'<article class="release-card release-card-{tone}">'
+        f'<div class="release-card-icon">{icon(icon_name, "icon icon-sm")}</div>'
+        '<div class="release-card-copy">'
+        f"<strong>{escape_html(title)}</strong>"
+        f"<span>{escape_html(note)}</span>"
+        "</div>"
+        "</article>"
+    )
+
+
 def render_stylesheet() -> str:
     stylesheet_path = Path(__file__).with_name("static") / "styles.css"
     try:
@@ -215,9 +281,35 @@ def layout(
     header_subtitle: str,
     header_meta: str,
     content: str,
+    header_note: str = "",
+    page_links: list[tuple[str, str, str]] | None = None,
 ) -> str:
     mode_count = len(MODE_LABELS)
     type_count = len([key for key in TYPE_LABELS if key != "unknown"])
+    release_note = header_note or "Keep intake, review, export, and operator decisions visible from one trusted surface."
+    current_section = SECTION_LINKS.get(active_nav, ("/", header_tag, "dashboard"))[1]
+    release_cards = "".join(
+        [
+            _release_card(
+                "Local Redaction",
+                "AI requests stay behind the desensitization boundary before they leave the workstation.",
+                "success",
+                "shield",
+            ),
+            _release_card(
+                "Traceable Chain",
+                "Submission, case, report, and artifact links remain visible for audit and replay.",
+                "info",
+                "report",
+            ),
+            _release_card(
+                current_section,
+                release_note,
+                "warning",
+                "bar",
+            ),
+        ]
+    )
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -270,6 +362,17 @@ def layout(
     </aside>
 
     <main class="workspace">
+      <section class="workspace-rail" aria-label="Release context">
+        <div class="workspace-rail-copy">
+          {_breadcrumb(active_nav, header_tag)}
+          <div class="workspace-rail-summary">
+            <strong>Release Readiness</strong>
+            <span>{escape_html(release_note)}</span>
+          </div>
+        </div>
+        {_workspace_shortcuts(active_nav, page_links)}
+      </section>
+
       <header class="workspace-header">
         <div class="workspace-header-main">
           <span class="workspace-tag">{escape_html(header_tag)}</span>
@@ -278,6 +381,9 @@ def layout(
         </div>
         <div class="workspace-header-meta">{header_meta}</div>
       </header>
+      <section class="workspace-trust-grid" aria-label="System trust signals">
+        {release_cards}
+      </section>
       <div class="workspace-content">{content}</div>
     </main>
   </div>

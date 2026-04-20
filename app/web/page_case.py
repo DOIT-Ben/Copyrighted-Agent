@@ -126,12 +126,12 @@ def render_case_detail(case: dict, materials: list[dict], report: dict | None, r
       {metric_card('Score', str(review_payload.get('score', '-')), 'Hybrid review score', 'neutral', icon_name='trend')}
     </section>
     <section class="dashboard-grid">
-      {panel('Case Summary', f'<div class="summary-grid">{summary_grid}</div>', kicker='Case Summary', extra_class='span-12', icon_name='layers', description='Keep the case overview dense, scannable, and ready for risk triage.')}
-      {panel('Risk Queue', table(['Severity', 'Issue', 'Detail'], issue_rows), kicker='Risk Queue', extra_class='span-7', icon_name='alert', description='The primary surface for cross-material issues that need action.') if issue_rows else panel('Risk Queue', empty_state('Risk Queue', 'No issues were found for this case.'), kicker='Risk Queue', extra_class='span-7', icon_name='check', description='The case is currently clear of detected review issues.')}
-      {panel('AI Supplement', list_pairs(ai_pairs), kicker='AI Supplement', extra_class='span-5', icon_name='spark', description='AI notes are shown alongside the deterministic review outcome, never instead of it.')}
-      {panel('Material Matrix', table(['Filename', 'Type', 'Software', 'Version', 'Review'], material_rows), kicker='Material Matrix', extra_class='span-7', icon_name='cluster', description='Inspect every piece of evidence grouped into this case.')}
-      {panel('Case Signals', table(['Signal', 'Status', 'Detail'], signal_rows), kicker='Review Signals', extra_class='span-5', icon_name='bar', description='A compact operational read before you open the full report.')}
-      {panel('Report Reader', report_body, kicker='Report Reader', extra_class='span-12', icon_name='report', description='Open or download the current case report from the same analytical workspace.')}
+      {panel('Case Summary', f'<div class="summary-grid">{summary_grid}</div>', kicker='Case Summary', extra_class='span-12', icon_name='layers', description='Keep the case overview dense, scannable, and ready for risk triage.', panel_id='case-summary')}
+      {panel('Risk Queue', table(['Severity', 'Issue', 'Detail'], issue_rows), kicker='Risk Queue', extra_class='span-7', icon_name='alert', description='The primary surface for cross-material issues that need action.', panel_id='risk-queue') if issue_rows else panel('Risk Queue', empty_state('Risk Queue', 'No issues were found for this case.'), kicker='Risk Queue', extra_class='span-7', icon_name='check', description='The case is currently clear of detected review issues.', panel_id='risk-queue')}
+      {panel('AI Supplement', list_pairs(ai_pairs), kicker='AI Supplement', extra_class='span-5', icon_name='spark', description='AI notes are shown alongside the deterministic review outcome, never instead of it.', panel_id='ai-supplement')}
+      {panel('Material Matrix', table(['Filename', 'Type', 'Software', 'Version', 'Review'], material_rows), kicker='Material Matrix', extra_class='span-7', icon_name='cluster', description='Inspect every piece of evidence grouped into this case.', panel_id='material-matrix')}
+      {panel('Case Signals', table(['Signal', 'Status', 'Detail'], signal_rows), kicker='Review Signals', extra_class='span-5', icon_name='bar', description='A compact operational read before you open the full report.', panel_id='case-signals')}
+      {panel('Report Reader', report_body, kicker='Report Reader', extra_class='span-12', icon_name='report', description='Open or download the current case report from the same analytical workspace.', panel_id='report-reader')}
     </section>
     """
     return layout(
@@ -148,4 +148,11 @@ def render_case_detail(case: dict, materials: list[dict], report: dict | None, r
             ]
         ),
         content=content,
+        header_note="Triage the risk queue first, compare it with the AI supplement, then verify the report handoff before you leave the case.",
+        page_links=[
+            ("#risk-queue", "Risk Queue", "alert"),
+            ("#ai-supplement", "AI Supplement", "spark"),
+            ("#material-matrix", "Material Matrix", "cluster"),
+            ("#report-reader", "Report Reader", "report"),
+        ],
     )

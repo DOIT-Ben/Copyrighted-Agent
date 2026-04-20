@@ -225,14 +225,14 @@ def render_ops_page(config: dict, self_check: dict) -> str:
     </section>
     {status_cards}
     <section class="dashboard-grid">
-      {panel('Operator Commands', boundary_note + support_commands + ops_pairs, kicker='Support / Ops', extra_class='span-5', icon_name='terminal', description='Common operations stay visible and copyable from the same workspace.')}
-      {panel('Provider Checklist', provider_checklist, kicker='Provider Checklist', extra_class='span-7', icon_name='layers', description='A compact audit of backup, baseline, and runtime inventory before deeper inspection.')}
-      {panel('Provider Readiness', table(['Check', 'Status', 'Value', 'Detail'], provider_rows), kicker='Provider Readiness', extra_class='span-6', icon_name='spark', description='Readiness shows whether the current provider path is safe and complete enough to use.')}
-      {panel('Release Gate', table(['Check', 'Status', 'Value', 'Detail'], release_gate_rows), kicker='Release Gate', extra_class='span-6', icon_name='shield', description='The release gate compresses the go or no-go signals into one review table.')}
-      {panel('Startup Self Check', table(['Check', 'Status', 'Path', 'Detail'], self_check_rows), kicker='Startup Self Check', extra_class='span-7', icon_name='check', description='Writable paths, configuration, and boundary checks run at startup so operators do not guess.')}
-      {panel('Probe Observatory', probe_observatory, kicker='Probe Observatory', extra_class='span-5', icon_name='bar', description='Keep the newest probe, most recent success, and latest failure in immediate view.')}
-      {panel('Probe History', table(['Artifact', 'Probe', 'Generated', 'HTTP', 'Error', 'Download'], probe_history_rows), kicker='Probe History', extra_class='span-6', icon_name='clock', description='Historical probe artifacts support regression tracking and incident review.')}
-      {panel('Trend Watch', table(['Artifact', 'Status', 'Generated', 'Needs Review', 'Low Quality', 'Delta'], baseline_rows), kicker='Baseline History', extra_class='span-6', icon_name='trend', description='Rolling baselines show whether quality is drifting release to release.')}
+      {panel('Operator Commands', boundary_note + support_commands + ops_pairs, kicker='Support / Ops', extra_class='span-5', icon_name='terminal', description='Common operations stay visible and copyable from the same workspace.', panel_id='operator-commands')}
+      {panel('Provider Checklist', provider_checklist, kicker='Provider Checklist', extra_class='span-7', icon_name='layers', description='A compact audit of backup, baseline, and runtime inventory before deeper inspection.', panel_id='provider-checklist')}
+      {panel('Provider Readiness', table(['Check', 'Status', 'Value', 'Detail'], provider_rows), kicker='Provider Readiness', extra_class='span-6', icon_name='spark', description='Readiness shows whether the current provider path is safe and complete enough to use.', panel_id='provider-readiness')}
+      {panel('Release Gate', table(['Check', 'Status', 'Value', 'Detail'], release_gate_rows), kicker='Release Gate', extra_class='span-6', icon_name='shield', description='The release gate compresses the go or no-go signals into one review table.', panel_id='release-gate')}
+      {panel('Startup Self Check', table(['Check', 'Status', 'Path', 'Detail'], self_check_rows), kicker='Startup Self Check', extra_class='span-7', icon_name='check', description='Writable paths, configuration, and boundary checks run at startup so operators do not guess.', panel_id='startup-self-check')}
+      {panel('Probe Observatory', probe_observatory, kicker='Probe Observatory', extra_class='span-5', icon_name='bar', description='Keep the newest probe, most recent success, and latest failure in immediate view.', panel_id='probe-observatory')}
+      {panel('Probe History', table(['Artifact', 'Probe', 'Generated', 'HTTP', 'Error', 'Download'], probe_history_rows), kicker='Probe History', extra_class='span-6', icon_name='clock', description='Historical probe artifacts support regression tracking and incident review.', panel_id='probe-history')}
+      {panel('Trend Watch', table(['Artifact', 'Status', 'Generated', 'Needs Review', 'Low Quality', 'Delta'], baseline_rows), kicker='Baseline History', extra_class='span-6', icon_name='trend', description='Rolling baselines show whether quality is drifting release to release.', panel_id='trend-watch')}
     </section>
     """
     return layout(
@@ -249,4 +249,11 @@ def render_ops_page(config: dict, self_check: dict) -> str:
             ]
         ),
         content=content,
+        header_note="Confirm the release gate and provider readiness first, then inspect probe history and trend drift before any real-model run.",
+        page_links=[
+            ("#release-gate", "Release Gate", "shield"),
+            ("#provider-readiness", "Provider Readiness", "spark"),
+            ("#probe-history", "Probe History", "clock"),
+            ("#trend-watch", "Trend Watch", "trend"),
+        ],
     )

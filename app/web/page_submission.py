@@ -130,9 +130,9 @@ def render_submissions_index() -> str:
       {metric_card('Latest Status', latest_status.upper(), 'Most recent submission status', status_tone(latest_status), icon_name='trend')}
     </section>
     <section class="dashboard-grid">
-      {panel('Batch Registry', table(['Filename', 'Mode', 'Status', 'Materials', 'Cases', 'Reports', 'Created'], rows), kicker='Batch Registry', extra_class='span-8', icon_name='layers', description='Inspect imported batches, grouping volume, and direct entry points into submission detail views.')}
-      {panel('Status Distribution', distribution_body, kicker='Status Distribution', extra_class='span-4', icon_name='bar', description='A quick operational read on how the registry is moving.')}
-      {panel('Registry Actions', action_body, kicker='Review Lens', extra_class='span-12', icon_name='search', description='Keep the batch list analytical: dense, scannable, and ready for drill-down.')}
+      {panel('Batch Registry', table(['Filename', 'Mode', 'Status', 'Materials', 'Cases', 'Reports', 'Created'], rows), kicker='Batch Registry', extra_class='span-8', icon_name='layers', description='Inspect imported batches, grouping volume, and direct entry points into submission detail views.', panel_id='batch-registry')}
+      {panel('Status Distribution', distribution_body, kicker='Status Distribution', extra_class='span-4', icon_name='bar', description='A quick operational read on how the registry is moving.', panel_id='status-distribution')}
+      {panel('Registry Actions', action_body, kicker='Review Lens', extra_class='span-12', icon_name='search', description='Keep the batch list analytical: dense, scannable, and ready for drill-down.', panel_id='registry-actions')}
     </section>
     """
 
@@ -144,6 +144,12 @@ def render_submissions_index() -> str:
         header_subtitle="Inspect imported batches, grouping volume, and direct entry points into submission detail views.",
         header_meta=pill(f"{len(submissions)} batches", "info"),
         content=content,
+        header_note="Scan the registry first, then drill into a submission only when a batch, status, or artifact count needs investigation.",
+        page_links=[
+            ("#batch-registry", "Batch Registry", "layers"),
+            ("#status-distribution", "Status Distribution", "bar"),
+            ("#registry-actions", "Registry Actions", "search"),
+        ],
     )
 
 
@@ -348,14 +354,14 @@ def render_submission_detail(
       {metric_card('Needs Review', str(len(needs_review_items)), 'Manual-review queue size', 'warning' if needs_review_items else 'success', icon_name='alert')}
     </section>
     <section class="dashboard-grid">
-      {panel('Import Digest', f'<div class="summary-grid">{import_digest}</div>', kicker='Import Digest', extra_class='span-4', icon_name='file', description='Understand what entered this submission before you change anything.')}
-      {panel('Needs Review', needs_review_body, kicker='Review Queue', extra_class='span-4', icon_name='alert', description='Operators should see unresolved items immediately.')}
-      {panel('Export Center', export_body, kicker='Export Center', extra_class='span-4', icon_name='download', description='Reports, bundles and logs are part of the working surface, not an afterthought.')}
-      {panel('Material Matrix', table(['Filename', 'Type', 'Software', 'Version', 'Issues', 'Quality', 'Status'], material_rows), kicker='Material Matrix', extra_class='span-8', icon_name='cluster', description='The central diagnostic table for this submission.')}
-      {panel('Case Registry', table(['Case', 'Software', 'Version', 'Status', 'Report'], case_rows), kicker='Case Registry', extra_class='span-4', icon_name='lock', description='Each case can be opened, merged, reassigned or rerun from here.')}
-      {panel('Artifact Browser', table(['Filename', 'Raw', 'Clean', 'Desensitized', 'Privacy'], artifact_rows), kicker='Artifact Browser', extra_class='span-4', icon_name='download', description='Keep raw, clean and privacy artifacts visible to the operator.')}
-      {panel('Operator Console', operator_body, kicker='Operator Console', extra_class='span-8', icon_name='wrench', description='All corrective actions remain explicit, auditable and reversible through rerun.')}
-      {panel('Correction Audit', table(['Type', 'Target', 'Note', 'At'], correction_rows), kicker='Correction Audit', extra_class='span-12', icon_name='clock', description='Every manual change is logged for later traceability.')}
+      {panel('Import Digest', f'<div class="summary-grid">{import_digest}</div>', kicker='Import Digest', extra_class='span-4', icon_name='file', description='Understand what entered this submission before you change anything.', panel_id='import-digest')}
+      {panel('Needs Review', needs_review_body, kicker='Review Queue', extra_class='span-4', icon_name='alert', description='Operators should see unresolved items immediately.', panel_id='needs-review')}
+      {panel('Export Center', export_body, kicker='Export Center', extra_class='span-4', icon_name='download', description='Reports, bundles and logs are part of the working surface, not an afterthought.', panel_id='export-center')}
+      {panel('Material Matrix', table(['Filename', 'Type', 'Software', 'Version', 'Issues', 'Quality', 'Status'], material_rows), kicker='Material Matrix', extra_class='span-8', icon_name='cluster', description='The central diagnostic table for this submission.', panel_id='material-matrix')}
+      {panel('Case Registry', table(['Case', 'Software', 'Version', 'Status', 'Report'], case_rows), kicker='Case Registry', extra_class='span-4', icon_name='lock', description='Each case can be opened, merged, reassigned or rerun from here.', panel_id='case-registry')}
+      {panel('Artifact Browser', table(['Filename', 'Raw', 'Clean', 'Desensitized', 'Privacy'], artifact_rows), kicker='Artifact Browser', extra_class='span-4', icon_name='download', description='Keep raw, clean and privacy artifacts visible to the operator.', panel_id='artifact-browser')}
+      {panel('Operator Console', operator_body, kicker='Operator Console', extra_class='span-8', icon_name='wrench', description='All corrective actions remain explicit, auditable and reversible through rerun.', panel_id='operator-console')}
+      {panel('Correction Audit', table(['Type', 'Target', 'Note', 'At'], correction_rows), kicker='Correction Audit', extra_class='span-12', icon_name='clock', description='Every manual change is logged for later traceability.', panel_id='correction-audit')}
     </section>
     """
 
@@ -373,4 +379,11 @@ def render_submission_detail(
             ]
         ),
         content=content,
+        header_note="Use the import digest to orient, then move through needs review, material diagnostics, operator actions, and export artifacts.",
+        page_links=[
+            ("#needs-review", "Needs Review", "alert"),
+            ("#material-matrix", "Material Matrix", "cluster"),
+            ("#operator-console", "Operator Console", "wrench"),
+            ("#export-center", "Export Center", "download"),
+        ],
     )

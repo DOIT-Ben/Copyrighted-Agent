@@ -41,8 +41,8 @@ def render_report_page(report: dict) -> str:
       {metric_card('Chars', str(character_count), 'Character count for quick sanity checks', 'warning', icon_name='search')}
     </section>
     <section class="dashboard-grid">
-      {panel('Report Reader', reader_body, kicker='Report Reader', extra_class='span-8', icon_name='report', description='Read the stored report body directly from the operator console.')}
-      {panel('Report Context', list_pairs(context_pairs), kicker='Artifact Context', extra_class='span-4', icon_name='layers', description='Report metadata stays visible beside the reader for traceability.')}
+      {panel('Report Reader', reader_body, kicker='Report Reader', extra_class='span-8', icon_name='report', description='Read the stored report body directly from the operator console.', panel_id='report-reader')}
+      {panel('Report Context', list_pairs(context_pairs), kicker='Artifact Context', extra_class='span-4', icon_name='layers', description='Report metadata stays visible beside the reader for traceability.', panel_id='report-context')}
     </section>
     """
     return layout(
@@ -59,4 +59,10 @@ def render_report_page(report: dict) -> str:
             ]
         ),
         content=content,
+        header_note="Read the generated artifact in place, verify the metadata beside it, then export with confidence.",
+        page_links=[
+            ("#report-reader", "Report Reader", "report"),
+            ("#report-context", "Artifact Context", "layers"),
+            ("/submissions", "Batch Registry", "layers"),
+        ],
     )
