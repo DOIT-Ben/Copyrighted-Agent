@@ -1122,6 +1122,94 @@ input[type="file"]::file-selector-button {
   margin: 0;
 }
 
+.signal-ribbon {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+  margin: 1rem 0 0;
+}
+
+.signal-ribbon-item {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94));
+  box-shadow: var(--shadow-sm);
+}
+
+.signal-ribbon-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.signal-ribbon-top span,
+.signal-ribbon-item small {
+  color: var(--ink-soft);
+}
+
+.signal-ribbon-item strong,
+.ops-workbench-copy strong {
+  font-family: var(--font-heading);
+}
+
+.ops-workbench {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.ops-workbench-copy {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.02), rgba(37, 99, 235, 0.08)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.94));
+}
+
+.ops-workbench-copy p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.ops-context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.ops-context-grid div {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel-strong);
+}
+
+.ops-context-grid strong {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.probe-observatory {
+  display: grid;
+  gap: 1rem;
+}
+
+.probe-summary-grid,
+.probe-observatory-note {
+  margin-bottom: 0;
+}
+
 .operator-form {
   display: grid;
   gap: 0.85rem;
@@ -1855,9 +1943,11 @@ textarea:focus-visible {
   .mode-grid,
   .compare-grid,
   .sequence-board,
+  .signal-ribbon,
   .closeout-callout,
   .report-card-grid,
   .dossier-list,
+  .ops-context-grid,
   .control-grid,
   .import-summary-grid,
   .trust-signal-grid,

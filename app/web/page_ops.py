@@ -15,6 +15,7 @@ from app.web.view_helpers import (
     link,
     list_pairs,
     metric_card,
+    notice_banner,
     panel,
     pill,
     status_label,
@@ -95,6 +96,13 @@ TEXT_REPLACEMENTS = {
     "none recorded": "无",
     "not configured": "未配置",
     "desensitized only": "仅允许脱敏载荷",
+    "Complete the missing requirements: API key env.": "补齐缺失项：API Key 环境变量",
+    "Complete the missing requirements: API key env": "补齐缺失项：API Key 环境变量",
+    "external_http is partially configured: API key env.": "external_http 仍缺少：API Key 环境变量",
+    "external_http is partially configured: API key env": "external_http 仍缺少：API Key 环境变量",
+    "API key env.": "API Key 环境变量",
+    "API key env": "API Key 环境变量",
+    "Live external_http probe skipped because provider=mock.": "当前 provider=mock，已跳过 external_http 实探。",
     "ready_for_business_handoff": "可进入业务交付",
     "ready_for_operator_trial": "可进入操作员试跑",
     "not_ready": "尚未就绪",
@@ -174,6 +182,64 @@ def _summary_tile(label: str, value: str, note: str) -> str:
         f"<strong>{escape_html(value)}</strong>"
         f"<small>{escape_html(note)}</small>"
         "</div>"
+    )
+
+
+def _signal_ribbon_item(label: str, state: str, tone: str, headline: str, note: str) -> str:
+    return (
+        '<article class="signal-ribbon-item">'
+        '<div class="signal-ribbon-top">'
+        f"<span>{escape_html(label)}</span>"
+        f"{pill(state, tone)}"
+        "</div>"
+        f"<strong>{escape_html(headline)}</strong>"
+        f"<small>{escape_html(note)}</small>"
+        "</article>"
+    )
+
+
+def _probe_failure_summary(item: dict) -> str:
+    if not item:
+        return "暂无失败记录"
+    return _localize_text(
+        str(
+            item.get("error_code")
+            or item.get("summary")
+            or item.get("generated_at")
+            or item.get("file_name")
+            or "暂无失败记录"
+        ),
+        "暂无失败记录",
+    )
+
+
+def _priority_banner_state(release_gate: dict, provider_probe_status: dict) -> tuple[str, str, str]:
+    release_status = str(release_gate.get("status", "warning")).strip().lower()
+    probe_status = str(provider_probe_status.get("probe_status", "not_run")).strip().lower()
+    recommended_action = _localize_text(str(release_gate.get("recommended_action", "") or "").strip(), "")
+
+    if release_status == "blocked":
+        return (
+            "真实模型发布仍被阻塞",
+            recommended_action or "先补齐发布闸门中的阻塞项，再继续真实模型联调。",
+            "danger",
+        )
+    if probe_status in {"failed", "error"}:
+        return (
+            "通道探针最近一次失败",
+            _probe_summary(probe_status, str(provider_probe_status.get("error_code", "") or "")),
+            "danger",
+        )
+    if release_status == "warning":
+        return (
+            "发布前还有提示项待处理",
+            recommended_action or "建议先完成提示项，再继续真实模型验证。",
+            "warning",
+        )
+    return (
+        "当前可以继续联调",
+        "闸门、探针和回滚保护已具备基础条件，下一步重点看业务收尾与质量趋势。",
+        "success",
     )
 
 
@@ -537,6 +603,61 @@ def render_ops_page(config: dict, self_check: dict) -> str:
             ("项目数", escape_html(str(snapshot["cases"]))),
         ]
     )
+    priority_title, priority_message, priority_tone = _priority_banner_state(release_gate, provider_probe_status)
+    probe_failure_note = _probe_failure_summary(provider_probe_last_failure)
+    ops_pairs = ""
+    support_commands = f"""
+    <div class="ops-workbench">
+      <div class="ops-workbench-copy">
+        <strong>先确认环境上下文，再执行命令</strong>
+        <p>先看当前 provider、阶段和脱敏边界，再决定是启动、联调、补探针还是直接回滚现场。</p>
+        <div class="helper-chip-row">
+          <span class="helper-chip">先看闸门</span>
+          <span class="helper-chip">再看探针</span>
+          <span class="helper-chip">最后看趋势</span>
+        </div>
+      </div>
+      {list_pairs(
+          [
+              ("本地配置", escape_html(local_config.get("path", "config/local.json"))),
+              ("当前提供方", escape_html(_provider_label(provider_readiness.get("provider", config.get("ai_provider", "mock"))))),
+              ("当前阶段", escape_html(_phase_label(provider_readiness.get("phase", "not_configured")))),
+              ("接口地址", escape_html(config.get("ai_endpoint", "") or "未配置")),
+              ("模型标识", escape_html(config.get("ai_model", "") or "未配置")),
+              ("脱敏边界", "仅允许脱敏载荷" if config.get("ai_require_desensitized", True) else "已关闭"),
+              (
+                  "最新探针 JSON",
+                  download_chip("/downloads/ops/provider-probe/latest", "JSON") if provider_probe_status.get("exists") else "未记录",
+              ),
+              ("应用日志", link("/downloads/logs/app", "下载应用日志")),
+          ],
+          css_class="ops-context-grid",
+      )}
+    </div>
+    """ + (
+        '<div class="command-cluster-grid">'
+        f"{launch_cluster}{validation_cluster}{maintenance_cluster}"
+        "</div>"
+    )
+    probe_observatory = f"""
+    <div class="probe-observatory">
+      <div class="summary-grid probe-summary-grid">
+        {_summary_tile("最新探针", status_label(str(provider_probe_status.get("probe_status", "not_run"))), "用于判断最近一次通道探针是否可参考")}
+        {_summary_tile("HTTP", str(provider_probe_status.get("http_status", "n/a") or "n/a"), "最近一次探针的 HTTP 返回")}
+        {_summary_tile("最近成功", str(provider_probe_last_success.get("generated_at", "") or provider_probe_last_success.get("file_name", "") or "未记录"), "最近一次成功探针的时间")}
+        {_summary_tile("请求审计", "是" if (provider_probe_status.get("request_summary") or {}).get("llm_safe", False) else "否", "确认最近一次探针是否通过 llm_safe 审计")}
+      </div>
+      <div class="operator-note probe-observatory-note">
+        <strong>最近失败</strong>
+        <span>{escape_html(probe_failure_note)}</span>
+      </div>
+      <div class="helper-chip-row">
+        <span class="helper-chip">批次 {escape_html(str(snapshot["submissions"]))}</span>
+        <span class="helper-chip">项目 {escape_html(str(snapshot["cases"]))}</span>
+        <span class="helper-chip">材料 {escape_html(str(snapshot["materials"]))}</span>
+      </div>
+    </div>
+    """
     closeout_actions = list(delivery_closeout.get("operator_actions", []) or [])
     closeout_actions_html = "".join(
         f"<li>{escape_html(_localize_text(item, item))}</li>" for item in closeout_actions
@@ -633,6 +754,50 @@ def render_ops_page(config: dict, self_check: dict) -> str:
                 ("最新产物", escape_html(delivery_closeout.get("file_name", "") or "未生成")),
                 ("后续动作", escape_html(str(len(closeout_actions)))),
             ],
+        )
+        + "</div>"
+    )
+
+    status_cards = (
+        notice_banner(
+            priority_title,
+            priority_message,
+            tone=priority_tone,
+            icon_name="shield" if priority_tone == "danger" else "spark",
+            meta=[
+                f"发布闸门：{status_label(str(release_gate.get('status', 'warning')))}",
+                f"通道阶段：{_phase_label(provider_readiness.get('phase', 'not_configured'))}",
+                f"探针：{status_label(str(provider_probe_status.get('probe_status', 'not_run')))}",
+            ],
+        )
+        + '<div class="signal-ribbon">'
+        + _signal_ribbon_item(
+            "发布闸门",
+            status_label(str(release_gate.get("status", "warning"))),
+            status_tone(release_gate.get("status", "warning")),
+            _localize_text(str(release_gate.get("recommended_action", "") or "未给出建议"), "未给出建议"),
+            f"当前模式：{_localize_text(str(release_gate.get('mode', '-')), '-')}",
+        )
+        + _signal_ribbon_item(
+            "通道阶段",
+            _phase_label(provider_readiness.get("phase", "not_configured")),
+            status_tone(provider_readiness.get("status", "warning")),
+            _provider_label(provider_readiness.get("provider", config.get("ai_provider", "mock"))),
+            _localize_text(str(config.get("ai_model", "") or "未配置模型"), "未配置模型"),
+        )
+        + _signal_ribbon_item(
+            "探针结果",
+            status_label(str(provider_probe_status.get("probe_status", "not_run"))),
+            status_tone(provider_probe_status.get("probe_status", "not_run")),
+            f"HTTP {provider_probe_status.get('http_status', 'n/a') or 'n/a'}",
+            probe_failure_note,
+        )
+        + _signal_ribbon_item(
+            "回滚保护",
+            status_label(str(baseline_status.get("status", "warning"))),
+            status_tone(baseline_status.get("status", "warning")),
+            f"最新基线：{baseline_status.get('file_name', '') or '暂无基线'}",
+            f"最新备份：{backup_status.get('file_name', '') or '暂无运行备份'}",
         )
         + "</div>"
     )
