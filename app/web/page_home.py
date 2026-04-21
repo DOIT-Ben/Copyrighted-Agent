@@ -227,9 +227,11 @@ def render_home_page() -> str:
     content = f"""
     {panel('开始前看这里', start_body, kicker='操作顺序', extra_class='span-12 panel-soft', icon_name='spark', description='先把正确的导入路径走对，后面的复核和导出会顺很多。', panel_id='start-here')}
     <section class="kpi-grid">{kpis}</section>
+    <section class="lead-grid">
+      {panel('导入台', import_body, kicker='总控台', extra_class='panel-primary panel-import-lead', icon_name='upload', description='从这里进入主处理链路：上传、分类、审查、输出。', panel_id='import-console')}
+      {panel('可信信号', trust_body, kicker='本地安全', extra_class='panel-trust-rail', icon_name='shield', description='先建立信任边界，再让操作人员进入分析工作流。', panel_id='trust-signals')}
+    </section>
     <section class="dashboard-grid">
-      {panel('导入台', import_body, kicker='总控台', extra_class='span-8 panel-primary', icon_name='upload', description='从这里进入主处理链路：上传、分类、审查、输出。', panel_id='import-console')}
-      {panel('可信信号', trust_body, kicker='本地安全', extra_class='span-4', icon_name='shield', description='先建立信任边界，再让操作人员进入分析工作流。', panel_id='trust-signals')}
       {panel('流程总览', process_body, kicker='处理链路', extra_class='span-7', icon_name='bar', description='工作台重点不是宣传文案，而是让每个处理节点一眼可见。', panel_id='pipeline-analysis')}
       {panel('模式说明', mode_body, kicker='导入模式', extra_class='span-5', icon_name='layers', description='两种导入模式分别对应两类真实工作场景。', panel_id='mode-matrix')}
       {panel('最近导入', recent_body, kicker='运行动态', extra_class='span-12', icon_name='clock', description='最近导入的批次、状态和规模会沉淀到这里。', panel_id='recent-imports')}
