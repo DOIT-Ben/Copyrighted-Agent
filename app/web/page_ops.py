@@ -177,6 +177,86 @@ def _summary_tile(label: str, value: str, note: str) -> str:
     )
 
 
+def _status_bucket_counts(checks: list[dict], default_status: str = "warning") -> dict[str, int]:
+    counts = {"success": 0, "warning": 0, "danger": 0, "info": 0, "neutral": 0}
+    for item in checks:
+        tone = status_tone(item.get("status", default_status))
+        counts[tone] = counts.get(tone, 0) + 1
+    return counts
+
+
+def _status_rank(value: str) -> int:
+    tone = status_tone(value)
+    if tone == "danger":
+        return 3
+    if tone == "warning":
+        return 2
+    if tone == "info":
+        return 1
+    return 0
+
+
+def _ops_focus_cards(checks: list[dict], *, detail_key: str) -> str:
+    ordered = sorted(
+        checks,
+        key=lambda item: (
+            -_status_rank(item.get("status", "warning")),
+            _label(item.get("label", item.get("name", ""))),
+        ),
+    )
+    focus_items = [item for item in ordered if status_tone(item.get("status", "warning")) in {"danger", "warning"}][:4]
+    if not focus_items:
+        focus_items = ordered[:3]
+
+    if not focus_items:
+        return ""
+
+    cards = "".join(
+        (
+            '<article class="ops-focus-card">'
+            f"<strong>{escape_html(_label(item.get('label', item.get('name', ''))))}</strong>"
+            f"<div class=\"ops-status-badges\">{_display_status(item.get('status', 'warning'))}</div>"
+            f"<span>{escape_html(_display_value(item.get(detail_key, '')))}</span>"
+            f"<p>{escape_html(_localize_text(item.get('detail', '') or item.get('summary', ''), '-'))}</p>"
+            "</article>"
+        )
+        for item in focus_items
+    )
+    return f'<div class="ops-focus-grid">{cards}</div>'
+
+
+def _ops_check_snapshot(
+    title: str,
+    summary: str,
+    checks: list[dict],
+    *,
+    detail_key: str,
+    empty_title: str,
+    empty_note: str,
+) -> str:
+    counts = _status_bucket_counts(checks)
+    summary_tiles = "".join(
+        [
+            _summary_tile("检查项", str(len(checks)), f"{title} 当前纳入的明细数量"),
+            _summary_tile("正常", str(counts.get("success", 0)), "当前已经确认正常的项"),
+            _summary_tile("告警", str(counts.get("warning", 0)), "需要继续跟进或复核的项"),
+            _summary_tile("阻塞", str(counts.get("danger", 0)), "当前明确阻塞推进的项"),
+        ]
+    )
+    focus_cards = _ops_focus_cards(checks, detail_key=detail_key)
+    focus_html = focus_cards or empty_state(empty_title, empty_note)
+    return (
+        '<div class="ops-detail-stack">'
+        '<div class="ops-detail-callout">'
+        f"<strong>{escape_html(title)} 重点摘要</strong>"
+        f"<p>{escape_html(summary)}</p>"
+        "</div>"
+        f'<div class="summary-grid ops-detail-summary">{summary_tiles}</div>'
+        f"{focus_html}"
+        "</div>"
+    )
+
+
 def _ops_status_card(title: str, summary: str, badges: list[str], metrics: list[tuple[str, str]]) -> str:
     badges_html = "".join(badges)
     metrics_html = "".join(
@@ -582,6 +662,31 @@ def render_ops_page(config: dict, self_check: dict) -> str:
 
     command_panel_body = support_commands + ops_pairs
 
+    release_gate_body = _ops_check_snapshot(
+        "发布闸门",
+        _release_summary(release_gate.get("status", "warning")),
+        list(release_gate.get("checks", []) or []),
+        detail_key="value",
+        empty_title="当前无重点阻塞项",
+        empty_note="这一组检查当前没有需要优先处理的阻塞或告警项。",
+    )
+    provider_readiness_body = _ops_check_snapshot(
+        "模型通道",
+        _config_summary(local_config, provider_readiness.get("provider", config.get("ai_provider", "mock"))),
+        list(provider_readiness.get("checks", []) or []),
+        detail_key="value",
+        empty_title="当前通道配置较干净",
+        empty_note="模型通道当前没有额外需要优先解释的告警项。",
+    )
+    startup_self_check_body = _ops_check_snapshot(
+        "启动自检",
+        "优先看路径可写、配置文件、AI 边界和提供方就绪度，避免在未完成自检时直接推进联调。",
+        list(self_check.get("checks", []) or []),
+        detail_key="path",
+        empty_title="当前自检未发现重点异常",
+        empty_note="启动前置条件当前较完整，可以继续结合闸门与探针判断。",
+    )
+
     flight_plan_body = """
     <div class="sequence-board">
       <article class="sequence-step">
@@ -626,12 +731,12 @@ def render_ops_page(config: dict, self_check: dict) -> str:
     </section>
     {status_cards}
     <section class="dashboard-grid">
-      {panel('业务收尾', closeout_body + table(['检查项', '状态', '当前值', '说明'], closeout_rows), kicker='交付结论', extra_class='span-12 panel-soft', icon_name='shield', description='把能不能交付、下一步做什么、该看哪些产物压缩到一个面板里。', panel_id='delivery-closeout')}
-      {panel('常用运维入口', command_panel_body, kicker='运维操作', extra_class='span-12', icon_name='terminal', description='把启动、联调、验证和维护命令按阶段分组，减少来回切换。', panel_id='operator-commands')}
-      {panel('发布闸门详情', table(['检查项', '状态', '当前值', '说明'], release_gate_rows), kicker='发布闸门', extra_class='span-6', icon_name='shield', description='把能不能推进真实模型验证的主信号压缩到一张表里。', panel_id='release-gate')}
-      {panel('模型通道就绪度', table(['检查项', '状态', '当前值', '说明'], provider_rows), kicker='模型通道', extra_class='span-6', icon_name='spark', description='确认当前提供方的接口、模型、Key 和回退策略是否完整。', panel_id='provider-readiness')}
-      {panel('启动自检明细', table(['检查项', '状态', '路径', '说明'], self_check_rows), kicker='启动自检', extra_class='span-6', icon_name='check', description='检查运行目录、SQLite、日志和 AI 边界是否正常。', panel_id='startup-self-check')}
-      {panel('探针概览', probe_observatory, kicker='探针观测', extra_class='span-6', icon_name='bar', description='一屏看完最新探针、最近成功、最近失败和 llm_safe 审计结果。', panel_id='probe-observatory')}
+    {panel('业务收尾', closeout_body + table(['检查项', '状态', '当前值', '说明'], closeout_rows), kicker='交付结论', extra_class='span-12 panel-soft', icon_name='shield', description='把能不能交付、下一步做什么、该看哪些产物压缩到一个面板里。', panel_id='delivery-closeout')}
+    {panel('常用运维入口', command_panel_body, kicker='运维操作', extra_class='span-12', icon_name='terminal', description='把启动、联调、验证和维护命令按阶段分组，减少来回切换。', panel_id='operator-commands')}
+    {panel('发布闸门详情', release_gate_body + table(['检查项', '状态', '当前值', '说明'], release_gate_rows), kicker='发布闸门', extra_class='span-6', icon_name='shield', description='先看阻塞与告警摘要，再决定是否继续读完整明细。', panel_id='release-gate')}
+    {panel('模型通道就绪度', provider_readiness_body + table(['检查项', '状态', '当前值', '说明'], provider_rows), kicker='模型通道', extra_class='span-6', icon_name='spark', description='把接口、模型、Key 与回退策略先做一层摘要，再下钻明细。', panel_id='provider-readiness')}
+    {panel('启动自检明细', startup_self_check_body + table(['检查项', '状态', '路径', '说明'], self_check_rows), kicker='启动自检', extra_class='span-6', icon_name='check', description='先把最值得处理的前置异常抬到上面，再看完整检查表。', panel_id='startup-self-check')}
+    {panel('探针概览', probe_observatory, kicker='探针观测', extra_class='span-6', icon_name='bar', description='一屏看完最新探针、最近成功、最近失败和 llm_safe 审计结果。', panel_id='probe-observatory')}
       {panel('探针历史', table(['产物', '结果', '生成时间', 'HTTP', '错误/摘要', '下载'], probe_history_rows), kicker='探针历史', extra_class='span-12', icon_name='clock', description='用于区分“环境未就绪”和“真实调用失败”两类问题。', panel_id='probe-history')}
       {panel('质量趋势', trend_body + table(['基线文件', '状态', '生成时间', '待复核', '低质量', '变化值'], baseline_rows), kicker='趋势看板', extra_class='span-12', icon_name='trend', description='发布前最后一轮最值得盯住的就是待复核变化、低质量数量和基线连续性。', panel_id='trend-watch')}
     </section>
