@@ -496,7 +496,7 @@ textarea {
 }
 
 .kpi-grid-ops {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
 .dashboard-grid {
@@ -922,14 +922,14 @@ input[type="file"]::file-selector-button {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 0.85rem;
   margin-bottom: 1rem;
 }
 
 .ops-status-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 0.95rem;
 }
 
@@ -1051,7 +1051,7 @@ input[type="file"]::file-selector-button {
 
 .command-cluster-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 0.9rem;
   margin-bottom: 1rem;
 }
@@ -1095,6 +1095,7 @@ input[type="file"]::file-selector-button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.9rem;
+  flex-wrap: wrap;
 }
 
 .ops-status-copy {
@@ -1132,7 +1133,7 @@ input[type="file"]::file-selector-button {
 }
 
 .ops-mini-list strong {
-  max-width: 70%;
+  max-width: 100%;
   text-align: right;
   word-break: break-word;
 }
@@ -1178,6 +1179,7 @@ input[type="file"]::file-selector-button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+  flex-wrap: wrap;
   padding: 1rem 1.05rem;
   border: 1px solid rgba(15, 23, 42, 0.07);
   border-radius: var(--radius-lg);
@@ -1588,11 +1590,7 @@ textarea:focus-visible {
 
 @media (max-width: 1400px) {
   .kpi-grid-ops {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .ops-status-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   }
 }
 
@@ -1612,6 +1610,20 @@ textarea:focus-visible {
   .command-cluster-grid,
   .ops-status-grid {
     grid-template-columns: 1fr;
+  }
+
+  .ops-status-top,
+  .closeout-callout {
+    flex-direction: column;
+  }
+
+  .ops-mini-list div {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ops-mini-list strong {
+    text-align: left;
   }
 
   .workspace-rail {
