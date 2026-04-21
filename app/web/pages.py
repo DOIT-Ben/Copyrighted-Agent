@@ -4,7 +4,10 @@ from app.web.page_case import render_case_detail
 from app.web.page_home import render_home_page
 from app.web.page_ops import render_ops_page
 from app.web.page_report import render_report_page
-from app.web.page_submission import render_submission_detail, render_submissions_index
+from app.web.page_submission import (
+    render_submission_detail,
+    render_submissions_index,
+)
 from app.web.view_helpers import render_stylesheet
 
 

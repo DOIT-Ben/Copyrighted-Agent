@@ -39,6 +39,11 @@ from app.web.pages import (
     render_submission_detail,
     render_submissions_index,
 )
+from app.web.page_submission import (
+    render_submission_exports_page,
+    render_submission_materials_page,
+    render_submission_operator_page,
+)
 
 
 def _save_uploaded_zip(upload: UploadFile) -> Path:
@@ -487,6 +492,38 @@ def create_app(testing: bool = False):
         parse_results = [store.parse_results[item_id].to_dict() for item_id in submission.material_ids if item_id in store.parse_results]
         notice = _submission_notice_payload(request.query_params.get("notice", ""))
         return HTMLResponse(render_submission_detail(submission.to_dict(), materials, cases, reports, parse_results, notice=notice))
+    @app.get("/submissions/{submission_id}/materials")
+    def submission_materials_page(request: Request, submission_id: str):
+        submission = store.submissions.get(submission_id)
+        if not submission:
+            raise HTTPException(404, "未找到批次")
+        materials = [store.materials[item_id].to_dict() for item_id in submission.material_ids if item_id in store.materials]
+        cases = [store.cases[item_id].to_dict() for item_id in submission.case_ids if item_id in store.cases]
+        reports = [store.report_artifacts[item_id].to_dict() for item_id in submission.report_ids if item_id in store.report_artifacts]
+        parse_results = [store.parse_results[item_id].to_dict() for item_id in submission.material_ids if item_id in store.parse_results]
+        return HTMLResponse(render_submission_materials_page(submission.to_dict(), materials, cases, reports, parse_results))
+
+    @app.get("/submissions/{submission_id}/operator")
+    def submission_operator_page(request: Request, submission_id: str):
+        submission = store.submissions.get(submission_id)
+        if not submission:
+            raise HTTPException(404, "未找到批次")
+        materials = [store.materials[item_id].to_dict() for item_id in submission.material_ids if item_id in store.materials]
+        cases = [store.cases[item_id].to_dict() for item_id in submission.case_ids if item_id in store.cases]
+        reports = [store.report_artifacts[item_id].to_dict() for item_id in submission.report_ids if item_id in store.report_artifacts]
+        parse_results = [store.parse_results[item_id].to_dict() for item_id in submission.material_ids if item_id in store.parse_results]
+        return HTMLResponse(render_submission_operator_page(submission.to_dict(), materials, cases, reports, parse_results))
+
+    @app.get("/submissions/{submission_id}/exports")
+    def submission_exports_page(request: Request, submission_id: str):
+        submission = store.submissions.get(submission_id)
+        if not submission:
+            raise HTTPException(404, "未找到批次")
+        materials = [store.materials[item_id].to_dict() for item_id in submission.material_ids if item_id in store.materials]
+        cases = [store.cases[item_id].to_dict() for item_id in submission.case_ids if item_id in store.cases]
+        reports = [store.report_artifacts[item_id].to_dict() for item_id in submission.report_ids if item_id in store.report_artifacts]
+        parse_results = [store.parse_results[item_id].to_dict() for item_id in submission.material_ids if item_id in store.parse_results]
+        return HTMLResponse(render_submission_exports_page(submission.to_dict(), materials, cases, reports, parse_results))
 
     @app.get("/cases/{case_id}")
     def case_detail(request: Request, case_id: str):

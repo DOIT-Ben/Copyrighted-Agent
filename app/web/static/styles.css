@@ -1198,7 +1198,7 @@ input[type="file"]::file-selector-button {
 
 .ops-context-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 0.85rem;
 }
 
@@ -1254,7 +1254,7 @@ input[type="file"]::file-selector-button {
   grid-template-columns: auto 1fr;
   gap: 0.8rem;
   align-items: center;
-  padding: 0.95rem 1rem;
+  padding: 0.82rem 0.95rem;
   cursor: pointer;
   list-style: none;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.92));
@@ -1270,7 +1270,11 @@ input[type="file"]::file-selector-button {
 }
 
 .operator-group summary small {
+  display: block;
+  margin-top: 0.12rem;
   color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .operator-group[open] summary {
@@ -1278,7 +1282,7 @@ input[type="file"]::file-selector-button {
 }
 
 .operator-group > .control-grid {
-  padding: 1rem;
+  padding: 0.95rem;
 }
 
 .operator-group-index {
@@ -1440,14 +1444,15 @@ input[type="file"]::file-selector-button {
 
 .command-block code {
   display: block;
-  padding: 0.8rem 0.9rem;
+  padding: 0.72rem 0.82rem;
   overflow: auto;
   border-radius: var(--radius-sm);
   background: #0f172a;
   color: #e2e8f0;
   font-family: var(--font-mono);
-  font-size: 0.84rem;
+  font-size: 0.81rem;
   white-space: pre-wrap;
+  line-height: 1.55;
 }
 
 .operator-note {
