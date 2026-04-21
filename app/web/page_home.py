@@ -18,26 +18,39 @@ from app.web.view_helpers import (
 )
 
 
+def _summary_tile(label: str, value: str, note: str) -> str:
+    return (
+        '<div class="summary-tile">'
+        f"<span>{escape_html(label)}</span>"
+        f"<strong>{escape_html(value)}</strong>"
+        f"<small>{escape_html(note)}</small>"
+        "</div>"
+    )
+
+
 def render_home_page() -> str:
     submissions = sorted(store.submissions.values(), key=lambda item: item.created_at, reverse=True)
     materials = list(store.materials.values())
     cases = list(store.cases.values())
     reports = list(store.report_artifacts.values())
 
-    needs_review_count = sum(1 for material in materials if str(getattr(material, "review_status", "")).lower() == "needs_review")
-    latest_status = submissions[0].status if submissions else "idle"
+    latest_submission = submissions[0] if submissions else None
+    latest_status = latest_submission.status if latest_submission else "idle"
+    needs_review_count = sum(
+        1 for material in materials if str(getattr(material, "review_status", "")).lower() == "needs_review"
+    )
 
     header_meta = "".join(
         [
-            pill("可用版本", "success"),
+            pill("上传即分析", "success"),
             pill(f"{len(submissions)} 个批次", "info"),
-            pill("先脱敏再调用", "success"),
+            pill("完成后直达结果页", "success"),
         ]
     )
 
     kpis = "".join(
         [
-            metric_card("批次数", str(len(submissions)), "当前运行时已导入的批次", "info", icon_name="layers"),
+            metric_card("批次数", str(len(submissions)), "当前运行时已导入的批次数", "info", icon_name="layers"),
             metric_card("项目数", str(len(cases)), "已形成的项目视图", "success", icon_name="lock"),
             metric_card("报告数", str(len(reports)), "可追溯的审查产物", "neutral", icon_name="report"),
             metric_card(
@@ -49,6 +62,109 @@ def render_home_page() -> str:
             ),
         ]
     )
+
+    import_body = """
+    <div class="import-console-grid">
+      <div class="import-console-main task-focus-main">
+        <div class="helper-chip-row">
+          <span class="helper-chip">1. 选择模式</span>
+          <span class="helper-chip">2. 上传 ZIP</span>
+          <span class="helper-chip">3. 进入批次详情</span>
+        </div>
+        <div class="import-console-copy">
+          <strong>上传一个软著包，然后直接看分析结果</strong>
+          <p>首页现在只承担一个任务：把 ZIP 导入系统。提交后会自动跳转到批次详情页，在那里查看待复核队列、项目分组、人工干预台、报告和导出中心。</p>
+        </div>
+        <div class="summary-grid task-focus-grid">
+          <div class="summary-tile">
+            <span>模式 A</span>
+            <strong>单项目整包</strong>
+            <small>一个 ZIP 里已经包含同一个软著项目的完整材料。</small>
+          </div>
+          <div class="summary-tile">
+            <span>模式 B</span>
+            <strong>同类批量归档</strong>
+            <small>多个软著的同类材料先统一建档，再去批次详情做重组。</small>
+          </div>
+          <div class="summary-tile">
+            <span>结果入口</span>
+            <strong>自动跳到批次详情</strong>
+            <small>不需要回头找页面，上传完成后直接进入结果工作台。</small>
+          </div>
+        </div>
+      </div>
+      <aside class="import-console-side">
+        <form class="admin-form import-console-form" action="/upload" method="post" enctype="multipart/form-data">
+          <div class="operator-note">
+            <strong>浏览器端导入说明</strong>
+            <span>先选模式，再上传 ZIP。系统会完成解析、分类、审查，并把你带到当前批次的结果页。</span>
+          </div>
+          <label class="field">
+            <span>导入模式</span>
+            <select name="mode">
+              <option value="single_case_package">模式 A：单项目整包</option>
+              <option value="batch_same_material">模式 B：同类批量归档</option>
+            </select>
+            <span class="field-hint">不知道怎么选时，如果 ZIP 里是一个完整软著项目，优先选模式 A。</span>
+          </label>
+          <label class="field">
+            <span>ZIP 文件</span>
+            <input type="file" name="file" accept=".zip" required>
+            <span class="field-hint">仅支持 ZIP。提交后会直接跳转到该批次的详情页。</span>
+          </label>
+          <div class="helper-chip-row">
+            <span class="helper-chip">上传后自动看结果</span>
+            <span class="helper-chip">结果页可人工纠偏</span>
+            <span class="helper-chip">结果页可直接导出</span>
+          </div>
+          <div class="inline-actions">
+            <button class="button-primary" type="submit">%s开始分析</button>
+            <a class="button-secondary" href="/submissions">%s查看批次总览</a>
+          </div>
+        </form>
+      </aside>
+    </div>
+    """ % (icon("upload", "icon icon-sm"), icon("layers", "icon icon-sm"))
+
+    if latest_submission:
+        latest_result_body = """
+        <div class="summary-grid">
+          %s
+          %s
+          %s
+          %s
+        </div>
+        <div class="operator-note">
+          <strong>上传后的查看路径</strong>
+          <span>先看待复核队列，再看项目分组和报告，最后进入人工干预台或导出中心。</span>
+        </div>
+        <div class="inline-actions">
+          <a class="button-primary" href="/submissions/%s">%s查看本次结果</a>
+          <a class="button-secondary button-compact" href="/submissions/%s#needs-review">%s看待复核</a>
+          <a class="button-secondary button-compact" href="/submissions/%s#operator-console">%s去人工干预</a>
+          <a class="button-secondary button-compact" href="/submissions/%s#export-center">%s去导出中心</a>
+        </div>
+        """ % (
+            _summary_tile("最近批次", latest_submission.filename, "最近一次上传的 ZIP"),
+            _summary_tile("处理状态", status_label(latest_submission.status), "当前这次分析的状态"),
+            _summary_tile("材料数", str(len(latest_submission.material_ids)), "这个批次中识别出的材料数量"),
+            _summary_tile("项目数", str(len(latest_submission.case_ids)), "系统归组后的项目数量"),
+            latest_submission.id,
+            icon("search", "icon icon-sm"),
+            latest_submission.id,
+            icon("alert", "icon icon-sm"),
+            latest_submission.id,
+            icon("wrench", "icon icon-sm"),
+            latest_submission.id,
+            icon("download", "icon icon-sm"),
+        )
+    else:
+        latest_result_body = (
+            empty_state("还没有分析结果", "先上传一个 ZIP，系统完成分析后会在这里给出最近一次结果入口。")
+            + '<div class="inline-actions"><a class="button-secondary" href="#import-console">'
+            + icon("upload", "icon icon-sm")
+            + "去上传入口</a></div>"
+        )
 
     recent_rows = [
         [
@@ -62,207 +178,61 @@ def render_home_page() -> str:
         for submission in submissions[:5]
     ]
 
-    import_body = """
-    <div class="import-console-grid">
-      <div class="import-console-main">
-        <div class="helper-chip-row">
-          <span class="helper-chip">ZIP 专用</span>
-          <span class="helper-chip">本地脱敏</span>
-          <span class="helper-chip">产物可追溯</span>
-        </div>
-        <div class="import-console-intro">
-          <div class="import-console-copy">
-            <strong>先判断资料组织方式，再进入导入</strong>
-            <p>顶部主入口只做两件事：帮你选对导入模式，并在不挤压文字的前提下直接提交 ZIP。左侧说清模式差异与产物预期，右侧只保留表单与提交动作。</p>
-          </div>
-          <div class="import-summary-grid">
-            <article class="summary-tile">
-              <span>导入路径</span>
-              <strong>提交后直达批次详情</strong>
-              <small>不需要先去别的页面，导入完成后直接进入复核工作区。</small>
-            </article>
-            <article class="summary-tile">
-              <span>模式 A</span>
-              <strong>适合单项目整包</strong>
-              <small>同一个软著项目的多类材料已经被收在同一个 ZIP 里。</small>
-            </article>
-            <article class="summary-tile">
-              <span>模式 B</span>
-              <strong>适合同类批量归档</strong>
-              <small>先建档、后分组，适合合作协议、说明文档等同类文件批量入库。</small>
-            </article>
-          </div>
-        </div>
-        <div class="compare-grid compare-grid-import">
-          <article class="compare-card compare-card-featured">
-            <span class="compare-card-label">推荐起点</span>
-            <strong>模式 A：单项目整包</strong>
-            <p>一个 ZIP 里包含同一个软著项目的多类材料时，用这个模式最稳，导入后可以直接进入完整项目视图。</p>
-            <ul class="checklist">
-              <li>信息采集表、源代码、说明文档、合作协议都在同一个包里</li>
-              <li>希望一次生成项目级结论和批次视图</li>
-              <li>适合正式审查前的完整整理</li>
-            </ul>
-          </article>
-          <article class="compare-card">
-            <span class="compare-card-label">批量归档</span>
-            <strong>模式 B：同类材料批量归档</strong>
-            <p>多个软著的同类文件需要先统一入库、再人工重组时，先走这个模式，再在批次详情里做归组和复核。</p>
-            <ul class="checklist">
-              <li>手上是多个项目的合作协议或同类文档</li>
-              <li>先建档，再做分组与纠偏</li>
-              <li>适合批量清点与归档前处理</li>
-            </ul>
-          </article>
-        </div>
-      </div>
-      <aside class="import-console-side">
-        <form class="admin-form import-console-form" action="/upload" method="post" enctype="multipart/form-data">
-          <div class="operator-note">
-            <strong>浏览器端导入说明</strong>
-            <span>如果你手上是“同一个项目的完整材料包”，选模式 A；如果是“不同软著的同类文件批量建档”，选模式 B。</span>
-          </div>
-          <label class="field">
-            <span>导入模式</span>
-            <select name="mode">
-              <option value="single_case_package">模式 A：单项目整包</option>
-              <option value="batch_same_material">模式 B：同类批量归档</option>
-            </select>
-            <span class="field-hint">模式 A 用于同一个软著项目的完整材料包，模式 B 用于不同软著的同类材料批量归档。</span>
-          </label>
-          <label class="field">
-            <span>ZIP 文件</span>
-            <input type="file" name="file" accept=".zip" required>
-            <span class="field-hint">提交后会自动进入新批次的详情工作区，若启用真实模型，耗时会略有上升。</span>
-          </label>
-          <div class="helper-chip-row">
-            <span class="helper-chip">导入后自动打开批次详情</span>
-            <span class="helper-chip">始终先过脱敏边界</span>
-            <span class="helper-chip">真实模型可能略慢</span>
-          </div>
-          <div class="operator-note">
-            <strong>提交前检查</strong>
-            <span>确认 ZIP 内没有可执行文件，中文文件名尽量保持语义清晰，真实模型联调场景下建议优先用完整材料包做第一轮验证。</span>
-          </div>
-          <div class="inline-actions">
-            <button class="button-primary" type="submit">%s开始导入</button>
-            <a class="button-secondary" href="/submissions">%s打开批次总览</a>
-          </div>
-        </form>
-      </aside>
-    </div>
-    """ % (icon("upload", "icon icon-sm"), icon("layers", "icon icon-sm"))
-
-    trust_body = """
-    <div class="trust-signal-grid">
-      <article class="trust-signal-card">
-        %s
-        <strong>AI 边界安全</strong>
-        <p>所有非 mock 边界都只接收本地脱敏后的 llm_safe 载荷，真实模型不直接接触原始敏感材料。</p>
-      </article>
-      <article class="trust-signal-card">
-        %s
-        <strong>ZIP 入口加固</strong>
-        <p>ZIP 导入包含 Zip Slip 防护、可执行文件拦截与 Windows 文件名清洗，入口阶段先把风险卡住。</p>
-      </article>
-      <article class="trust-signal-card">
-        %s
-        <strong>产物链路可追溯</strong>
-        <p>批次、项目、报告三层产物都可追溯、可下载、可复盘，便于后续复核和交付留痕。</p>
-      </article>
-    </div>
-    """ % (
-        pill("AI 边界安全", "success"),
-        pill("ZIP 入口加固", "info"),
-        pill("产物链路可追溯", "warning"),
-    )
-
-    process_body = """
-    <div class="process-board">
-      <article class="process-step">
-        <span class="step-icon">%s</span>
-        <strong>导入受理</strong>
-        <p>接收 ZIP、展开目录、验证文件边界，并建立批次记录。</p>
-      </article>
-      <article class="process-step">
-        <span class="step-icon">%s</span>
-        <strong>材料识别</strong>
-        <p>结合文件名、目录和正文特征，完成材料类型分析与归类。</p>
-      </article>
-      <article class="process-step">
-        <span class="step-icon">%s</span>
-        <strong>规则审查</strong>
-        <p>检查一致性、版本、乱码风险、签署要素和跨材料问题。</p>
-      </article>
-      <article class="process-step">
-        <span class="step-icon">%s</span>
-        <strong>报告交付</strong>
-        <p>输出材料报告、项目报告与批次级分析视图。</p>
-      </article>
-    </div>
-    """ % (
-        icon("upload", "icon icon-sm"),
-        icon("cluster", "icon icon-sm"),
-        icon("shield", "icon icon-sm"),
-        icon("report", "icon icon-sm"),
-    )
-
-    mode_body = """
-    <div class="mode-grid">
-      <article class="mode-tile">
-        <span class="mode-icon">%s</span>
-        <strong>模式 A</strong>
-        <p>面向同一软著项目的完整材料包，目标是一次生成完整的项目视图和综合报告。</p>
-      </article>
-      <article class="mode-tile">
-        <span class="mode-icon">%s</span>
-        <strong>模式 B</strong>
-        <p>面向不同软著、同一类文档的批量归档，先建档，再重组。</p>
-      </article>
-    </div>
-    """ % (icon("lock", "icon icon-sm"), icon("layers", "icon icon-sm"))
-
     recent_body = (
         table(["批次", "模式", "状态", "材料数", "项目数", "导入时间"], recent_rows)
         if recent_rows
-        else empty_state("暂无导入记录", "上传 ZIP 后，这里会出现最近的批次和运行动态。")
+        else empty_state("暂无导入记录", "上传 ZIP 后，这里会出现最近的批次和状态。")
     )
 
-    start_body = """
+    process_body = """
     <div class="sequence-board">
       <article class="sequence-step">
         <span class="sequence-index">1</span>
         <div>
-          <strong>先选导入模式</strong>
-          <p>整包走模式 A，同类批量走模式 B，避免后面重复重组。</p>
+          <strong>上传 ZIP</strong>
+          <p>在首页选模式并提交 ZIP。</p>
         </div>
       </article>
       <article class="sequence-step">
         <span class="sequence-index">2</span>
         <div>
-          <strong>再看批次详情</strong>
-          <p>导入完成后先看待复核队列和材料矩阵，不要直接跳到导出。</p>
+          <strong>查看批次详情</strong>
+          <p>系统完成处理后，直接进入批次详情页查看材料矩阵和待复核队列。</p>
         </div>
       </article>
       <article class="sequence-step">
         <span class="sequence-index">3</span>
         <div>
-          <strong>最后做人工纠偏</strong>
-          <p>改材料类型、调分组、重跑审查，再进入报告和交付。</p>
+          <strong>人工纠偏与导出</strong>
+          <p>在批次详情页完成人工干预、重跑审查，再导出报告和批次产物。</p>
         </div>
       </article>
     </div>
     """
 
+    mode_body = """
+    <div class="mode-grid">
+      <article class="mode-tile">
+        <span class="mode-icon">%s</span>
+        <strong>模式 A：单项目整包</strong>
+        <p>面向同一个软著项目的完整材料包，上传后直接形成一个项目视图和对应报告。</p>
+      </article>
+      <article class="mode-tile">
+        <span class="mode-icon">%s</span>
+        <strong>模式 B：同类批量归档</strong>
+        <p>面向多个软著的同类材料批量入库，后续在批次详情页进行分组和纠偏。</p>
+      </article>
+    </div>
+    """ % (icon("lock", "icon icon-sm"), icon("layers", "icon icon-sm"))
+
     content = f"""
-    {panel('开始前看这里', start_body, kicker='操作顺序', extra_class='span-12 panel-soft', icon_name='spark', description='先把正确的导入路径走对，后面的复核和导出会顺很多。', panel_id='start-here')}
     <section class="kpi-grid">{kpis}</section>
     <section class="dashboard-grid">
-      {panel('导入台', import_body, kicker='总控台', extra_class='span-12 panel-primary', icon_name='upload', description='从这里进入主处理链路：上传、分类、审查、输出。', panel_id='import-console')}
-      {panel('可信信号', trust_body, kicker='本地安全', extra_class='span-12', icon_name='shield', description='先建立信任边界，再让操作人员进入分析工作流。', panel_id='trust-signals')}
-      {panel('流程总览', process_body, kicker='处理链路', extra_class='span-7', icon_name='bar', description='工作台重点不是宣传文案，而是让每个处理节点一眼可见。', panel_id='pipeline-analysis')}
-      {panel('模式说明', mode_body, kicker='导入模式', extra_class='span-5', icon_name='layers', description='两种导入模式分别对应两类真实工作场景。', panel_id='mode-matrix')}
-      {panel('最近导入', recent_body, kicker='运行动态', extra_class='span-12', icon_name='clock', description='最近导入的批次、状态和规模会沉淀到这里。', panel_id='recent-imports')}
+      {panel('导入台', import_body, kicker='主入口', extra_class='span-12 panel-soft panel-import-console', icon_name='upload', description='先上传，再看结果，不让首页说明文字盖过真正操作。', panel_id='import-console')}
+      {panel('最近一次分析', latest_result_body, kicker='结果入口', extra_class='span-12', icon_name='search', description='你刚上传的内容会先回到这里，直接进入待复核、人工干预和导出。', panel_id='latest-result')}
+      {panel('怎么走这条链路', process_body, kicker='操作顺序', extra_class='span-7 panel-soft', icon_name='spark', description='首页只负责导入，真正的结果查看和纠偏都在批次详情页。', panel_id='workflow')}
+      {panel('两种导入模式', mode_body, kicker='模式选择', extra_class='span-5', icon_name='layers', description='用最少的信息告诉你现在该选哪一种模式。', panel_id='mode-guide')}
+      {panel('最近导入记录', recent_body, kicker='运行状态', extra_class='span-12', icon_name='clock', description='如果你想回看之前的分析结果，从这里进入历史批次。', panel_id='recent-imports')}
     </section>
     """
 
@@ -270,14 +240,14 @@ def render_home_page() -> str:
         title="总控台",
         active_nav="home",
         header_tag="总控台",
-        header_title="导入与分析入口",
-        header_subtitle="从这里导入 ZIP 包，对比两种导入模式，并快速掌握当前运行状态。",
+        header_title="上传一个软著并直接看结果",
+        header_subtitle="首页只保留上传、模式选择和结果入口。批次详情页负责看待复核、人工干预、报告和导出。",
         header_meta=header_meta,
         content=content,
-        header_note="先完成导入受理，再确认可信边界，然后直接进入批次详情与后续审查。",
+        header_note="上传完成后直接跳转到批次详情页；如果要回看历史结果，就从最近批次或批次总览进入。",
         page_links=[
-            ("#import-console", "导入台", "upload"),
-            ("#pipeline-analysis", "流程总览", "bar"),
-            ("#recent-imports", "最近导入", "clock"),
+            ("#import-console", "上传入口", "upload"),
+            ("#latest-result", "最近结果", "search"),
+            ("#recent-imports", "历史批次", "clock"),
         ],
     )

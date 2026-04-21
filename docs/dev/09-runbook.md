@@ -10,8 +10,22 @@ Use the script wrappers when you want repeatable local startup without manually 
 powershell -ExecutionPolicy Bypass -File scripts\start_mock_web.ps1
 powershell -ExecutionPolicy Bypass -File scripts\start_real_bridge.ps1
 powershell -ExecutionPolicy Bypass -File scripts\start_real_web.ps1 -Port 18080
+powershell -ExecutionPolicy Bypass -File scripts\restart_real_stack.ps1
 powershell -ExecutionPolicy Bypass -File scripts\run_real_validation.ps1
 powershell -ExecutionPolicy Bypass -File scripts\show_stack_status.ps1
+```
+
+If you want the fastest clean restart without stale processes on `8000`, `18011`, or `18080`, use:
+
+```powershell
+$env:MINIMAX_API_KEY='your-key'
+powershell -ExecutionPolicy Bypass -File scripts\restart_real_stack.ps1
+```
+
+Or pass the key inline for the current shell only:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\restart_real_stack.ps1 -ApiKey 'your-key'
 ```
 
 Recommended execution order for a real run:

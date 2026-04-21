@@ -429,7 +429,7 @@ def _closeout_summary(status: str, milestone: str) -> str:
 def render_ops_page(config: dict, self_check: dict) -> str:
     provider_readiness = self_check.get("provider_readiness", {})
     provider_probe_status = self_check.get("provider_probe_status", {})
-    provider_probe_history = self_check.get("provider_probe_history", [])
+    provider_probe_history = list(self_check.get("provider_probe_history", []) or [])
     provider_probe_last_success = self_check.get("provider_probe_last_success", {})
     provider_probe_last_failure = self_check.get("provider_probe_last_failure", {})
     release_gate = self_check.get("release_gate", {})
@@ -445,6 +445,21 @@ def render_ops_page(config: dict, self_check: dict) -> str:
         "cases": len(store.cases),
         "materials": len(store.materials),
     }
+
+    def _details_block(index: str, title: str, note: str, body: str, *, open_by_default: bool = False) -> str:
+        open_attr = " open" if open_by_default else ""
+        return (
+            f'<details class="operator-group"{open_attr}>'
+            "<summary>"
+            f'<span class="operator-group-index">{escape_html(index)}</span>'
+            "<div>"
+            f"<strong>{escape_html(title)}</strong>"
+            f"<small>{escape_html(note)}</small>"
+            "</div>"
+            "</summary>"
+            f'<div class="control-grid">{body}</div>'
+            "</details>"
+        )
 
     self_check_rows = [
         [
@@ -473,6 +488,15 @@ def render_ops_page(config: dict, self_check: dict) -> str:
         ]
         for item in release_gate.get("checks", [])
     ]
+    closeout_rows = [
+        [
+            escape_html(_label(item.get("label", item.get("name", "")))),
+            _display_status(item.get("status", "warning")),
+            escape_html(_display_value(item.get("value", ""))),
+            escape_html(_localize_text(item.get("summary", ""))),
+        ]
+        for item in delivery_closeout.get("checks", [])
+    ]
     probe_history_rows = [
         [
             escape_html(item.get("file_name", "")),
@@ -497,131 +521,205 @@ def render_ops_page(config: dict, self_check: dict) -> str:
         ]
         for item in baseline_history
     ]
-    closeout_rows = [
-        [
-            escape_html(_label(item.get("label", item.get("name", "")))),
-            _display_status(item.get("status", "warning")),
-            escape_html(_display_value(item.get("value", ""))),
-            escape_html(_localize_text(item.get("summary", ""))),
-        ]
-        for item in delivery_closeout.get("checks", [])
-    ]
 
-    launch_cluster = _command_cluster(
-        "环境启动",
-        "先把本地演示、真实桥接和前端入口启动起来。",
-        [
-            _command_block("启动本地演示", "powershell -ExecutionPolicy Bypass -File scripts\\start_mock_web.ps1", "用于本地 UI 和流程演示。"),
-            _command_block("启动真实桥接", "powershell -ExecutionPolicy Bypass -File scripts\\start_real_bridge.ps1", "接通真实模型前的桥接服务入口。"),
-            _command_block("启动真实前端", "powershell -ExecutionPolicy Bypass -File scripts\\start_real_web.ps1 -Port 18080", "真实联调时使用的前端端口。"),
-            _command_block("查看栈状态", "powershell -ExecutionPolicy Bypass -File scripts\\show_stack_status.ps1", "快速确认桥接、Web 和探针是否在线。"),
-        ],
+    priority_title, priority_message, priority_tone = _priority_banner_state(release_gate, provider_probe_status)
+    probe_failure_note = _probe_failure_summary(provider_probe_last_failure)
+    latest_probe_status = str(provider_probe_status.get("probe_status", "not_run"))
+    latest_probe_time = (
+        provider_probe_status.get("generated_at", "")
+        or provider_probe_status.get("updated_at", "")
+        or provider_probe_last_success.get("generated_at", "")
+        or "未记录"
     )
-    validation_cluster = _command_cluster(
-        "校验与联调",
-        "把探针、闸门和真实链路验证放在一组，便于按顺序执行。",
-        [
-            _command_block("执行真实验证", "powershell -ExecutionPolicy Bypass -File scripts\\run_real_validation.ps1", "跑完整的真实链路校验脚本。"),
-            _command_block("安全探针", "py -m app.tools.provider_probe --config config\\local.json", "只验证链路边界，不发送真实业务负载。"),
-            _command_block("真实通道冒烟", "py -m app.tools.provider_probe --config config\\local.json --probe", "对真实通道做一次最小可行探针。"),
-            _command_block("发布闸门检查", "py -m app.tools.release_gate --config config\\local.json", "综合启动自检、探针和基线判断是否可推进。"),
-            _command_block("业务收尾汇总", "py -m app.tools.delivery_closeout --config config\\local.json", "汇总发布验证、基线、备份和交付清单，给出可交付结论。"),
-        ],
+    latest_probe_download = (
+        download_chip("/downloads/ops/provider-probe/latest", "最新 Probe JSON")
+        if provider_probe_status.get("exists")
+        else ""
     )
-    maintenance_cluster = _command_cluster(
-        "回溯与维护",
-        "运维清理、备份、沙箱和基线都集中在这里，便于问题排查后快速回收现场。",
+
+    latest_signal_tiles = "".join(
         [
-            _command_block("运行时清理", "py -m app.tools.runtime_cleanup", "清理 submissions、uploads 和日志等运行产物。"),
-            _command_block("运行时备份", "py -m app.tools.runtime_backup create", "在调整前先留一份回滚点。"),
-            _command_block("提供方沙箱", "py -m app.tools.provider_sandbox --port 8010", "本地模拟 external_http 提供方。"),
+            _summary_tile("最新备份", str(backup_status.get("file_name", "") or "暂无备份"), "保留一个可回滚点"),
+            _summary_tile("最新基线", str(baseline_status.get("file_name", "") or "暂无基线"), "用于质量趋势对比"),
+            _summary_tile("最新探针", status_label(latest_probe_status), "最近一次通道探针结果"),
+            _summary_tile("探针观测", str(latest_probe_time), "最近一次可参考的探针时间"),
+        ]
+    )
+
+    kpis = "".join(
+        [
+            metric_card(
+                "业务收尾",
+                status_label(str(delivery_closeout.get("status", "warning"))),
+                "先判断能不能进入交付",
+                status_tone(delivery_closeout.get("status", "warning")),
+                icon_name="shield",
+            ),
+            metric_card(
+                "发布闸门",
+                status_label(str(release_gate.get("status", "warning"))),
+                "阻塞项优先在这里处理",
+                status_tone(release_gate.get("status", "warning")),
+                icon_name="alert",
+            ),
+            metric_card(
+                "模型通道就绪度",
+                _phase_label(provider_readiness.get("phase", "not_configured")),
+                "确认 provider、endpoint、key 是否齐全",
+                status_tone(provider_readiness.get("status", "warning")),
+                icon_name="spark",
+            ),
+            metric_card(
+                "启动自检",
+                status_label(str(self_check.get("status", "warning"))),
+                "先确认路径、配置和边界",
+                status_tone(self_check.get("status", "warning")),
+                icon_name="check",
+            ),
+        ]
+    )
+
+    launch_blocks = "".join(
+        [
+            _command_block(
+                "启动本地演示",
+                "powershell -ExecutionPolicy Bypass -File scripts\\start_mock_web.ps1",
+                "本地 UI 与流程演示入口",
+            ),
+            _command_block(
+                "启动真实桥接",
+                "powershell -ExecutionPolicy Bypass -File scripts\\start_real_bridge.ps1",
+                "接入真实模型前的桥接服务",
+            ),
+            _command_block(
+                "启动真实前端",
+                "powershell -ExecutionPolicy Bypass -File scripts\\start_real_web.ps1 -Port 18080",
+                "真实联调时使用的 Web 入口",
+            ),
+            _command_block(
+                "查看栈状态",
+                "powershell -ExecutionPolicy Bypass -File scripts\\show_stack_status.ps1",
+                "确认 bridge、web 与探针是否都在线",
+            ),
+        ]
+    )
+    validation_blocks = "".join(
+        [
+            _command_block(
+                "执行真实验证",
+                "powershell -ExecutionPolicy Bypass -File scripts\\run_real_validation.ps1",
+                "完整跑一次真实链路验证",
+            ),
+            _command_block(
+                "安全探针",
+                "py -m app.tools.provider_probe --config config\\local.json",
+                "只校验链路与边界，不发送真实业务负载",
+            ),
+            _command_block(
+                "真实通道冒烟",
+                "py -m app.tools.provider_probe --config config\\local.json --probe",
+                "对真实通道做一次最小可行探针",
+            ),
+            _command_block(
+                "发布闸门检查",
+                "py -m app.tools.release_gate --config config\\local.json",
+                "综合自检、探针和基线给出放行结论",
+            ),
+            _command_block(
+                "业务收尾汇总",
+                "py -m app.tools.delivery_closeout --config config\\local.json",
+                "汇总交付前需要看的最终结论",
+            ),
+        ]
+    )
+    maintenance_blocks = "".join(
+        [
+            _command_block(
+                "运行时清理",
+                "py -m app.tools.runtime_cleanup",
+                "清理 submissions、uploads 与日志等运行产物",
+            ),
+            _command_block(
+                "运行时备份",
+                "py -m app.tools.runtime_backup create",
+                "在调整前先保留一份回滚点",
+            ),
+            _command_block(
+                "提供方沙箱",
+                "py -m app.tools.provider_sandbox --port 8010",
+                "本地模拟 external_http 提供方",
+            ),
             _command_block(
                 "MiniMax 桥接",
                 "py -m app.tools.minimax_bridge --port 18011 --upstream-base-url https://api.minimaxi.com/v1 --upstream-model MiniMax-M2.7-highspeed --upstream-api-key-env MINIMAX_API_KEY",
-                "把项目 external_http 合约桥接到 MiniMax。",
+                "将 external_http 合约桥接到 MiniMax",
             ),
             _command_block(
                 "滚动基线",
                 "py -m app.tools.metrics_baseline --compare-latest-in-dir docs\\dev --archive-dir docs\\dev\\history --archive-stem real-sample-baseline",
-                "归档基线并生成趋势对比。",
+                "归档基线并生成趋势对比",
             ),
-            _command_block("直接启动 Web", "py -m app.api.main", "不走脚本时的直接启动方式。"),
-        ],
-    )
-
-    support_commands = """
-    <div class="operator-note">
-      <strong>运维使用顺序</strong>
-      <span>先看发布闸门和模型通道就绪度，再看探针历史与质量趋势，最后才决定是否进入真实模型联调。</span>
-    </div>
-    <div class="helper-chip-row">
-      <span class="helper-chip">先看门禁</span>
-      <span class="helper-chip">再看探针</span>
-      <span class="helper-chip">最后看趋势</span>
-    </div>
-    """ + (
-        '<div class="command-cluster-grid">'
-        f"{launch_cluster}{validation_cluster}{maintenance_cluster}"
-        "</div>"
-    )
-
-    ops_pairs = (
-        '<div class="operator-note">'
-        '<strong>运行上下文</strong>'
-        '<span>这些上下文信息用于辅助判断当前环境到底处在 mock、本地桥接还是即将进入真实模型联调阶段。</span>'
-        "</div>"
-        + list_pairs(
-            [
-                ("本地配置", escape_html(local_config.get("path", "config/local.json"))),
-                (
-                    "最新探针 JSON",
-                    download_chip("/downloads/ops/provider-probe/latest", "JSON") if provider_probe_status.get("exists") else "未记录",
-                ),
-                ("应用日志", link("/downloads/logs/app", "下载应用日志")),
-                ("当前提供方", escape_html(_provider_label(provider_readiness.get("provider", config.get("ai_provider", "mock"))))),
-                ("当前阶段", escape_html(_phase_label(provider_readiness.get("phase", "not_configured")))),
-                ("接口地址", escape_html(config.get("ai_endpoint", "") or "未配置")),
-                ("模型标识", escape_html(config.get("ai_model", "") or "未配置")),
-                ("脱敏边界", "仅允许脱敏载荷" if config.get("ai_require_desensitized", True) else "已关闭"),
-            ]
-        )
-    )
-
-    probe_observatory = list_pairs(
-        [
-            ("最新探针", _display_status(provider_probe_status.get("probe_status", "not_run"))),
-            (
-                "最近成功",
-                escape_html(provider_probe_last_success.get("generated_at", "") or provider_probe_last_success.get("file_name", "") or "未记录"),
+            _command_block(
+                "直接启动 Web",
+                "py -m app.api.main",
+                "不走脚本时的直接启动方式",
             ),
-            (
-                "最近失败",
-                escape_html(provider_probe_last_failure.get("error_code", "") or provider_probe_last_failure.get("file_name", "") or "无"),
-            ),
-            ("请求审计", escape_html("是" if (provider_probe_status.get("request_summary") or {}).get("llm_safe", False) else "否")),
-            ("批次数", escape_html(str(snapshot["submissions"]))),
-            ("项目数", escape_html(str(snapshot["cases"]))),
         ]
     )
-    priority_title, priority_message, priority_tone = _priority_banner_state(release_gate, provider_probe_status)
-    probe_failure_note = _probe_failure_summary(provider_probe_last_failure)
-    ops_pairs = ""
-    support_commands = f"""
+
+    closeout_actions = list(delivery_closeout.get("operator_actions", []) or [])
+    closeout_actions_html = "".join(
+        f"<li>{escape_html(_localize_text(item, item))}</li>" for item in closeout_actions
+    ) or "<li>当前没有额外动作，可以继续保持当前交付节奏。</li>"
+
+    closeout_body = f"""
+    <div class="closeout-board">
+      <div class="closeout-callout">
+        <div class="closeout-callout-copy">
+          <strong>当前结论</strong>
+          <p>{escape_html(_closeout_summary(delivery_closeout.get("status", "warning"), delivery_closeout.get("milestone", "not_ready")))}</p>
+        </div>
+        <div class="ops-status-badges">
+          {_display_status(delivery_closeout.get("status", "warning"))}
+          {pill(_closeout_milestone_label(delivery_closeout.get("milestone", "not_ready")), "info")}
+        </div>
+      </div>
+      <div class="summary-grid closeout-summary-grid">
+        {_summary_tile("业务里程碑", _closeout_milestone_label(delivery_closeout.get("milestone", "not_ready")), "当前可以推进到哪一步")}
+        {_summary_tile("生成时间", str(delivery_closeout.get("generated_at", "") or "未生成"), "最近一次收尾产物时间")}
+        {_summary_tile("待跟进动作", str(len(closeout_actions)), "仍需人工确认或跟进的动作数")}
+        {_summary_tile("交付状态", status_label(str(delivery_closeout.get("status", "warning"))), "用于统一判断是否可交付")}
+      </div>
+      <div class="closeout-action-block">
+        <strong>下一步</strong>
+        <ul class="action-list">{closeout_actions_html}</ul>
+      </div>
+      <div class="inline-actions">
+        {download_chip("/downloads/ops/delivery-closeout/latest-md", "最新 Closeout MD")}
+        {download_chip("/downloads/ops/delivery-closeout/latest-json", "最新 Closeout JSON")}
+        {link("/downloads/logs/app", "应用日志", css_class="button-secondary button-compact")}
+        {latest_probe_download}
+      </div>
+      {_details_block("明", "查看业务收尾明细", "只在追溯结论来源时展开。", table(["检查项", "状态", "当前值", "说明"], closeout_rows))}
+    </div>
+    """
+
+    command_panel_body = f"""
     <div class="ops-workbench">
       <div class="ops-workbench-copy">
-        <strong>先确认环境上下文，再执行命令</strong>
-        <p>先看当前 provider、阶段和脱敏边界，再决定是启动、联调、补探针还是直接回滚现场。</p>
+        <strong>先看结论，再执行命令</strong>
+        <p>运维中心默认只展示最需要的状态与入口。命令分组收起，避免首屏被脚本和路径淹没。</p>
         <div class="helper-chip-row">
-          <span class="helper-chip">先看闸门</span>
-          <span class="helper-chip">再看探针</span>
-          <span class="helper-chip">最后看趋势</span>
+          <span class="helper-chip">先看发布闸门</span>
+          <span class="helper-chip">再看探针与基线</span>
+          <span class="helper-chip">最后再决定启动或回滚</span>
         </div>
       </div>
       {list_pairs(
           [
-              ("本地配置", escape_html(local_config.get("path", "config/local.json"))),
               ("当前提供方", escape_html(_provider_label(provider_readiness.get("provider", config.get("ai_provider", "mock"))))),
               ("当前阶段", escape_html(_phase_label(provider_readiness.get("phase", "not_configured")))),
+              ("本地配置", escape_html(local_config.get("path", "config/local.json"))),
               ("接口地址", escape_html(config.get("ai_endpoint", "") or "未配置")),
               ("模型标识", escape_html(config.get("ai_model", "") or "未配置")),
               ("脱敏边界", "仅允许脱敏载荷" if config.get("ai_require_desensitized", True) else "已关闭"),
@@ -634,18 +732,69 @@ def render_ops_page(config: dict, self_check: dict) -> str:
           css_class="ops-context-grid",
       )}
     </div>
-    """ + (
-        '<div class="command-cluster-grid">'
-        f"{launch_cluster}{validation_cluster}{maintenance_cluster}"
-        "</div>"
+    <div class="operator-group-grid">
+      {_details_block("1", "环境启动", "只保留常用启动脚本。", launch_blocks, open_by_default=True)}
+      {_details_block("2", "校验与联调", "真实验证与放行相关命令。", validation_blocks)}
+      {_details_block("3", "回滚与维护", "清理、备份、沙箱和桥接。", maintenance_blocks)}
+    </div>
+    """
+
+    release_gate_body = (
+        _ops_check_snapshot(
+            "发布闸门",
+            _release_summary(release_gate.get("status", "warning")),
+            list(release_gate.get("checks", []) or []),
+            detail_key="value",
+            empty_title="当前没有高优先级阻塞项",
+            empty_note="如果后续需要排障，再展开明细表查看全部检查项。",
+        )
+        + _details_block(
+            "明",
+            "查看发布闸门明细",
+            "仅在需要定位阻塞项时展开。",
+            table(["检查项", "状态", "当前值", "说明"], release_gate_rows),
+        )
     )
+    provider_readiness_body = (
+        _ops_check_snapshot(
+            "模型通道就绪度",
+            _config_summary(local_config, provider_readiness.get("provider", config.get("ai_provider", "mock"))),
+            list(provider_readiness.get("checks", []) or []),
+            detail_key="value",
+            empty_title="当前通道配置比较干净",
+            empty_note="没有需要优先解释的额外告警项。",
+        )
+        + _details_block(
+            "明",
+            "查看模型通道就绪度明细",
+            "接口、模型、Key 与回退策略都在这里。",
+            table(["检查项", "状态", "当前值", "说明"], provider_rows),
+        )
+    )
+    startup_self_check_body = (
+        _ops_check_snapshot(
+            "启动自检",
+            "优先关注路径可写、配置文件、AI 边界和提供方就绪度，避免在前置条件不完整时直接进入联调。",
+            list(self_check.get("checks", []) or []),
+            detail_key="path",
+            empty_title="当前自检没有发现重点异常",
+            empty_note="启动前置条件当前基本完整。",
+        )
+        + _details_block(
+            "明",
+            "查看启动自检明细",
+            "路径与配置问题通常从这里定位。",
+            table(["检查项", "状态", "路径", "说明"], self_check_rows),
+        )
+    )
+
     probe_observatory = f"""
     <div class="probe-observatory">
       <div class="summary-grid probe-summary-grid">
-        {_summary_tile("最新探针", status_label(str(provider_probe_status.get("probe_status", "not_run"))), "用于判断最近一次通道探针是否可参考")}
-        {_summary_tile("HTTP", str(provider_probe_status.get("http_status", "n/a") or "n/a"), "最近一次探针的 HTTP 返回")}
-        {_summary_tile("最近成功", str(provider_probe_last_success.get("generated_at", "") or provider_probe_last_success.get("file_name", "") or "未记录"), "最近一次成功探针的时间")}
-        {_summary_tile("请求审计", "是" if (provider_probe_status.get("request_summary") or {}).get("llm_safe", False) else "否", "确认最近一次探针是否通过 llm_safe 审计")}
+        {_summary_tile("最新探针", status_label(latest_probe_status), "最近一次探针状态")}
+        {_summary_tile("HTTP", str(provider_probe_status.get("http_status", "n/a") or "n/a"), "最近一次 HTTP 返回")}
+        {_summary_tile("最近成功", str(provider_probe_last_success.get("generated_at", "") or provider_probe_last_success.get("file_name", "") or "未记录"), "最近成功探针时间")}
+        {_summary_tile("LLM 审计", "通过" if (provider_probe_status.get("request_summary") or {}).get("llm_safe", False) else "未通过", "探针请求是否通过 llm_safe")}
       </div>
       <div class="operator-note probe-observatory-note">
         <strong>最近失败</strong>
@@ -656,262 +805,66 @@ def render_ops_page(config: dict, self_check: dict) -> str:
         <span class="helper-chip">项目 {escape_html(str(snapshot["cases"]))}</span>
         <span class="helper-chip">材料 {escape_html(str(snapshot["materials"]))}</span>
       </div>
-    </div>
-    """
-    closeout_actions = list(delivery_closeout.get("operator_actions", []) or [])
-    closeout_actions_html = "".join(
-        f"<li>{escape_html(_localize_text(item, item))}</li>" for item in closeout_actions
-    ) or "<li>当前没有后续动作，保持现有交付节奏即可。</li>"
-    closeout_generated_at = str(delivery_closeout.get("generated_at", "") or "未生成")
-    closeout_body = f"""
-    <div class="closeout-board">
-      <div class="closeout-callout">
-        <div class="closeout-callout-copy">
-          <strong>当前交付结论</strong>
-          <p>{escape_html(_closeout_summary(delivery_closeout.get("status", "warning"), delivery_closeout.get("milestone", "not_ready")))}</p>
-        </div>
-        <div class="ops-status-badges">
-          {_display_status(delivery_closeout.get("status", "warning"))}
-          {pill(_closeout_milestone_label(delivery_closeout.get("milestone", "not_ready")), "info")}
-        </div>
-      </div>
-      <div class="summary-grid closeout-summary-grid">
-        {_summary_tile("交付里程碑", _closeout_milestone_label(delivery_closeout.get("milestone", "not_ready")), "业务侧当前可以推进到哪一步")}
-        {_summary_tile("生成时间", closeout_generated_at, "最近一次业务收尾产物的生成时间")}
-        {_summary_tile("后续动作", str(len(closeout_actions)), "仍需人工跟进的动作数量")}
-        {_summary_tile("当前状态", status_label(str(delivery_closeout.get("status", "warning"))), "统一汇总后的业务收尾结论")}
-      </div>
-      <div class="artifact-strip">
-        {download_chip("/downloads/ops/delivery-closeout/latest-md", "最新 Closeout MD") if delivery_closeout.get("exists") else ""}
-        {download_chip("/downloads/ops/delivery-closeout/latest-json", "最新 Closeout JSON") if delivery_closeout.get("exists") else ""}
-        {download_chip("/downloads/ops/provider-probe/latest", "最新 Probe JSON") if provider_probe_status.get("exists") else ""}
-      </div>
-      <div class="closeout-action-block">
-        <strong>下一步动作</strong>
-        <ul class="action-list">{closeout_actions_html}</ul>
+      <div class="inline-actions">
+        {latest_probe_download}
       </div>
     </div>
     """
 
-    status_cards = (
-        '<div class="ops-status-grid">'
-        + _ops_status_card(
-            "发布建议",
-            _release_summary(release_gate.get("status", "warning")),
-            [
-                _display_status(release_gate.get("status", "warning")),
-                pill(_provider_label(config.get("ai_provider", "mock")), "info"),
-            ],
-            [
-                ("运行模式", escape_html(_localize_text(str(release_gate.get("mode", "-")), "-"))),
-                ("建议动作", escape_html(_localize_text(str(release_gate.get("recommended_action", "") or "-"), "-"))),
-            ],
-        )
-        + _ops_status_card(
-            "通道探针",
-            _probe_summary(provider_probe_status.get("probe_status", "not_run"), provider_probe_status.get("error_code", "")),
-            [
-                _display_status(provider_probe_status.get("probe_status", "not_run")),
-                pill("LLM 安全", "success" if (provider_probe_status.get("request_summary") or {}).get("llm_safe", False) else "warning"),
-            ],
-            [
-                ("HTTP", escape_html(str(provider_probe_status.get("http_status", "n/a") or "n/a"))),
-                ("成功时间", escape_html(provider_probe_last_success.get("generated_at", "") or "未记录")),
-            ],
-        )
-        + _ops_status_card(
-            "运行保护",
-            _runtime_summary(backup_status, baseline_status),
-            [
-                _display_status(backup_status.get("status", "warning")),
-                _display_status(baseline_status.get("status", "warning")),
-            ],
-            [
-                ("最新备份", escape_html(backup_status.get("file_name", "") or "无")),
-                ("最新基线", escape_html(baseline_status.get("file_name", "") or "无")),
-            ],
-        )
-        + _ops_status_card(
-            "本地配置",
-            _config_summary(local_config, provider_readiness.get("provider", config.get("ai_provider", "mock"))),
-            [
-                _display_status(local_config.get("status", "warning")),
-                pill("本地脱敏", "success"),
-            ],
-            [
-                ("配置文件", escape_html(local_config.get("path", "config/local.json"))),
-                ("是否存在", "是" if local_config.get("exists", False) else "否"),
-            ],
-        )
-        + _ops_status_card(
-            "业务收尾",
-            _closeout_summary(delivery_closeout.get("status", "warning"), delivery_closeout.get("milestone", "not_ready")),
-            [
-                _display_status(delivery_closeout.get("status", "warning")),
-                pill(_closeout_milestone_label(delivery_closeout.get("milestone", "not_ready")), "info"),
-            ],
-            [
-                ("最新产物", escape_html(delivery_closeout.get("file_name", "") or "未生成")),
-                ("后续动作", escape_html(str(len(closeout_actions)))),
-            ],
-        )
-        + "</div>"
-    )
-
-    status_cards = (
-        notice_banner(
-            priority_title,
-            priority_message,
-            tone=priority_tone,
-            icon_name="shield" if priority_tone == "danger" else "spark",
-            meta=[
-                f"发布闸门：{status_label(str(release_gate.get('status', 'warning')))}",
-                f"通道阶段：{_phase_label(provider_readiness.get('phase', 'not_configured'))}",
-                f"探针：{status_label(str(provider_probe_status.get('probe_status', 'not_run')))}",
-            ],
-        )
-        + '<div class="signal-ribbon">'
-        + _signal_ribbon_item(
-            "发布闸门",
-            status_label(str(release_gate.get("status", "warning"))),
-            status_tone(release_gate.get("status", "warning")),
-            _localize_text(str(release_gate.get("recommended_action", "") or "未给出建议"), "未给出建议"),
-            f"当前模式：{_localize_text(str(release_gate.get('mode', '-')), '-')}",
-        )
-        + _signal_ribbon_item(
-            "通道阶段",
-            _phase_label(provider_readiness.get("phase", "not_configured")),
-            status_tone(provider_readiness.get("status", "warning")),
-            _provider_label(provider_readiness.get("provider", config.get("ai_provider", "mock"))),
-            _localize_text(str(config.get("ai_model", "") or "未配置模型"), "未配置模型"),
-        )
-        + _signal_ribbon_item(
-            "探针结果",
-            status_label(str(provider_probe_status.get("probe_status", "not_run"))),
-            status_tone(provider_probe_status.get("probe_status", "not_run")),
-            f"HTTP {provider_probe_status.get('http_status', 'n/a') or 'n/a'}",
-            probe_failure_note,
-        )
-        + _signal_ribbon_item(
-            "回滚保护",
-            status_label(str(baseline_status.get("status", "warning"))),
-            status_tone(baseline_status.get("status", "warning")),
-            f"最新基线：{baseline_status.get('file_name', '') or '暂无基线'}",
-            f"最新备份：{backup_status.get('file_name', '') or '暂无运行备份'}",
-        )
-        + "</div>"
-    )
-
-    trend_tiles = "".join(
-        [
-            _summary_tile("最近基线", str(latest_baseline.get("file_name", "") or baseline_status.get("file_name", "") or "暂无基线"), "当前用于对比的最新基线文件"),
-            _summary_tile("待复核", str((latest_baseline.get("totals", {}) or {}).get("needs_review", 0)), "最新基线中的待复核数量"),
-            _summary_tile("低质量", str((latest_baseline.get("totals", {}) or {}).get("low_quality", 0)), "最新基线中的低质量数量"),
-            _summary_tile("变化值", format_signed_delta((latest_baseline.get("delta_totals", {}) or {}).get("needs_review")), "相较上一份基线的待复核变化"),
-        ]
-    )
     trend_body = f"""
     <div class="trend-board">
       <div class="trend-callout">
-        <strong>趋势观察重点</strong>
+        <strong>质量趋势</strong>
         <span>{escape_html(_trend_summary(latest_baseline))}</span>
       </div>
-      <div class="helper-chip-row">
-        <span class="helper-chip">最近 6 份基线</span>
-        <span class="helper-chip">优先看待复核变化</span>
-        <span class="helper-chip">结合低质量与探针结果</span>
+      <div class="summary-grid trend-summary-grid">
+        {_summary_tile("最新基线", str(latest_baseline.get("file_name", "") or baseline_status.get("file_name", "") or "暂无基线"), "当前用于对比的最新基线")}
+        {_summary_tile("待复核", str((latest_baseline.get("totals", {}) or {}).get("needs_review", 0)), "最近基线里的待复核数量")}
+        {_summary_tile("低质量", str((latest_baseline.get("totals", {}) or {}).get("low_quality", 0)), "最近基线里的低质量数量")}
+        {_summary_tile("变化值", format_signed_delta((latest_baseline.get("delta_totals", {}) or {}).get("needs_review")), "相对上一份基线的待复核变化")}
       </div>
-      <div class="summary-grid trend-summary-grid">{trend_tiles}</div>
     </div>
     """
 
-    command_panel_body = support_commands + ops_pairs
-
-    release_gate_body = _ops_check_snapshot(
-        "发布闸门",
-        _release_summary(release_gate.get("status", "warning")),
-        list(release_gate.get("checks", []) or []),
-        detail_key="value",
-        empty_title="当前无重点阻塞项",
-        empty_note="这一组检查当前没有需要优先处理的阻塞或告警项。",
-    )
-    provider_readiness_body = _ops_check_snapshot(
-        "模型通道",
-        _config_summary(local_config, provider_readiness.get("provider", config.get("ai_provider", "mock"))),
-        list(provider_readiness.get("checks", []) or []),
-        detail_key="value",
-        empty_title="当前通道配置较干净",
-        empty_note="模型通道当前没有额外需要优先解释的告警项。",
-    )
-    startup_self_check_body = _ops_check_snapshot(
-        "启动自检",
-        "优先看路径可写、配置文件、AI 边界和提供方就绪度，避免在未完成自检时直接推进联调。",
-        list(self_check.get("checks", []) or []),
-        detail_key="path",
-        empty_title="当前自检未发现重点异常",
-        empty_note="启动前置条件当前较完整，可以继续结合闸门与探针判断。",
-    )
-
-    flight_plan_body = """
-    <div class="sequence-board">
-      <article class="sequence-step">
-        <span class="sequence-index">1</span>
-        <div>
-          <strong>先看发布闸门</strong>
-          <p>先判断当前环境能不能推进真实模型验证，再决定是否继续深入。</p>
-        </div>
-      </article>
-      <article class="sequence-step">
-        <span class="sequence-index">2</span>
-        <div>
-          <strong>再看通道与探针</strong>
-          <p>确认提供方是否就绪，再区分“环境未就绪”还是“真实调用失败”。</p>
-        </div>
-      </article>
-      <article class="sequence-step">
-        <span class="sequence-index">3</span>
-        <div>
-          <strong>最后看趋势与回滚点</strong>
-          <p>结合基线、备份和低质量数量，决定是否进入联调或先回收现场。</p>
-        </div>
-      </article>
+    probe_history_body = """
+    <div class="operator-note">
+      <strong>探针历史</strong>
+      <span>只保留判断链路是否稳定所需的最小信息：结果、时间、HTTP 和摘要。</span>
     </div>
-    <div class="inline-actions">
-      <a class="button-secondary button-compact" href="#delivery-closeout">先看业务收尾</a>
-      <a class="button-secondary button-compact" href="#release-gate">先看发布闸门</a>
-      <a class="button-secondary button-compact" href="#provider-readiness">再看通道就绪</a>
-      <a class="button-secondary button-compact" href="#probe-history">查看探针历史</a>
-      <a class="button-secondary button-compact" href="#trend-watch">最后看质量趋势</a>
-    </div>
-    """
+    """ + table(["产物", "结果", "生成时间", "HTTP", "错误/摘要", "下载"], probe_history_rows)
 
     content = f"""
-    {panel('这页应该怎么看', flight_plan_body, kicker='运维顺序', extra_class='span-12 panel-soft', icon_name='bar', description='把运维和联调动作按顺序串起来，减少来回跳页和误判。', panel_id='ops-flight-plan')}
-    <section class="kpi-grid kpi-grid-ops">
-      {metric_card('业务收尾', status_label(str(delivery_closeout.get('status', 'warning'))), '直接判断当前是否已经具备业务交付条件', status_tone(delivery_closeout.get('status', 'warning')), icon_name='shield')}
-      {metric_card('发布闸门', status_label(str(release_gate.get('status', 'warning'))), '用于判断是否进入真实模型发布验证', status_tone(release_gate.get('status', 'warning')), icon_name='shield')}
-      {metric_card('启动自检', status_label(str(self_check.get('status', 'warning'))), '检查路径可写、配置与安全边界', status_tone(self_check.get('status', 'warning')), icon_name='check')}
-      {metric_card('最新探针', status_label(str(provider_probe_status.get('probe_status', 'not_run'))), '观察最近一次通道探针的结果', status_tone(provider_probe_status.get('probe_status', 'not_run')), icon_name='spark')}
-      {metric_card('最新基线', status_label(str(baseline_status.get('status', 'warning'))), '检查当前质量基线是否可用', status_tone(baseline_status.get('status', 'warning')), icon_name='trend')}
-    </section>
-    {status_cards}
+    {notice_banner(
+        priority_title,
+        priority_message,
+        tone=priority_tone,
+        icon_name="shield" if priority_tone == "danger" else "spark",
+        meta=[
+            f"发布闸门：{status_label(str(release_gate.get('status', 'warning')))}",
+            f"模型通道就绪度：{_phase_label(provider_readiness.get('phase', 'not_configured'))}",
+            f"最新探针：{status_label(latest_probe_status)}",
+        ],
+    )}
+    <section class="summary-grid">{latest_signal_tiles}</section>
+    <section class="kpi-grid kpi-grid-ops">{kpis}</section>
     <section class="dashboard-grid">
-    {panel('业务收尾', closeout_body + table(['检查项', '状态', '当前值', '说明'], closeout_rows), kicker='交付结论', extra_class='span-12 panel-soft', icon_name='shield', description='把能不能交付、下一步做什么、该看哪些产物压缩到一个面板里。', panel_id='delivery-closeout')}
-    {panel('常用运维入口', command_panel_body, kicker='运维操作', extra_class='span-12', icon_name='terminal', description='把启动、联调、验证和维护命令按阶段分组，减少来回切换。', panel_id='operator-commands')}
-    {panel('发布闸门详情', release_gate_body + table(['检查项', '状态', '当前值', '说明'], release_gate_rows), kicker='发布闸门', extra_class='span-6', icon_name='shield', description='先看阻塞与告警摘要，再决定是否继续读完整明细。', panel_id='release-gate')}
-    {panel('模型通道就绪度', provider_readiness_body + table(['检查项', '状态', '当前值', '说明'], provider_rows), kicker='模型通道', extra_class='span-6', icon_name='spark', description='把接口、模型、Key 与回退策略先做一层摘要，再下钻明细。', panel_id='provider-readiness')}
-    {panel('启动自检明细', startup_self_check_body + table(['检查项', '状态', '路径', '说明'], self_check_rows), kicker='启动自检', extra_class='span-6', icon_name='check', description='先把最值得处理的前置异常抬到上面，再看完整检查表。', panel_id='startup-self-check')}
-    {panel('探针概览', probe_observatory, kicker='探针观测', extra_class='span-6', icon_name='bar', description='一屏看完最新探针、最近成功、最近失败和 llm_safe 审计结果。', panel_id='probe-observatory')}
-      {panel('探针历史', table(['产物', '结果', '生成时间', 'HTTP', '错误/摘要', '下载'], probe_history_rows), kicker='探针历史', extra_class='span-12', icon_name='clock', description='用于区分“环境未就绪”和“真实调用失败”两类问题。', panel_id='probe-history')}
-      {panel('质量趋势', trend_body + table(['基线文件', '状态', '生成时间', '待复核', '低质量', '变化值'], baseline_rows), kicker='趋势看板', extra_class='span-12', icon_name='trend', description='发布前最后一轮最值得盯住的就是待复核变化、低质量数量和基线连续性。', panel_id='trend-watch')}
+      {panel("业务收尾", closeout_body, kicker="交付结论", extra_class="span-12 panel-soft", icon_name="shield", description="首屏只看交付结论、下一步动作和必要下载。", panel_id="delivery-closeout")}
+      {panel("常用运维入口", command_panel_body, kicker="运维操作", extra_class="span-12", icon_name="terminal", description="命令按阶段折叠，避免把首屏堆成脚本墙。", panel_id="operator-commands")}
+      {panel("发布闸门", release_gate_body, kicker="放行判断", extra_class="span-6", icon_name="alert", description="先看阻塞项数量和重点，再决定是否展开明细。", panel_id="release-gate")}
+      {panel("模型通道就绪度", provider_readiness_body, kicker="通道状态", extra_class="span-6", icon_name="spark", description="统一查看 provider、endpoint、模型和 Key 配置。", panel_id="provider-readiness")}
+      {panel("启动自检", startup_self_check_body, kicker="前置检查", extra_class="span-12", icon_name="check", description="需要排障时再展开完整路径与配置明细。", panel_id="startup-self-check")}
+      {panel("探针观测", probe_observatory, kicker="探针观测", extra_class="span-6 panel-soft", icon_name="bar", description="收敛到最新状态、最近成功和失败摘要。", panel_id="probe-observatory")}
+      {panel("质量趋势", trend_body + table(["基线文件", "状态", "生成时间", "待复核", "低质量", "变化值"], baseline_rows), kicker="趋势看板", extra_class="span-6", icon_name="trend", description="重点只看待复核变化、低质量数量和最近基线。", panel_id="trend-watch")}
+      {panel("探针历史", probe_history_body, kicker="探针历史", extra_class="span-12", icon_name="clock", description="按时间回看探针是否稳定，不再堆放重复说明。", panel_id="probe-history")}
     </section>
     """
+
     return layout(
         title="运维中心",
         active_nav="ops",
         header_tag="运维中心",
-        header_title="运行与发布中心",
-        header_subtitle="统一查看发布闸门、启动自检、模型通道就绪度、安全探针、备份与质量趋势。",
+        header_title="运维与发布中心",
+        header_subtitle="只保留最影响判断的状态、命令入口和回滚线索，其他内容按需展开。",
         header_meta="".join(
             [
                 _display_status(release_gate.get("status", "warning")),
@@ -920,11 +873,11 @@ def render_ops_page(config: dict, self_check: dict) -> str:
             ]
         ),
         content=content,
-        header_note="先看发布闸门和模型通道就绪度，再看探针历史与质量趋势，最后再决定是否进入真实模型联调。",
+        header_note="默认顺序是：先看业务收尾和发布闸门，再看模型通道就绪度与探针，最后再看趋势与历史。",
         page_links=[
             ("#delivery-closeout", "业务收尾", "shield"),
-            ("#release-gate", "发布闸门", "shield"),
-            ("#provider-readiness", "通道就绪", "spark"),
+            ("#release-gate", "发布闸门", "alert"),
+            ("#provider-readiness", "模型通道就绪度", "spark"),
             ("#probe-history", "探针历史", "clock"),
             ("#trend-watch", "质量趋势", "trend"),
         ],
