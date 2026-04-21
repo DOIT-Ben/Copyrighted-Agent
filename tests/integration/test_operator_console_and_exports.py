@@ -56,6 +56,7 @@ def test_ops_page_exposes_self_check_and_support_artifacts(api_client):
     assert "app.tools.provider_sandbox" in response.text or "provider_sandbox" in response.text
     assert "app.tools.provider_probe" in response.text or "provider_probe" in response.text
     assert "app.tools.release_gate" in response.text or "release_gate" in response.text
+    assert "app.tools.delivery_closeout" in response.text or "delivery_closeout" in response.text
     assert "scripts\\start_mock_web.ps1" in response.text
     assert "scripts\\start_real_bridge.ps1" in response.text
     assert "scripts\\start_real_web.ps1" in response.text

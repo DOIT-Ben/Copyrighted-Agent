@@ -1,0 +1,211 @@
+{
+  "generated_at": "2026-04-21T10:00:30",
+  "status": "blocked",
+  "milestone": "blocked",
+  "summary": "Business closeout is blocked. Clear the blocking validation or handoff items first.",
+  "operator_actions": [
+    "Complete the missing requirements: API key env."
+  ],
+  "checks": [
+    {
+      "name": "latest_release_validation",
+      "label": "Latest Release Validation",
+      "status": "pass",
+      "summary": "Real-provider validation passed for probe, release gate, and sample smokes.",
+      "value": "2026-04-20T04:07:14",
+      "recommended_action": "Run py -m app.tools.release_validation before business closeout."
+    },
+    {
+      "name": "release_gate",
+      "label": "Release Gate",
+      "status": "blocked",
+      "summary": "Release gate is blocked for the current environment.",
+      "value": "external_http",
+      "recommended_action": "Complete the missing requirements: API key env."
+    },
+    {
+      "name": "real_sample_baseline",
+      "label": "Real Sample Baseline",
+      "status": "pass",
+      "summary": "The latest real-sample baseline is clean enough for handoff.",
+      "value": "real-sample-baseline_20260420_001631.json",
+      "recommended_action": ""
+    },
+    {
+      "name": "runtime_backup",
+      "label": "Runtime Backup",
+      "status": "pass",
+      "summary": "A runtime backup archive is available as a rollback point.",
+      "value": "runtime_backup_20260419_2219.zip",
+      "recommended_action": ""
+    },
+    {
+      "name": "acceptance_checklist",
+      "label": "Acceptance Checklist",
+      "status": "pass",
+      "summary": "Acceptance checklist is available for operator and business handoff.",
+      "value": "106-real-provider-acceptance-checklist.md",
+      "recommended_action": ""
+    }
+  ],
+  "config": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "data_root": "data/runtime",
+    "sqlite_path": "data/runtime/soft_review.db",
+    "log_path": "data/runtime/logs/app.jsonl",
+    "retention_days": 14,
+    "ai_enabled": true,
+    "ai_provider": "external_http",
+    "ai_require_desensitized": true,
+    "ai_timeout_seconds": 30,
+    "ai_endpoint": "http://127.0.0.1:18011/review",
+    "ai_model": "MiniMax-M2.7-highspeed",
+    "ai_api_key_env": "MINIMAX_API_KEY",
+    "ai_fallback_to_mock": true
+  },
+  "release_validation": {
+    "exists": true,
+    "status": "pass",
+    "summary": "Real-provider validation passed for probe, release gate, and sample smokes.",
+    "generated_at": "2026-04-20T04:07:14",
+    "file_name": "real-provider-validation-latest.json",
+    "file_path": "docs\\dev\\real-provider-validation-latest.json",
+    "provider_probe": "ok",
+    "mode_a_smoke": "pass",
+    "mode_b_smoke": "pass",
+    "recommended_action": ""
+  },
+  "release_gate": {
+    "status": "blocked",
+    "summary": "Release gate is blocked for the current environment.",
+    "recommended_action": "Complete the missing requirements: API key env.",
+    "mode": "external_http"
+  },
+  "baseline": {
+    "status": "ok",
+    "exists": true,
+    "summary": "Latest metrics baseline is available.",
+    "file_name": "real-sample-baseline_20260420_001631.json",
+    "file_path": "docs\\dev\\history\\real-sample-baseline_20260420_001631.json",
+    "generated_at": "2026-04-20T00:16:31",
+    "updated_at": "2026-04-20T00:16:31",
+    "target_count": 2,
+    "totals": {
+      "materials": 35,
+      "cases": 17,
+      "reports": 7,
+      "unknown": 0,
+      "needs_review": 0,
+      "low_quality": 0,
+      "redactions": 404
+    },
+    "targets": [
+      {
+        "label": "mode_a_real",
+        "mode": "single_case_package",
+        "path": "input\\软著材料",
+        "aggregate": {
+          "packages": 6,
+          "materials": 24,
+          "cases": 6,
+          "reports": 6,
+          "needs_review": 0,
+          "low_quality": 0,
+          "redactions": 252,
+          "unknown": 0,
+          "review_reasons": {
+            "clean_text_ready": 23,
+            "text_too_short": 1
+          },
+          "legacy_doc_buckets": {
+            "usable_text": 18
+          }
+        },
+        "delta": {
+          "materials": 0,
+          "cases": 0,
+          "reports": 0,
+          "unknown": 0,
+          "needs_review": 0,
+          "low_quality": 0,
+          "redactions": 0
+        },
+        "has_previous": true
+      },
+      {
+        "label": "mode_b_real",
+        "mode": "batch_same_material",
+        "path": "input\\合作协议",
+        "aggregate": {
+          "packages": 1,
+          "materials": 11,
+          "cases": 11,
+          "reports": 1,
+          "needs_review": 0,
+          "low_quality": 0,
+          "redactions": 152,
+          "unknown": 0,
+          "review_reasons": {
+            "clean_text_ready": 10,
+            "text_too_short": 1
+          },
+          "legacy_doc_buckets": {
+            "usable_text": 9
+          }
+        },
+        "delta": {
+          "materials": 0,
+          "cases": 0,
+          "reports": 0,
+          "unknown": 0,
+          "needs_review": 0,
+          "low_quality": 0,
+          "redactions": 0
+        },
+        "has_previous": true
+      }
+    ],
+    "comparison_available": true,
+    "delta_totals": {
+      "materials": 0,
+      "cases": 0,
+      "reports": 0,
+      "unknown": 0,
+      "needs_review": 0,
+      "low_quality": 0,
+      "redactions": 0
+    }
+  },
+  "backup": {
+    "status": "ok",
+    "exists": true,
+    "summary": "Latest runtime backup is available.",
+    "file_name": "runtime_backup_20260419_2219.zip",
+    "file_path": "data\\backups\\runtime_backup_20260419_2219.zip",
+    "size_bytes": 424308251,
+    "size_label": "404.7 MB",
+    "updated_at": "2026-04-19T22:21:01",
+    "created_at": "2026-04-19T22:19:40",
+    "entry_count": 18011,
+    "sqlite_snapshot_mode": "sqlite_backup_api"
+  },
+  "acceptance_checklist": {
+    "exists": true,
+    "status": "pass",
+    "summary": "Acceptance checklist is available for operator and business handoff.",
+    "file_name": "106-real-provider-acceptance-checklist.md",
+    "file_path": "docs\\dev\\106-real-provider-acceptance-checklist.md",
+    "recommended_action": ""
+  },
+  "paths": {
+    "dev_root": "docs\\dev",
+    "backups_root": "data\\backups"
+  },
+  "artifacts": {
+    "latest_json_path": "docs\\dev\\delivery-closeout-latest.json",
+    "latest_markdown_path": "docs\\dev\\delivery-closeout-latest.md",
+    "history_json_path": "docs\\dev\\history\\delivery_closeout_20260421_100030.json",
+    "history_markdown_path": "docs\\dev\\history\\delivery_closeout_20260421_100030.md"
+  }
+}

@@ -342,6 +342,7 @@ def render_ops_page(config: dict, self_check: dict) -> str:
             _command_block("安全探针", "py -m app.tools.provider_probe --config config\\local.json", "只验证链路边界，不发送真实业务负载。"),
             _command_block("真实通道冒烟", "py -m app.tools.provider_probe --config config\\local.json --probe", "对真实通道做一次最小可行探针。"),
             _command_block("发布闸门检查", "py -m app.tools.release_gate --config config\\local.json", "综合启动自检、探针和基线判断是否可推进。"),
+            _command_block("业务收尾汇总", "py -m app.tools.delivery_closeout --config config\\local.json", "汇总发布验证、基线、备份和交付清单，给出可交付结论。"),
         ],
     )
     maintenance_cluster = _command_cluster(
