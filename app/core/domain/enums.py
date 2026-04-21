@@ -8,6 +8,11 @@ class SubmissionMode(str, Enum):
     BATCH_SAME_MATERIAL = "batch_same_material"
 
 
+class ReviewStrategy(str, Enum):
+    AUTO_REVIEW = "auto_review"
+    MANUAL_DESENSITIZED_REVIEW = "manual_desensitized_review"
+
+
 class MaterialType(str, Enum):
     INFO_FORM = "info_form"
     SOURCE_CODE = "source_code"
@@ -21,4 +26,3 @@ class JobStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
-

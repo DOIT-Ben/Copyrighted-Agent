@@ -10,8 +10,9 @@ def test_home_page_renders_upload_controls(api_client):
     response = api_client.get("/")
     assert response.status_code == 200
     assert "总控台" in response.text
-    assert "导入台" in response.text
+    assert "导入入口" in response.text
     assert 'action="/upload"' in response.text
+    assert 'name="review_strategy"' in response.text
 
 
 @pytest.mark.integration
@@ -33,7 +34,7 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
         response = api_client.post(
             "/upload",
             files={"file": (mode_a_zip_path.name, handle, "application/zip")},
-            data={"mode": "single_case_package"},
+            data={"mode": "single_case_package", "review_strategy": "auto_review"},
         )
 
     assert response.status_code == 302

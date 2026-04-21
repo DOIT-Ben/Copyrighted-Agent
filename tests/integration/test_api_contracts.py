@@ -24,9 +24,25 @@ def test_upload_submission_accepts_zip_and_mode(api_client, mode_a_zip_path):
         response = api_client.post(
             "/api/submissions",
             files={"file": (mode_a_zip_path.name, handle, "application/zip")},
-            data={"mode": "single_case_package"},
+            data={"mode": "single_case_package", "review_strategy": "auto_review"},
         )
     assert response.status_code in (200, 201, 202)
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.api
+def test_upload_submission_accepts_manual_desensitized_review_strategy(api_client, mode_a_zip_path):
+    with mode_a_zip_path.open("rb") as handle:
+        response = api_client.post(
+            "/api/submissions",
+            files={"file": (mode_a_zip_path.name, handle, "application/zip")},
+            data={"mode": "single_case_package", "review_strategy": "manual_desensitized_review"},
+        )
+    assert response.status_code in (200, 201, 202)
+    payload = response.json()
+    assert payload["status"] == "awaiting_manual_review"
+    assert payload["review_strategy"] == "manual_desensitized_review"
 
 
 @pytest.mark.integration
@@ -42,4 +58,3 @@ def test_upload_submission_rejects_non_zip(api_client, tmp_path):
             data={"mode": "single_case_package"},
         )
     assert response.status_code in (400, 415, 422)
-

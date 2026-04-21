@@ -49,6 +49,20 @@ def _submission_for_case(case_id: str):
     return case, submission
 
 
+def _sync_submission_status(submission_id: str) -> None:
+    submission = store.submissions.get(submission_id)
+    if not submission:
+        return
+    cases = [store.cases[item_id] for item_id in submission.case_ids if item_id in store.cases]
+    if not cases:
+        return
+    if any(case.status == "awaiting_manual_review" for case in cases):
+        submission.status = "awaiting_manual_review"
+        return
+    if all(case.status in {"completed", "grouped"} for case in cases):
+        submission.status = "completed"
+
+
 def _material_review_bucket(material_type: str, text: str) -> dict:
     if material_type == MaterialType.AGREEMENT.value:
         return review_agreement_text(text)
@@ -460,8 +474,35 @@ def rerun_case_review(case_id: str, corrected_by: str = "local", note: str = "")
         corrected_by=corrected_by,
     )
     rebuilt = _rebuild_case(case.id)
+    _sync_submission_status(submission.id)
     save_submission_graph(submission.id)
     log_event("rerun_case_review", {"submission_id": submission.id, "case_id": case.id, "corrected_by": corrected_by})
+    return {
+        "correction": correction.to_dict(),
+        "case": rebuilt["case"],
+        "review_result": rebuilt["review_result"],
+        "report": rebuilt["report"],
+    }
+
+
+def continue_case_review_from_desensitized(case_id: str, corrected_by: str = "local", note: str = "") -> dict:
+    case, submission = _submission_for_case(case_id)
+    correction = _record_correction(
+        submission.id,
+        "continue_case_review_from_desensitized",
+        case_id=case.id,
+        original_value={"status": case.status, "review_result_id": case.review_result_id, "report_id": case.report_id},
+        corrected_value={"status": "completed"},
+        note=note,
+        corrected_by=corrected_by,
+    )
+    rebuilt = _rebuild_case(case.id)
+    _sync_submission_status(submission.id)
+    save_submission_graph(submission.id)
+    log_event(
+        "continue_case_review_from_desensitized",
+        {"submission_id": submission.id, "case_id": case.id, "corrected_by": corrected_by},
+    )
     return {
         "correction": correction.to_dict(),
         "case": rebuilt["case"],

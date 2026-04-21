@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.core.domain.enums import MaterialType, SubmissionMode
+from app.core.domain.enums import MaterialType, ReviewStrategy, SubmissionMode
 from app.core.domain.models import Case, Job, Material, ParseResult, ReportArtifact, ReviewResult, Submission
 from app.core.parsers.service import parse_material
 from app.core.privacy.desensitization import build_ai_safe_case_payload
@@ -150,11 +150,26 @@ def _build_case_review_record(case: Case, combined_issues: list[dict], ai_review
     return {"report_payload": report_payload, "review_payload": review_payload}
 
 
-def ingest_submission(zip_path: str | Path, mode: str, created_by: str = "local") -> dict:
+def ingest_submission(
+    zip_path: str | Path,
+    mode: str,
+    created_by: str = "local",
+    review_strategy: str = ReviewStrategy.AUTO_REVIEW.value,
+) -> dict:
     source_path = Path(zip_path)
     if mode not in {item.value for item in SubmissionMode}:
         raise ValueError(f"Unsupported submission mode: {mode}")
-    log_event("ingest_submission_started", {"source_path": str(source_path), "mode": mode, "created_by": created_by})
+    if review_strategy not in {item.value for item in ReviewStrategy}:
+        raise ValueError(f"Unsupported review strategy: {review_strategy}")
+    log_event(
+        "ingest_submission_started",
+        {
+            "source_path": str(source_path),
+            "mode": mode,
+            "created_by": created_by,
+            "review_strategy": review_strategy,
+        },
+    )
 
     runtime_root = _runtime_root()
     submission_id = slug_id("sub")
@@ -179,6 +194,7 @@ def ingest_submission(zip_path: str | Path, mode: str, created_by: str = "local"
         storage_path=storage_path,
         status="processing",
         created_at=now_iso(),
+        review_strategy=review_strategy,
         created_by=created_by,
     )
     store.add_submission(submission)
@@ -307,6 +323,7 @@ def ingest_submission(zip_path: str | Path, mode: str, created_by: str = "local"
             or (source_code.detected_version if source_code else "")
         )
         company_name = (info_form.metadata.get("company_name") if info_form else "") or ""
+        waiting_manual_review = review_strategy == ReviewStrategy.MANUAL_DESENSITIZED_REVIEW.value
 
         case = Case(
             id=slug_id("case"),
@@ -314,7 +331,7 @@ def ingest_submission(zip_path: str | Path, mode: str, created_by: str = "local"
             software_name=case_name or "未命名软著项目",
             version=case_version or "",
             company_name=company_name,
-            status="completed",
+            status="awaiting_manual_review" if waiting_manual_review else "completed",
             source_submission_id=submission_id,
             created_at=now_iso(),
             material_ids=[item.id for item in materials],
@@ -325,56 +342,62 @@ def ingest_submission(zip_path: str | Path, mode: str, created_by: str = "local"
         submission.case_ids.append(case.id)
         cases.append(case)
 
-        consistency = review_case_consistency(
-            info_form.metadata if info_form else {},
-            source_code.metadata if source_code else {},
-            software_doc.metadata if software_doc else {},
-        )
-        combined_issues = consistency.get("issues", [])
-        ai_provider = resolve_case_ai_provider()
-        ai_case_payload = {"software_name": case.software_name, "version": case.version, "company_name": case.company_name}
-        if ai_provider != "mock":
-            ai_case_payload = build_ai_safe_case_payload(ai_case_payload)
-        ai_review = generate_case_ai_review(ai_case_payload, {"issues": combined_issues}, provider=ai_provider)
-        review_record = _build_case_review_record(case, combined_issues, ai_review)
-        review_result = ReviewResult(
-            id=slug_id("rev"),
-            scope_type="case",
-            scope_id=case.id,
-            reviewer_type="hybrid",
-            severity_summary_json=review_record["review_payload"]["severity_summary_json"],
-            issues_json=review_record["review_payload"]["issues_json"],
-            score=review_record["review_payload"]["score"],
-            conclusion=review_record["review_payload"]["conclusion"],
-            created_at=now_iso(),
-            rule_conclusion=review_record["review_payload"]["rule_conclusion"],
-            ai_summary=review_record["review_payload"]["ai_summary"],
-            ai_provider=review_record["review_payload"]["ai_provider"],
-            ai_resolution=review_record["review_payload"]["ai_resolution"],
-        )
-        store.add_review_result(review_result)
-        case.review_result_id = review_result.id
-        review_results.append(review_result)
+        if waiting_manual_review:
+            log_event(
+                "submission_review_deferred",
+                {"submission_id": submission.id, "case_id": case.id, "review_strategy": review_strategy},
+            )
+        else:
+            consistency = review_case_consistency(
+                info_form.metadata if info_form else {},
+                source_code.metadata if source_code else {},
+                software_doc.metadata if software_doc else {},
+            )
+            combined_issues = consistency.get("issues", [])
+            ai_provider = resolve_case_ai_provider()
+            ai_case_payload = {"software_name": case.software_name, "version": case.version, "company_name": case.company_name}
+            if ai_provider != "mock":
+                ai_case_payload = build_ai_safe_case_payload(ai_case_payload)
+            ai_review = generate_case_ai_review(ai_case_payload, {"issues": combined_issues}, provider=ai_provider)
+            review_record = _build_case_review_record(case, combined_issues, ai_review)
+            review_result = ReviewResult(
+                id=slug_id("rev"),
+                scope_type="case",
+                scope_id=case.id,
+                reviewer_type="hybrid",
+                severity_summary_json=review_record["review_payload"]["severity_summary_json"],
+                issues_json=review_record["review_payload"]["issues_json"],
+                score=review_record["review_payload"]["score"],
+                conclusion=review_record["review_payload"]["conclusion"],
+                created_at=now_iso(),
+                rule_conclusion=review_record["review_payload"]["rule_conclusion"],
+                ai_summary=review_record["review_payload"]["ai_summary"],
+                ai_provider=review_record["review_payload"]["ai_provider"],
+                ai_resolution=review_record["review_payload"]["ai_resolution"],
+            )
+            store.add_review_result(review_result)
+            case.review_result_id = review_result.id
+            review_results.append(review_result)
 
-        case_report_payload = review_record["report_payload"]
-        case_report_payload["materials"] = [
-            item.original_filename for item in materials
-        ] + [item.original_filename for item in agreements if item not in materials]
-        case_report_content = render_case_report_markdown(case_report_payload)
-        case_report = ReportArtifact(
-            id=slug_id("rep"),
-            scope_type="case",
-            scope_id=case.id,
-            report_type="case_markdown",
-            file_format="md",
-            storage_path=str(_write_text(submission_dir / "reports" / f"{case.id}.md", case_report_content)),
-            created_at=now_iso(),
-            content=case_report_content,
-        )
-        store.add_report_artifact(case_report)
-        case.report_id = case_report.id
-        submission.report_ids.append(case_report.id)
-        reports.append(case_report)
+            case_report_payload = review_record["report_payload"]
+            case_report_payload["materials"] = [
+                item.original_filename for item in materials
+            ] + [item.original_filename for item in agreements if item not in materials]
+            case_report_content = render_case_report_markdown(case_report_payload)
+            case_report = ReportArtifact(
+                id=slug_id("rep"),
+                scope_type="case",
+                scope_id=case.id,
+                report_type="case_markdown",
+                file_format="md",
+                storage_path=str(_write_text(submission_dir / "reports" / f"{case.id}.md", case_report_content)),
+                created_at=now_iso(),
+                content=case_report_content,
+            )
+            store.add_report_artifact(case_report)
+            case.report_id = case_report.id
+            submission.report_ids.append(case_report.id)
+            reports.append(case_report)
     else:
         groups: dict[tuple[str, str], list[Material]] = {}
         for material in materials:
@@ -421,7 +444,11 @@ def ingest_submission(zip_path: str | Path, mode: str, created_by: str = "local"
         submission.report_ids.append(batch_report.id)
         reports.append(batch_report)
 
-    submission.status = "completed"
+    submission.status = (
+        "awaiting_manual_review"
+        if review_strategy == ReviewStrategy.MANUAL_DESENSITIZED_REVIEW.value and mode == SubmissionMode.SINGLE_CASE_PACKAGE.value
+        else "completed"
+    )
     job.status = "completed"
     job.progress = 100
     job.finished_at = now_iso()
@@ -431,6 +458,7 @@ def ingest_submission(zip_path: str | Path, mode: str, created_by: str = "local"
         {
             "submission_id": submission.id,
             "mode": submission.mode,
+            "review_strategy": submission.review_strategy,
             "material_count": len(submission.material_ids),
             "case_count": len(submission.case_ids),
             "report_count": len(submission.report_ids),

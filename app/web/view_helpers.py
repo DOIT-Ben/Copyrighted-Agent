@@ -6,67 +6,73 @@ from app.core.utils.text import escape_html
 
 
 SECTION_LINKS = {
-    "home": ("/", "\u603b\u63a7\u53f0", "dashboard"),
-    "submissions": ("/submissions", "\u6279\u6b21\u603b\u89c8", "layers"),
-    "ops": ("/ops", "\u8fd0\u7ef4\u4e2d\u5fc3", "terminal"),
+    "home": ("/", "总控台", "dashboard"),
+    "submissions": ("/submissions", "批次总览", "layers"),
+    "ops": ("/ops", "运维中心", "terminal"),
 }
 
 
 MODE_LABELS = {
-    "single_case_package": "\u6a21\u5f0f A\uff1a\u5355\u9879\u76ee\u6574\u5305",
-    "batch_same_material": "\u6a21\u5f0f B\uff1a\u540c\u7c7b\u6279\u91cf\u5f52\u6863",
+    "single_case_package": "模式 A：单项目整包",
+    "batch_same_material": "模式 B：同类批量归档",
+}
+
+REVIEW_STRATEGY_LABELS = {
+    "auto_review": "直接审查",
+    "manual_desensitized_review": "先脱敏后继续审查",
 }
 
 TYPE_LABELS = {
-    "agreement": "\u5408\u4f5c\u534f\u8bae",
-    "source_code": "\u6e90\u4ee3\u7801",
-    "info_form": "\u4fe1\u606f\u91c7\u96c6\u8868",
-    "software_doc": "\u8f6f\u4ef6\u8bf4\u660e\u6587\u6863",
-    "unknown": "\u5f85\u8bc6\u522b",
+    "agreement": "合作协议",
+    "source_code": "源代码",
+    "info_form": "信息采集表",
+    "software_doc": "软件说明文档",
+    "unknown": "待识别",
 }
 
 REPORT_LABELS = {
-    "material_markdown": "\u6750\u6599\u5ba1\u67e5\u62a5\u544a",
-    "case_markdown": "\u9879\u76ee\u7efc\u5408\u62a5\u544a",
-    "batch_markdown": "\u6279\u6b21\u6c47\u603b\u62a5\u544a",
+    "material_markdown": "材料审查报告",
+    "case_markdown": "项目综合报告",
+    "batch_markdown": "批次汇总报告",
 }
 
 SEVERITY_LABELS = {
-    "severe": "\u4e25\u91cd",
-    "moderate": "\u4e2d\u7b49",
-    "minor": "\u8f83\u8f7b",
+    "severe": "严重",
+    "moderate": "中等",
+    "minor": "较轻",
 }
 
 STATUS_LABELS = {
-    "ok": "\u6b63\u5e38",
-    "completed": "\u5df2\u5b8c\u6210",
-    "healthy": "\u5065\u5eb7",
-    "pass": "\u901a\u8fc7",
-    "grouped": "\u5df2\u5f52\u7ec4",
-    "success": "\u6210\u529f",
-    "ready": "\u5c31\u7eea",
-    "warning": "\u544a\u8b66",
-    "processing": "\u5904\u7406\u4e2d",
-    "running": "\u8fd0\u884c\u4e2d",
-    "needs_review": "\u5f85\u590d\u6838",
-    "skipped": "\u5df2\u8df3\u8fc7",
-    "minor": "\u8f83\u8f7b",
-    "moderate": "\u4e2d\u7b49",
-    "failed": "\u5931\u8d25",
-    "error": "\u9519\u8bef",
-    "blocked": "\u963b\u585e",
-    "danger": "\u9ad8\u98ce\u9669",
-    "severe": "\u4e25\u91cd",
-    "info": "\u4fe1\u606f",
-    "active": "\u5df2\u542f\u7528",
-    "idle": "\u7a7a\u95f2",
-    "not_run": "\u672a\u6267\u884c",
-    "not_configured": "\u672a\u914d\u7f6e",
-    "mock_mode": "\u672c\u5730\u6a21\u62df",
-    "ready_for_probe": "\u53ef\u8fdb\u884c\u63a2\u9488",
-    "probe_passed": "\u63a2\u9488\u901a\u8fc7",
-    "probe_failed": "\u63a2\u9488\u5931\u8d25",
-    "probe_skipped": "\u63a2\u9488\u8df3\u8fc7",
+    "ok": "正常",
+    "completed": "已完成",
+    "healthy": "健康",
+    "pass": "通过",
+    "grouped": "已归组",
+    "success": "成功",
+    "ready": "就绪",
+    "warning": "告警",
+    "processing": "处理中",
+    "running": "运行中",
+    "needs_review": "待复核",
+    "awaiting_manual_review": "待继续审查",
+    "skipped": "已跳过",
+    "minor": "较轻",
+    "moderate": "中等",
+    "failed": "失败",
+    "error": "错误",
+    "blocked": "阻塞",
+    "danger": "高风险",
+    "severe": "严重",
+    "info": "信息",
+    "active": "已启用",
+    "idle": "空闲",
+    "not_run": "未执行",
+    "not_configured": "未配置",
+    "mock_mode": "本地模拟",
+    "ready_for_probe": "可进行探针",
+    "probe_passed": "探针通过",
+    "probe_failed": "探针失败",
+    "probe_skipped": "探针跳过",
 }
 
 ICON_PATHS = {
@@ -112,6 +118,10 @@ def type_label(material_type: str) -> str:
     return TYPE_LABELS.get(material_type, material_type)
 
 
+def review_strategy_label(review_strategy: str) -> str:
+    return REVIEW_STRATEGY_LABELS.get(review_strategy, review_strategy or "-")
+
+
 def report_label(report_type: str) -> str:
     return REPORT_LABELS.get(report_type, report_type)
 
@@ -133,7 +143,7 @@ def status_tone(status: str) -> str:
     normalized = str(status or "").lower()
     if normalized in {"ok", "completed", "healthy", "pass", "grouped", "success", "ready"}:
         return "success"
-    if normalized in {"warning", "processing", "running", "needs_review", "skipped", "moderate", "minor"}:
+    if normalized in {"warning", "processing", "running", "needs_review", "awaiting_manual_review", "skipped", "moderate", "minor"}:
         return "warning"
     if normalized in {"failed", "error", "blocked", "danger", "severe"}:
         return "danger"
@@ -179,21 +189,18 @@ def nav_link(path: str, label: str, active: bool = False, *, icon_name: str = "d
 
 
 def _table_cell(header: str, cell: str, index: int) -> str:
-    if index == 0:
-        value = f'<div class="table-cell-value table-cell-value-title">{cell}</div>'
-    else:
-        value = f'<div class="table-cell-value">{cell}</div>'
+    value_class = "table-cell-value table-cell-value-title" if index == 0 else "table-cell-value"
     return (
         f'<td data-label="{escape_html(header)}">'
         f'<span class="table-cell-label">{escape_html(header)}</span>'
-        f"{value}"
+        f'<div class="{value_class}">{cell}</div>'
         "</td>"
     )
 
 
 def table(headers: list[str], rows: list[list[str]]) -> str:
     if not rows:
-        return empty_state("\u6682\u65e0\u6570\u636e", "\u5f53\u524d\u89c6\u56fe\u8fd8\u6ca1\u6709\u53ef\u663e\u793a\u7684\u5185\u5bb9\u3002")
+        return empty_state("暂无数据", "当前视图还没有可显示的内容。")
     head = "".join(f'<th scope="col">{escape_html(item)}</th>' for item in headers)
     body = "".join(
         "<tr>"
@@ -295,10 +302,10 @@ def read_text_file(path_value: str) -> str:
 
 
 def _breadcrumb(active_nav: str, header_tag: str) -> str:
-    current_path, current_label, _ = SECTION_LINKS.get(active_nav, ("/", "\u603b\u63a7\u53f0", "dashboard"))
+    current_path, current_label, _ = SECTION_LINKS.get(active_nav, ("/", "总控台", "dashboard"))
     return (
         '<nav class="workspace-breadcrumbs" aria-label="Breadcrumb">'
-        '<a href="/">\u5de5\u4f5c\u53f0</a>'
+        '<a href="/">工作台</a>'
         '<span>/</span>'
         f'<a href="{escape_html(current_path)}">{escape_html(current_label)}</a>'
         '<span>/</span>'
@@ -307,37 +314,10 @@ def _breadcrumb(active_nav: str, header_tag: str) -> str:
     )
 
 
-def _shortcut_link(path: str, label: str, icon_name: str) -> str:
-    return (
-        f'<a class="workspace-shortcut" href="{escape_html(path)}">'
-        f'{icon(icon_name, "icon icon-sm")}'
-        f"<span>{escape_html(label)}</span>"
-        "</a>"
-    )
-
-
-def _workspace_shortcuts(active_nav: str, page_links: list[tuple[str, str, str]] | None) -> str:
-    items: list[tuple[str, str, str]] = []
-    seen: set[tuple[str, str]] = set()
-
-    for key in ("home", "submissions", "ops"):
-        path, label, icon_name = SECTION_LINKS[key]
-        marker = (path, label)
-        if marker in seen:
-            continue
-        seen.add(marker)
-        items.append((path, label, icon_name))
-
-    return '<div class="workspace-shortcuts">' + "".join(
-        _shortcut_link(path, label, icon_name) for path, label, icon_name in items
-    ) + "</div>"
-
-
 def _page_link_strip(page_links: list[tuple[str, str, str]] | None) -> str:
     items = page_links or []
     if not items:
         return ""
-
     chips = "".join(
         (
             f'<a class="page-link-chip" href="{escape_html(path)}">'
@@ -352,18 +332,6 @@ def _page_link_strip(page_links: list[tuple[str, str, str]] | None) -> str:
         '<strong class="page-link-strip-label">本页导航</strong>'
         f'<div class="page-link-strip-row">{chips}</div>'
         "</section>"
-    )
-
-
-def _release_card(title: str, note: str, tone: str, icon_name: str) -> str:
-    return (
-        f'<article class="release-card release-card-{tone}">'
-        f'<div class="release-card-icon">{icon(icon_name, "icon icon-sm")}</div>'
-        '<div class="release-card-copy">'
-        f"<strong>{escape_html(title)}</strong>"
-        f"<span>{escape_html(note)}</span>"
-        "</div>"
-        "</article>"
     )
 
 
@@ -390,33 +358,11 @@ def layout(
 ) -> str:
     mode_count = len(MODE_LABELS)
     type_count = len([key for key in TYPE_LABELS if key != "unknown"])
-    release_note = header_note or "\u4ece\u540c\u4e00\u4e2a\u53ef\u4fe1\u5de5\u4f5c\u9762\u4e2d\uff0c\u76f4\u63a5\u770b\u5230\u5bfc\u5165\u3001\u5ba1\u67e5\u3001\u5bfc\u51fa\u4e0e\u4eba\u5de5\u51b3\u7b56\u3002"
-    current_section = SECTION_LINKS.get(active_nav, ("/", header_tag, "dashboard"))[1]
+    release_note = header_note or "从同一个可视工作面中，直接看到导入、审查、导出与人工决策。"
     home_label = SECTION_LINKS["home"][1]
     submissions_label = SECTION_LINKS["submissions"][1]
     ops_label = SECTION_LINKS["ops"][1]
-    release_cards = "".join(
-        [
-            _release_card(
-                "\u672c\u5730\u8131\u654f",
-                "\u6240\u6709\u975e mock \u8c03\u7528\u90fd\u5148\u8fc7\u8131\u654f\u8fb9\u754c\uff0c\u518d\u79bb\u5f00\u672c\u673a\u3002",
-                "success",
-                "shield",
-            ),
-            _release_card(
-                "\u53ef\u8ffd\u6eaf\u94fe\u8def",
-                "\u6279\u6b21\u3001\u9879\u76ee\u3001\u62a5\u544a\u4e0e\u4ea7\u7269\u94fe\u8def\u5728\u9875\u9762\u4e0a\u6301\u7eed\u53ef\u89c1\u3002",
-                "info",
-                "report",
-            ),
-            _release_card(
-                current_section,
-                release_note,
-                "warning",
-                "bar",
-            ),
-        ]
-    )
+
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -429,19 +375,19 @@ def layout(
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <a class="skip-link" href="#main-content">\u8df3\u5230\u4e3b\u5185\u5bb9</a>
+  <a class="skip-link" href="#main-content">跳到主内容</a>
   <div class="admin-shell">
     <aside class="sidebar">
       <a class="sidebar-brand" href="/">
         <span class="sidebar-brand-mark">{icon("dashboard", "icon icon-md")}</span>
         <span class="sidebar-brand-copy">
-          <strong>\u8f6f\u8457\u5206\u6790\u5e73\u53f0</strong>
-          <small>\u4e2d\u6587\u7ba1\u7406\u53f0</small>
+          <strong>软著分析平台</strong>
+          <small>中文管理台</small>
         </span>
       </a>
 
       <section class="sidebar-section">
-        <span class="sidebar-label">\u5bfc\u822a</span>
+        <span class="sidebar-label">导航</span>
         <nav class="sidebar-nav" aria-label="Main navigation">
           {nav_link("/", home_label, active_nav == "home", icon_name="dashboard")}
           {nav_link("/submissions", submissions_label, active_nav == "submissions", icon_name="layers")}
@@ -450,35 +396,34 @@ def layout(
       </section>
 
       <section class="sidebar-section">
-        <span class="sidebar-label">\u5904\u7406\u6d41\u7a0b</span>
+        <span class="sidebar-label">处理流程</span>
         <div class="sidebar-list">
-          <div class="sidebar-item">{icon("upload", "icon icon-sm")}<span>ZIP \u5bfc\u5165</span></div>
-          <div class="sidebar-item">{icon("cluster", "icon icon-sm")}<span>\u81ea\u52a8\u5f52\u7c7b</span></div>
-          <div class="sidebar-item">{icon("shield", "icon icon-sm")}<span>\u89c4\u5219\u5ba1\u67e5</span></div>
-          <div class="sidebar-item">{icon("report", "icon icon-sm")}<span>\u62a5\u544a\u4ea4\u4ed8</span></div>
+          <div class="sidebar-item">{icon("upload", "icon icon-sm")}<span>ZIP 导入</span></div>
+          <div class="sidebar-item">{icon("cluster", "icon icon-sm")}<span>自动归类</span></div>
+          <div class="sidebar-item">{icon("shield", "icon icon-sm")}<span>规则审查</span></div>
+          <div class="sidebar-item">{icon("report", "icon icon-sm")}<span>报告交付</span></div>
         </div>
       </section>
 
       <section class="sidebar-section sidebar-signal">
-        <span class="sidebar-label">\u8fd0\u884c\u57fa\u7ebf</span>
+        <span class="sidebar-label">运行基线</span>
         <div class="sidebar-mini-kpi">
-          <div><strong>{mode_count}</strong><span>\u5bfc\u5165\u6a21\u5f0f</span></div>
-          <div><strong>{type_count}</strong><span>\u6838\u5fc3\u6750\u6599</span></div>
-          <div><strong>safe</strong><span>\u5b89\u5168\u8fb9\u754c</span></div>
+          <div><strong>{mode_count}</strong><span>导入模式</span></div>
+          <div><strong>{type_count}</strong><span>核心材料</span></div>
+          <div><strong>safe</strong><span>安全边界</span></div>
         </div>
       </section>
     </aside>
 
     <main id="main-content" class="workspace">
-      <section class="workspace-rail" aria-label="Release context">
+      <section class="workspace-rail" aria-label="Page context">
         <div class="workspace-rail-copy">
           {_breadcrumb(active_nav, header_tag)}
           <div class="workspace-rail-summary">
-            <strong>\u53d1\u5e03\u51c6\u5907\u5ea6</strong>
+            <strong>当前说明</strong>
             <span>{escape_html(release_note)}</span>
           </div>
         </div>
-        {_workspace_shortcuts(active_nav, page_links)}
       </section>
 
       <header class="workspace-header">
@@ -491,9 +436,6 @@ def layout(
       </header>
       {workspace_notice}
       {_page_link_strip(page_links)}
-      <section class="workspace-trust-grid" aria-label="System trust signals">
-        {release_cards}
-      </section>
       <div class="workspace-content">{content}</div>
     </main>
   </div>
@@ -520,6 +462,7 @@ __all__ = [
     "panel",
     "pill",
     "read_text_file",
+    "review_strategy_label",
     "render_stylesheet",
     "report_label",
     "severity_label",

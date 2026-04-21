@@ -12,6 +12,7 @@ class Submission:
     storage_path: str
     status: str
     created_at: str
+    review_strategy: str = "auto_review"
     created_by: str = "local"
     material_ids: list[str] = field(default_factory=list)
     case_ids: list[str] = field(default_factory=list)

@@ -12,6 +12,7 @@ from app.web.view_helpers import (
     mode_label,
     panel,
     pill,
+    review_strategy_label,
     status_label,
     status_tone,
     table,
@@ -36,28 +37,26 @@ def render_home_page() -> str:
 
     latest_submission = submissions[0] if submissions else None
     latest_status = latest_submission.status if latest_submission else "idle"
-    needs_review_count = sum(
-        1 for material in materials if str(getattr(material, "review_status", "")).lower() == "needs_review"
-    )
+    awaiting_continue_count = sum(1 for item in submissions if getattr(item, "status", "") == "awaiting_manual_review")
 
     header_meta = "".join(
         [
-            pill("上传即分析", "success"),
+            pill("上传即进入批次工作台", "success"),
             pill(f"{len(submissions)} 个批次", "info"),
-            pill("完成后直达结果页", "success"),
+            pill(f"{awaiting_continue_count} 个待继续审查", "warning" if awaiting_continue_count else "neutral"),
         ]
     )
 
     kpis = "".join(
         [
-            metric_card("批次数", str(len(submissions)), "当前运行时已导入的批次数", "info", icon_name="layers"),
-            metric_card("项目数", str(len(cases)), "已形成的项目视图", "success", icon_name="lock"),
-            metric_card("报告数", str(len(reports)), "可追溯的审查产物", "neutral", icon_name="report"),
+            metric_card("批次数", str(len(submissions)), "当前运行时已导入的批次数量", "info", icon_name="layers"),
+            metric_card("项目数", str(len(cases)), "当前已形成的项目视图数量", "success", icon_name="lock"),
+            metric_card("报告数", str(len(reports)), "当前已生成的交付型报告数量", "neutral", icon_name="report"),
             metric_card(
-                "待复核",
-                str(needs_review_count),
-                "等待人工确认的材料",
-                "warning" if needs_review_count else status_tone(latest_status),
+                "待继续审查",
+                str(awaiting_continue_count),
+                "已完成脱敏、等待人工确认后继续审查的批次",
+                "warning" if awaiting_continue_count else status_tone(latest_status),
                 icon_name="alert",
             ),
         ]
@@ -67,29 +66,29 @@ def render_home_page() -> str:
     <div class="import-console-grid">
       <div class="import-console-main task-focus-main">
         <div class="helper-chip-row">
-          <span class="helper-chip">1. 选择模式</span>
-          <span class="helper-chip">2. 上传 ZIP</span>
-          <span class="helper-chip">3. 进入批次详情</span>
+          <span class="helper-chip">1. 选择导入模式</span>
+          <span class="helper-chip">2. 选择审查策略</span>
+          <span class="helper-chip">3. 上传 ZIP 并进入批次</span>
         </div>
         <div class="import-console-copy">
-          <strong>上传一个软著包，然后直接看分析结果</strong>
-          <p>首页现在只承担一个任务：把 ZIP 导入系统。提交后会自动跳转到批次详情页，在那里查看待复核队列、项目分组、人工干预台、报告和导出中心。</p>
+          <strong>上传一个软著包，然后按你需要的节奏完成审查</strong>
+          <p>首页现在只负责导入。提交后会自动跳到批次详情页，在那里继续下载脱敏件、查看进度、继续审查和导出结果。</p>
         </div>
         <div class="summary-grid task-focus-grid">
           <div class="summary-tile">
-            <span>模式 A</span>
-            <strong>单项目整包</strong>
-            <small>一个 ZIP 里已经包含同一个软著项目的完整材料。</small>
+            <span>策略一</span>
+            <strong>直接审查</strong>
+            <small>上传后立即生成项目审查结果和报告，适合标准流程。</small>
           </div>
           <div class="summary-tile">
-            <span>模式 B</span>
-            <strong>同类批量归档</strong>
-            <small>多个软著的同类材料先统一建档，再去批次详情做重组。</small>
+            <span>策略二</span>
+            <strong>先脱敏后继续审查</strong>
+            <small>系统先完成解析与脱敏，用户确认脱敏件后再点击继续审查。</small>
           </div>
           <div class="summary-tile">
             <span>结果入口</span>
             <strong>自动跳到批次详情</strong>
-            <small>不需要回头找页面，上传完成后直接进入结果工作台。</small>
+            <small>不需要回头找页面，导入完成后直接进入当前批次工作台。</small>
           </div>
         </div>
       </div>
@@ -97,24 +96,32 @@ def render_home_page() -> str:
         <form class="admin-form import-console-form" action="/upload" method="post" enctype="multipart/form-data">
           <div class="operator-note">
             <strong>浏览器端导入说明</strong>
-            <span>先选模式，再上传 ZIP。系统会完成解析、分类、审查，并把你带到当前批次的结果页。</span>
+            <span>先选导入模式，再选审查策略，然后上传 ZIP。系统会完成解析、分类和脱敏，并把你带到当前批次结果页。</span>
           </div>
           <label class="field">
             <span>导入模式</span>
             <select name="mode">
               <option value="single_case_package">模式 A：单项目整包</option>
-              <option value="batch_same_material">模式 B：同类批量归档</option>
+              <option value="batch_same_material">模式 B：同类材料批量归档</option>
             </select>
-            <span class="field-hint">不知道怎么选时，如果 ZIP 里是一个完整软著项目，优先选模式 A。</span>
+            <span class="field-hint">如果 ZIP 里是一个完整软著项目，优先选择模式 A。</span>
+          </label>
+          <label class="field">
+            <span>审查策略</span>
+            <select name="review_strategy">
+              <option value="auto_review">直接审查：导入后立即生成审查结果</option>
+              <option value="manual_desensitized_review">先脱敏后继续审查：先下载脱敏件，再手动继续</option>
+            </select>
+            <span class="field-hint">如果你想先查看脱敏文件，再决定是否进入正式审查，请选择第二项。</span>
           </label>
           <label class="field">
             <span>ZIP 文件</span>
             <input type="file" name="file" accept=".zip" required>
-            <span class="field-hint">仅支持 ZIP。提交后会直接跳转到该批次的详情页。</span>
+            <span class="field-hint">仅支持 ZIP。提交后会直接跳到该批次的详情页。</span>
           </label>
           <div class="helper-chip-row">
-            <span class="helper-chip">上传后自动看结果</span>
-            <span class="helper-chip">结果页可人工纠偏</span>
+            <span class="helper-chip">首页只做导入</span>
+            <span class="helper-chip">批次页负责脱敏与审查</span>
             <span class="helper-chip">结果页可直接导出</span>
           </div>
           <div class="inline-actions">
@@ -133,26 +140,28 @@ def render_home_page() -> str:
           %s
           %s
           %s
-        </div>
-        <div class="operator-note">
-          <strong>上传后的查看路径</strong>
-          <span>先看待复核队列，再看项目分组和报告，最后进入人工干预台或导出中心。</span>
+          %s
         </div>
         <div class="inline-actions">
           <a class="button-primary" href="/submissions/%s">%s查看本次结果</a>
-          <a class="button-secondary button-compact" href="/submissions/%s#needs-review">%s看待复核</a>
-          <a class="button-secondary button-compact" href="/submissions/%s#operator-console">%s去人工干预</a>
-          <a class="button-secondary button-compact" href="/submissions/%s#export-center">%s去导出中心</a>
+          <a class="button-secondary button-compact" href="/submissions/%s/materials">%s看材料与脱敏件</a>
+          <a class="button-secondary button-compact" href="/submissions/%s/operator">%s去人工处理</a>
+          <a class="button-secondary button-compact" href="/submissions/%s/exports">%s去导出中心</a>
         </div>
         """ % (
             _summary_tile("最近批次", latest_submission.filename, "最近一次上传的 ZIP"),
-            _summary_tile("处理状态", status_label(latest_submission.status), "当前这次分析的状态"),
-            _summary_tile("材料数", str(len(latest_submission.material_ids)), "这个批次中识别出的材料数量"),
-            _summary_tile("项目数", str(len(latest_submission.case_ids)), "系统归组后的项目数量"),
+            _summary_tile("处理状态", status_label(latest_submission.status), "当前这次导入的最新状态"),
+            _summary_tile("导入模式", mode_label(latest_submission.mode), "当前批次使用的导入模式"),
+            _summary_tile(
+                "审查策略",
+                review_strategy_label(getattr(latest_submission, "review_strategy", "auto_review")),
+                "决定是否先下载脱敏件再继续审查",
+            ),
+            _summary_tile("项目数", str(len(latest_submission.case_ids)), "当前批次已形成的项目数量"),
             latest_submission.id,
             icon("search", "icon icon-sm"),
             latest_submission.id,
-            icon("alert", "icon icon-sm"),
+            icon("download", "icon icon-sm"),
             latest_submission.id,
             icon("wrench", "icon icon-sm"),
             latest_submission.id,
@@ -170,16 +179,17 @@ def render_home_page() -> str:
         [
             link(f"/submissions/{submission.id}", submission.filename),
             escape_html(mode_label(submission.mode)),
+            escape_html(review_strategy_label(getattr(submission, "review_strategy", "auto_review"))),
             pill(status_label(submission.status), status_tone(submission.status)),
             escape_html(str(len(submission.material_ids))),
             escape_html(str(len(submission.case_ids))),
             escape_html(submission.created_at),
         ]
-        for submission in submissions[:5]
+        for submission in submissions[:6]
     ]
 
     recent_body = (
-        table(["批次", "模式", "状态", "材料数", "项目数", "导入时间"], recent_rows)
+        table(["批次", "导入模式", "审查策略", "状态", "材料数", "项目数", "导入时间"], recent_rows)
         if recent_rows
         else empty_state("暂无导入记录", "上传 ZIP 后，这里会出现最近的批次和状态。")
     )
@@ -190,49 +200,33 @@ def render_home_page() -> str:
         <span class="sequence-index">1</span>
         <div>
           <strong>上传 ZIP</strong>
-          <p>在首页选模式并提交 ZIP。</p>
+          <p>在首页选导入模式和审查策略，然后提交 ZIP。</p>
         </div>
       </article>
       <article class="sequence-step">
         <span class="sequence-index">2</span>
         <div>
-          <strong>查看批次详情</strong>
-          <p>系统完成处理后，直接进入批次详情页查看材料矩阵和待复核队列。</p>
+          <strong>查看脱敏与进度</strong>
+          <p>系统完成解析后，进入批次详情页查看材料、脱敏件和当前进度。</p>
         </div>
       </article>
       <article class="sequence-step">
         <span class="sequence-index">3</span>
         <div>
-          <strong>人工纠偏与导出</strong>
-          <p>在批次详情页完成人工干预、重跑审查，再导出报告和批次产物。</p>
+          <strong>继续审查或直接看结果</strong>
+          <p>直接审查模式会立即出结果；脱敏优先模式可先下载脱敏件，再点击继续审查。</p>
         </div>
       </article>
     </div>
     """
 
-    mode_body = """
-    <div class="mode-grid">
-      <article class="mode-tile">
-        <span class="mode-icon">%s</span>
-        <strong>模式 A：单项目整包</strong>
-        <p>面向同一个软著项目的完整材料包，上传后直接形成一个项目视图和对应报告。</p>
-      </article>
-      <article class="mode-tile">
-        <span class="mode-icon">%s</span>
-        <strong>模式 B：同类批量归档</strong>
-        <p>面向多个软著的同类材料批量入库，后续在批次详情页进行分组和纠偏。</p>
-      </article>
-    </div>
-    """ % (icon("lock", "icon icon-sm"), icon("layers", "icon icon-sm"))
-
     content = f"""
     <section class="kpi-grid">{kpis}</section>
     <section class="dashboard-grid">
-      {panel('导入台', import_body, kicker='主入口', extra_class='span-12 panel-soft panel-import-console', icon_name='upload', description='先上传，再看结果，不让首页说明文字盖过真正操作。', panel_id='import-console')}
-      {panel('最近一次分析', latest_result_body, kicker='结果入口', extra_class='span-12', icon_name='search', description='你刚上传的内容会先回到这里，直接进入待复核、人工干预和导出。', panel_id='latest-result')}
-      {panel('怎么走这条链路', process_body, kicker='操作顺序', extra_class='span-7 panel-soft', icon_name='spark', description='首页只负责导入，真正的结果查看和纠偏都在批次详情页。', panel_id='workflow')}
-      {panel('两种导入模式', mode_body, kicker='模式选择', extra_class='span-5', icon_name='layers', description='用最少的信息告诉你现在该选哪一种模式。', panel_id='mode-guide')}
-      {panel('最近导入记录', recent_body, kicker='运行状态', extra_class='span-12', icon_name='clock', description='如果你想回看之前的分析结果，从这里进入历史批次。', panel_id='recent-imports')}
+      {panel('导入入口', import_body, kicker='主入口', extra_class='span-12 panel-soft panel-import-console', icon_name='upload', description='先上传，再进入批次详情继续处理。', panel_id='import-console')}
+      {panel('最近一次分析', latest_result_body, kicker='结果入口', extra_class='span-12', icon_name='search', description='最新一次上传会优先回到这里。', panel_id='latest-result')}
+      {panel('处理顺序', process_body, kicker='流程说明', extra_class='span-5 panel-soft', icon_name='spark', description='首页只负责导入，批次页负责处理与结果。', panel_id='workflow')}
+      {panel('最近导入记录', recent_body, kicker='运行状态', extra_class='span-7', icon_name='clock', description='如需回看历史结果，从这里进入对应批次。', panel_id='recent-imports')}
     </section>
     """
 
@@ -240,11 +234,11 @@ def render_home_page() -> str:
         title="总控台",
         active_nav="home",
         header_tag="总控台",
-        header_title="上传一个软著并直接看结果",
-        header_subtitle="首页只保留上传、模式选择和结果入口。批次详情页负责看待复核、人工干预、报告和导出。",
+        header_title="上传一个软著并开始处理",
+        header_subtitle="首页只保留导入、模式选择和结果入口。材料、脱敏、审查和导出都放到批次页继续完成。",
         header_meta=header_meta,
         content=content,
-        header_note="上传完成后直接跳转到批次详情页；如果要回看历史结果，就从最近批次或批次总览进入。",
+        header_note="如果想先看脱敏件，再选择“先脱敏后继续审查”；如果想直接得到结果，就选择“直接审查”。",
         page_links=[
             ("#import-console", "上传入口", "upload"),
             ("#latest-result", "最近结果", "search"),

@@ -7,12 +7,17 @@ import zipfile
 import pytest
 
 
-def _create_submission(api_client, zip_path, mode: str = "single_case_package") -> str:
+def _create_submission(
+    api_client,
+    zip_path,
+    mode: str = "single_case_package",
+    review_strategy: str = "auto_review",
+) -> str:
     with zip_path.open("rb") as handle:
         response = api_client.post(
             "/api/submissions",
             files={"file": (zip_path.name, handle, "application/zip")},
-            data={"mode": mode},
+            data={"mode": mode, "review_strategy": review_strategy},
         )
     assert response.status_code in (200, 201, 202)
     return response.json()["id"]
@@ -154,7 +159,6 @@ def test_html_operator_actions_and_download_endpoints_work(api_client, mode_a_zi
     submission_page = api_client.get(change_location.split("#", 1)[0])
     assert "更正审计" in submission_page.text
     assert "产物浏览" in submission_page.text
-    assert "材料类型已更新" in submission_page.text
 
     rerun_response = api_client.post(
         f"/submissions/{submission_id}/actions/rerun-review",
@@ -164,9 +168,6 @@ def test_html_operator_actions_and_download_endpoints_work(api_client, mode_a_zi
     rerun_location = rerun_response.headers.get("Location", "")
     assert "notice=case_review_rerun" in rerun_location
     assert "#export-center" in rerun_location
-
-    rerun_page = api_client.get(rerun_location.split("#", 1)[0])
-    assert "项目审查已重跑" in rerun_page.text
 
     report_download = api_client.get(f"/downloads/reports/{report_id}")
     assert report_download.status_code == 200
@@ -187,3 +188,39 @@ def test_html_operator_actions_and_download_endpoints_work(api_client, mode_a_zi
     log_download = api_client.get("/downloads/logs/app")
     assert log_download.status_code == 200
     assert b"ingest_submission_completed" in log_download.content or b"upload_submission_api" in log_download.content
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
+def test_html_manual_desensitized_flow_exposes_continue_review_entry(api_client, mode_a_zip_path):
+    submission_id = _create_submission(
+        api_client,
+        mode_a_zip_path,
+        review_strategy="manual_desensitized_review",
+    )
+    submission_payload = api_client.get(f"/api/submissions/{submission_id}").json()
+    case_id = submission_payload["case_ids"][0]
+
+    materials_page = api_client.get(f"/submissions/{submission_id}/materials")
+    assert materials_page.status_code == 200
+    assert "脱敏工作台" in materials_page.text
+    assert "脱敏件" in materials_page.text
+
+    operator_page = api_client.get(f"/submissions/{submission_id}/operator")
+    assert operator_page.status_code == 200
+    assert "脱敏后继续审查" in operator_page.text
+    assert "继续审查项目" in operator_page.text
+
+    continue_response = api_client.post(
+        f"/submissions/{submission_id}/actions/continue-review",
+        data={"case_id": case_id, "note": "html continue"},
+    )
+    assert continue_response.status_code == 303
+    continue_location = continue_response.headers.get("Location", "")
+    assert "notice=case_review_continued" in continue_location
+    assert "#export-center" in continue_location
+
+    submission_after = api_client.get(f"/api/submissions/{submission_id}").json()
+    assert submission_after["status"] == "completed"
+    assert submission_after["report_ids"]

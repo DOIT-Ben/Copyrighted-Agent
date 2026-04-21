@@ -3,12 +3,17 @@ from __future__ import annotations
 import pytest
 
 
-def _create_submission(api_client, zip_path, mode: str = "single_case_package") -> str:
+def _create_submission(
+    api_client,
+    zip_path,
+    mode: str = "single_case_package",
+    review_strategy: str = "auto_review",
+) -> str:
     with zip_path.open("rb") as handle:
         response = api_client.post(
             "/api/submissions",
             files={"file": (zip_path.name, handle, "application/zip")},
-            data={"mode": mode},
+            data={"mode": mode, "review_strategy": review_strategy},
         )
     assert response.status_code in (200, 201, 202)
     return response.json()["id"]
@@ -97,3 +102,47 @@ def test_manual_case_regroup_flow_supports_create_assign_merge_and_rerun(api_cli
         "rerun_case_review",
         "merge_cases",
     ]
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.api
+def test_manual_desensitized_review_can_continue_after_download_stage(api_client, mode_a_zip_path):
+    submission_id = _create_submission(
+        api_client,
+        mode_a_zip_path,
+        review_strategy="manual_desensitized_review",
+    )
+    submission_payload = api_client.get(f"/api/submissions/{submission_id}").json()
+    files_payload = api_client.get(f"/api/submissions/{submission_id}/files").json()
+
+    assert submission_payload["status"] == "awaiting_manual_review"
+    assert submission_payload["report_ids"] == []
+    assert submission_payload["case_ids"]
+
+    case_id = submission_payload["case_ids"][0]
+    case_before = api_client.get(f"/api/cases/{case_id}").json()
+    assert case_before["status"] == "awaiting_manual_review"
+    assert case_before["report_id"] == ""
+    assert files_payload["files"]
+
+    artifact_download = api_client.get(f"/downloads/materials/{files_payload['files'][0]['id']}/desensitized")
+    assert artifact_download.status_code == 200
+    assert artifact_download.content
+
+    continue_response = api_client.post(
+        f"/api/cases/{case_id}/continue-review",
+        data={"corrected_by": "tester", "note": "desensitized confirmed"},
+    )
+    assert continue_response.status_code == 200
+    continue_payload = continue_response.json()
+    assert continue_payload["case"]["status"] == "completed"
+    assert continue_payload["report"]["scope_id"] == case_id
+    assert continue_payload["correction"]["correction_type"] == "continue_case_review_from_desensitized"
+
+    submission_after = api_client.get(f"/api/submissions/{submission_id}").json()
+    assert submission_after["status"] == "completed"
+    assert submission_after["report_ids"]
+
+    corrections = api_client.get(f"/api/submissions/{submission_id}/corrections").json()["corrections"]
+    assert corrections[0]["correction_type"] == "continue_case_review_from_desensitized"
