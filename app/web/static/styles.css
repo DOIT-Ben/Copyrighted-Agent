@@ -499,14 +499,6 @@ textarea {
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
-.lead-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(320px, 0.95fr);
-  gap: 0.95rem;
-  align-items: start;
-  margin-bottom: 0.95rem;
-}
-
 .dashboard-grid {
   grid-template-columns: repeat(12, minmax(0, 1fr));
 }
@@ -928,6 +920,92 @@ input[type="file"]::file-selector-button {
   gap: 0.95rem;
 }
 
+.import-console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(360px, 0.92fr);
+  gap: 1.1rem;
+  align-items: start;
+}
+
+.import-console-main,
+.import-console-side,
+.import-console-intro,
+.import-console-form,
+.import-console-copy,
+.trust-signal-card {
+  display: grid;
+}
+
+.import-console-main,
+.import-console-side,
+.import-console-intro,
+.import-console-form,
+.trust-signal-card {
+  gap: 1rem;
+}
+
+.import-console-main,
+.import-console-side {
+  min-width: 0;
+}
+
+.import-console-copy {
+  gap: 0.45rem;
+  max-width: 52rem;
+}
+
+.import-console-copy strong {
+  font-family: var(--font-heading);
+  font-size: clamp(1.2rem, 2vw, 1.7rem);
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+}
+
+.import-console-copy p,
+.trust-signal-card p {
+  margin: 0;
+}
+
+.import-summary-grid,
+.trust-signal-grid {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.import-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.trust-signal-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.import-console-form {
+  padding: 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.compare-grid-import {
+  margin-bottom: 0;
+}
+
+.trust-signal-card {
+  align-content: start;
+  min-height: 100%;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94));
+  box-shadow: var(--shadow-sm);
+}
+
+.trust-signal-card strong {
+  font-family: var(--font-heading);
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1062,19 +1140,6 @@ input[type="file"]::file-selector-button {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 0.9rem;
   margin-bottom: 1rem;
-}
-
-.panel-import-lead,
-.panel-trust-rail {
-  height: auto;
-}
-
-.panel-import-lead .admin-form {
-  gap: 1.1rem;
-}
-
-.panel-trust-rail .status-stack {
-  gap: 0.8rem;
 }
 
 .command-cluster {
@@ -1319,6 +1384,36 @@ input[type="file"]::file-selector-button {
 .compare-card p,
 .compare-card li {
   color: inherit;
+}
+
+.panel-primary .import-console-copy p,
+.panel-primary .field-hint,
+.panel-primary .summary-tile span,
+.panel-primary .summary-tile small,
+.panel-primary .operator-note span,
+.panel-primary .helper-chip {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.panel-primary .import-summary-grid .summary-tile,
+.panel-primary .operator-note {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.panel-primary .helper-chip {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.panel-primary .summary-tile strong,
+.panel-primary .operator-note strong,
+.panel-primary .compare-card strong {
+  color: #fff;
+}
+
+.panel-primary .button-secondary {
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .checklist {
@@ -1610,8 +1705,8 @@ textarea:focus-visible {
 }
 
 @media (max-width: 1400px) {
-  .lead-grid {
-    grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.95fr);
+  .import-console-grid {
+    grid-template-columns: 1fr;
   }
 
   .kpi-grid-ops {
@@ -1620,7 +1715,6 @@ textarea:focus-visible {
 }
 
 @media (max-width: 960px) {
-  .lead-grid,
   .dashboard-grid,
   .process-board,
   .mode-grid,
@@ -1630,6 +1724,8 @@ textarea:focus-visible {
   .report-card-grid,
   .dossier-list,
   .control-grid,
+  .import-summary-grid,
+  .trust-signal-grid,
   .summary-grid,
   .command-grid,
   .command-grid-ops,
@@ -1717,10 +1813,6 @@ textarea:focus-visible {
 
   .kpi-grid {
     grid-template-columns: 1fr;
-  }
-
-  .lead-grid {
-    gap: 0.85rem;
   }
 
   .table-wrap {
