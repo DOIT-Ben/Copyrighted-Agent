@@ -119,7 +119,7 @@ textarea {
 
 .admin-shell {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   min-height: 100dvh;
 }
 
@@ -258,7 +258,14 @@ textarea {
   display: grid;
   align-content: start;
   gap: 1rem;
-  padding: 1.4rem;
+  width: 100%;
+  padding: 1.5rem 1.5rem 2rem;
+}
+
+.workspace > * {
+  width: 100%;
+  max-width: 1640px;
+  margin-inline: auto;
 }
 
 .workspace-rail {
@@ -477,7 +484,7 @@ textarea {
 
 .workspace-trust-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 0.95rem;
   margin-top: 1rem;
 }
@@ -537,11 +544,11 @@ textarea {
 }
 
 .kpi-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .kpi-grid-ops {
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .dashboard-grid {
@@ -962,14 +969,14 @@ input[type="file"]::file-selector-button {
 
 .control-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 0.95rem;
 }
 
 .import-console-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(360px, 0.92fr);
-  gap: 1.1rem;
+  grid-template-columns: minmax(0, 1.32fr) minmax(420px, 0.98fr);
+  gap: 1.35rem;
   align-items: start;
 }
 
@@ -1019,11 +1026,11 @@ input[type="file"]::file-selector-button {
 }
 
 .import-summary-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .trust-signal-grid {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .import-console-form {
@@ -1534,12 +1541,12 @@ input[type="file"]::file-selector-button {
 
 .process-board,
 .mode-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .compare-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 0.9rem;
   margin-bottom: 1rem;
 }
@@ -1859,7 +1866,7 @@ textarea:focus-visible {
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }
 
-@media (max-width: 1320px) {
+@media (max-width: 1480px) {
   .admin-shell {
     grid-template-columns: 1fr;
   }
@@ -1877,7 +1884,7 @@ textarea:focus-visible {
   }
 
   .sidebar-brand {
-    grid-column: span 4;
+    grid-column: span 3;
   }
 
   .sidebar-section {
@@ -1896,36 +1903,39 @@ textarea:focus-visible {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .workspace-trust-grid {
-    grid-template-columns: 1fr;
+  .workspace-header,
+  .workspace-rail {
+    gap: 1.25rem;
   }
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1520px) {
   .import-console-grid {
     grid-template-columns: 1fr;
   }
 
+  .import-console-copy {
+    max-width: none;
+  }
+
   .kpi-grid-ops {
-    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
 }
 
-@media (max-width: 1180px) {
-  .workspace-rail {
+@media (max-width: 1360px) {
+  .workspace-rail,
+  .workspace-header {
     flex-direction: column;
   }
 
-  .workspace-shortcuts {
+  .workspace-shortcuts,
+  .workspace-header-meta {
     justify-content: flex-start;
   }
 
-  .page-link-strip {
-    padding: 0.95rem 1rem;
+  .workspace-trust-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .span-4,
@@ -1934,6 +1944,22 @@ textarea:focus-visible {
   .span-7,
   .span-8 {
     grid-column: span 12;
+  }
+}
+
+@media (max-width: 1200px) {
+  .page-link-strip {
+    padding: 0.95rem 1rem;
+  }
+
+  .workspace-trust-grid,
+  .import-summary-grid,
+  .trust-signal-grid,
+  .summary-grid,
+  .control-grid,
+  .ops-status-grid,
+  .compare-grid {
+    grid-template-columns: 1fr;
   }
 }
 
