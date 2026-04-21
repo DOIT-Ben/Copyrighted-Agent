@@ -41,8 +41,8 @@ def render_report_page(report: dict) -> str:
       {metric_card('字符数', str(character_count), '用于快速判断报告是否异常过短', 'warning', icon_name='search')}
     </section>
     <section class="dashboard-grid">
-      {panel('报告阅读器', reader_body, kicker='正文查看', extra_class='span-8', icon_name='report', description='直接在页面内阅读当前报告正文。', panel_id='report-reader')}
-      {panel('报告上下文', list_pairs(context_pairs), kicker='产物信息', extra_class='span-4', icon_name='layers', description='把报告元数据固定展示在侧边，便于回溯来源。', panel_id='report-context')}
+      {panel('报告阅读器', reader_body, kicker='正文查看', extra_class='span-12', icon_name='report', description='直接在页面内阅读当前报告正文。', panel_id='report-reader')}
+      {panel('报告上下文', list_pairs(context_pairs), kicker='产物信息', extra_class='span-12', icon_name='layers', description='把报告元数据放在正文下方，阅读时不再与正文抢宽度。', panel_id='report-context')}
     </section>
     """
     return layout(

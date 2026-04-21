@@ -476,13 +476,13 @@ def render_submission_detail(
       {metric_card('待复核', str(len(needs_review_items)), '需要人工处理的材料数量', 'warning' if needs_review_items else 'success', icon_name='alert')}
     </section>
     <section class="dashboard-grid">
-      {panel('导入摘要', f'<div class="summary-grid">{import_digest}</div>', kicker='批次摘要', extra_class='span-4', icon_name='file', description='先确认这个批次导入了什么，再决定后续操作。', panel_id='import-digest')}
-      {panel('待复核队列', needs_review_body, kicker='人工复核', extra_class='span-4', icon_name='alert', description='需要人介入的材料会优先集中在这里。', panel_id='needs-review')}
-      {panel('导出中心', export_body, kicker='产物交付', extra_class='span-4', icon_name='download', description='报告、批次包和日志都可以从这里直接拿走。', panel_id='export-center')}
+      {panel('导入摘要', f'<div class="summary-grid">{import_digest}</div>', kicker='批次摘要', extra_class='span-5', icon_name='file', description='先确认这个批次导入了什么，再决定后续操作。', panel_id='import-digest')}
+      {panel('待复核队列', needs_review_body, kicker='人工复核', extra_class='span-7', icon_name='alert', description='需要人介入的材料会优先集中在这里。', panel_id='needs-review')}
+      {panel('导出中心', export_body, kicker='产物交付', extra_class='span-12', icon_name='download', description='报告、批次包和日志都可以从这里直接拿走。', panel_id='export-center')}
       {panel('材料矩阵', table(['文件名', '类型', '软件名', '版本', '问题数', '解析质量', '状态'], material_rows), kicker='材料诊断', extra_class='span-8', icon_name='cluster', description='这是当前批次最核心的诊断表，适合逐行排查。', panel_id='material-matrix')}
       {panel('项目分组', table(['项目', '软件名', '版本', '状态', '报告'], case_rows), kicker='分组结果', extra_class='span-4', icon_name='lock', description='查看系统如何把材料聚合为项目，并进入单项目详情。', panel_id='case-registry')}
-      {panel('产物浏览', table(['文件名', '原件', '清洗版', '脱敏版', '隐私说明'], artifact_rows), kicker='材料产物', extra_class='span-4', icon_name='download', description='原件、清洗版和脱敏版都保持可见，便于核查。', panel_id='artifact-browser')}
-      {panel('人工干预台', operator_body, kicker='纠偏操作', extra_class='span-8', icon_name='wrench', description='所有纠偏动作都显式可见、可回溯、可通过重跑刷新结果。', panel_id='operator-console')}
+      {panel('产物浏览', table(['文件名', '原件', '清洗版', '脱敏版', '隐私说明'], artifact_rows), kicker='材料产物', extra_class='span-12', icon_name='download', description='原件、清洗版和脱敏版都保持可见，便于核查。', panel_id='artifact-browser')}
+      {panel('人工干预台', operator_body, kicker='纠偏操作', extra_class='span-12', icon_name='wrench', description='所有纠偏动作都显式可见、可回溯、可通过重跑刷新结果。', panel_id='operator-console')}
       {panel('更正审计', table(['操作类型', '对象', '备注', '时间'], correction_rows), kicker='操作留痕', extra_class='span-12', icon_name='clock', description='每一次人工动作都会记录下来，便于事后回溯。', panel_id='correction-audit')}
     </section>
     """

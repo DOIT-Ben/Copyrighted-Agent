@@ -128,10 +128,10 @@ def render_case_detail(case: dict, materials: list[dict], report: dict | None, r
     </section>
     <section class="dashboard-grid">
       {panel('项目摘要', f'<div class="summary-grid">{summary_grid}</div>', kicker='项目概览', extra_class='span-12', icon_name='layers', description='把项目关键信息压缩到一屏，便于先做风险判断。', panel_id='case-summary')}
-      {panel('风险队列', table(['严重级别', '问题', '说明'], issue_rows), kicker='问题清单', extra_class='span-7', icon_name='alert', description='需要处理的跨材料问题会优先集中展示。', panel_id='risk-queue') if issue_rows else panel('风险队列', empty_state('当前无风险问题', '这个项目暂时没有识别到需要处理的问题。'), kicker='问题清单', extra_class='span-7', icon_name='check', description='当前项目的规则检查结果较为干净。', panel_id='risk-queue')}
-      {panel('AI 辅助研判', list_pairs(ai_pairs), kicker='AI 信号', extra_class='span-5', icon_name='spark', description='AI 补充意见始终作为辅助信息展示，不替代规则结论。', panel_id='ai-supplement')}
-      {panel('材料矩阵', table(['文件名', '类型', '软件名', '版本', '审查状态'], material_rows), kicker='材料证据', extra_class='span-7', icon_name='cluster', description='逐项核对进入这个项目的每一份材料。', panel_id='material-matrix')}
-      {panel('项目信号', table(['信号', '状态', '说明'], signal_rows), kicker='审查信号', extra_class='span-5', icon_name='bar', description='打开完整报告前，可以先看这组压缩后的关键信号。', panel_id='case-signals')}
+      {panel('风险队列', table(['严重级别', '问题', '说明'], issue_rows), kicker='问题清单', extra_class='span-8', icon_name='alert', description='需要处理的跨材料问题会优先集中展示。', panel_id='risk-queue') if issue_rows else panel('风险队列', empty_state('当前无风险问题', '这个项目暂时没有识别到需要处理的问题。'), kicker='问题清单', extra_class='span-8', icon_name='check', description='当前项目的规则检查结果较为干净。', panel_id='risk-queue')}
+      {panel('AI 辅助研判', list_pairs(ai_pairs), kicker='AI 信号', extra_class='span-4', icon_name='spark', description='AI 补充意见始终作为辅助信息展示，不替代规则结论。', panel_id='ai-supplement')}
+      {panel('材料矩阵', table(['文件名', '类型', '软件名', '版本', '审查状态'], material_rows), kicker='材料证据', extra_class='span-8', icon_name='cluster', description='逐项核对进入这个项目的每一份材料。', panel_id='material-matrix')}
+      {panel('项目信号', table(['信号', '状态', '说明'], signal_rows), kicker='审查信号', extra_class='span-4', icon_name='bar', description='打开完整报告前，可以先看这组压缩后的关键信号。', panel_id='case-signals')}
       {panel('报告查看', report_body, kicker='报告交付', extra_class='span-12', icon_name='report', description='在同一个分析工作台里继续查看或下载项目报告。', panel_id='report-reader')}
     </section>
     """
