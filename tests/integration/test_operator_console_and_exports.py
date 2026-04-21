@@ -50,7 +50,10 @@ def test_ops_page_exposes_self_check_and_support_artifacts(api_client):
     assert "探针观测" in response.text
     assert "探针历史" in response.text
     assert "质量趋势" in response.text
+    assert "业务收尾" in response.text
     assert "/downloads/logs/app" in response.text
+    assert "/downloads/ops/delivery-closeout/latest-json" in response.text
+    assert "/downloads/ops/delivery-closeout/latest-md" in response.text
     assert "app.tools.runtime_cleanup" in response.text
     assert "app.tools.runtime_backup" in response.text or "runtime_backup" in response.text
     assert "app.tools.provider_sandbox" in response.text or "provider_sandbox" in response.text
@@ -103,12 +106,18 @@ def test_ops_provider_probe_download_endpoints_work(tmp_path):
         client = TestClient(create_app(testing=True))
         latest_download = client.get("/downloads/ops/provider-probe/latest")
         history_download = client.get(f"/downloads/ops/provider-probe/history/{history[0]['file_name']}")
+        closeout_json_download = client.get("/downloads/ops/delivery-closeout/latest-json")
+        closeout_md_download = client.get("/downloads/ops/delivery-closeout/latest-md")
 
         assert result["artifact_path"].endswith("provider_probe_latest.json")
         assert latest_download.status_code == 200
         assert latest_download.content
         assert history_download.status_code == 200
         assert history_download.content
+        assert closeout_json_download.status_code == 200
+        assert closeout_json_download.content
+        assert closeout_md_download.status_code == 200
+        assert closeout_md_download.content
     finally:
         if original_data_root is None:
             os.environ.pop("SOFT_REVIEW_DATA_ROOT", None)

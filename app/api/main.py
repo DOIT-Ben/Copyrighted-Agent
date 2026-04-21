@@ -17,6 +17,7 @@ from app.core.services.corrections import (
     merge_cases,
     rerun_case_review,
 )
+from app.core.services.delivery_closeout import get_delivery_closeout_artifact_download, latest_delivery_closeout_status
 from app.core.services.exports import build_submission_export_bundle, get_material_artifact, get_report_download
 from app.core.services.provider_probe import (
     get_provider_probe_artifact_download,
@@ -63,6 +64,7 @@ def _build_ops_report(config) -> dict:
     startup_report["provider_probe_last_success"] = latest_successful_provider_probe_status(config)
     startup_report["provider_probe_last_failure"] = latest_failed_provider_probe_status(config)
     startup_report["release_gate"] = evaluate_release_gate(config, startup_report=startup_report)
+    startup_report["delivery_closeout"] = latest_delivery_closeout_status()
     return startup_report
 
 
@@ -455,6 +457,24 @@ def create_app(testing: bool = False):
             raise HTTPException(404, str(exc)) from exc
         log_event("download_provider_probe_history", {"filename": artifact["filename"]})
         return _download_response(artifact["path"].read_bytes(), artifact["filename"], artifact["media_type"])
+
+    @app.get("/downloads/ops/delivery-closeout/latest-json")
+    def download_latest_delivery_closeout_json(request: Request):
+        try:
+            artifact = get_delivery_closeout_artifact_download(file_name="delivery-closeout-latest.json")
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(404, str(exc)) from exc
+        log_event("download_delivery_closeout_latest_json", {"filename": artifact["filename"]})
+        return _download_response(artifact["payload"], artifact["filename"], artifact["media_type"])
+
+    @app.get("/downloads/ops/delivery-closeout/latest-md")
+    def download_latest_delivery_closeout_markdown(request: Request):
+        try:
+            artifact = get_delivery_closeout_artifact_download(file_name="delivery-closeout-latest.md")
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(404, str(exc)) from exc
+        log_event("download_delivery_closeout_latest_md", {"filename": artifact["filename"]})
+        return _download_response(artifact["payload"], artifact["filename"], artifact["media_type"])
 
     @app.get("/submissions/{submission_id}")
     def submission_detail(request: Request, submission_id: str):

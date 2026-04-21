@@ -75,3 +75,49 @@ def test_delivery_closeout_writes_latest_and_history_artifacts(tmp_path):
     assert latest_payload["status"] == "pass"
     assert latest_payload["artifacts"]["latest_json_path"].endswith("delivery-closeout-latest.json")
     assert "# Delivery Closeout" in latest_markdown_text
+
+
+@pytest.mark.unit
+@pytest.mark.contract
+def test_latest_delivery_closeout_status_can_load_latest_artifact(tmp_path):
+    latest_delivery_closeout_status = require_symbol(
+        "app.core.services.delivery_closeout",
+        "latest_delivery_closeout_status",
+    )
+
+    dev_root = tmp_path / "docs" / "dev"
+    dev_root.mkdir(parents=True, exist_ok=True)
+    (dev_root / "delivery-closeout-latest.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-04-21T10:08:16",
+                "status": "pass",
+                "milestone": "ready_for_business_handoff",
+                "summary": "Business closeout is complete.",
+                "operator_actions": [],
+                "checks": [{"name": "release_gate", "label": "Release Gate", "status": "pass", "summary": "ok", "value": "external_http"}],
+                "artifacts": {"latest_json_path": str(dev_root / "delivery-closeout-latest.json")},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = latest_delivery_closeout_status(dev_root)
+
+    assert result["exists"] is True
+    assert result["status"] == "pass"
+    assert result["milestone"] == "ready_for_business_handoff"
+    assert result["file_name"] == "delivery-closeout-latest.json"
+
+
+@pytest.mark.unit
+@pytest.mark.contract
+def test_delivery_closeout_download_helper_rejects_nested_paths(tmp_path):
+    get_delivery_closeout_artifact_download = require_symbol(
+        "app.core.services.delivery_closeout",
+        "get_delivery_closeout_artifact_download",
+    )
+
+    with pytest.raises(ValueError):
+        get_delivery_closeout_artifact_download(dev_root=tmp_path, file_name="../escape.json")

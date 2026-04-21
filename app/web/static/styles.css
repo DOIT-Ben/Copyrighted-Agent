@@ -495,6 +495,10 @@ textarea {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.kpi-grid-ops {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .dashboard-grid {
   grid-template-columns: repeat(12, minmax(0, 1fr));
 }
@@ -1163,6 +1167,68 @@ input[type="file"]::file-selector-button {
   margin-bottom: 1rem;
 }
 
+.closeout-board {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.closeout-callout {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.02), rgba(37, 99, 235, 0.08)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.94));
+}
+
+.closeout-callout-copy {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.closeout-callout-copy p,
+.closeout-action-block p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.closeout-summary-grid {
+  margin-bottom: 0;
+}
+
+.artifact-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.closeout-action-block {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.closeout-action-block strong,
+.closeout-callout-copy strong {
+  font-family: var(--font-heading);
+}
+
+.action-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.45rem;
+  color: var(--ink-soft);
+}
+
 .trend-callout {
   display: grid;
   gap: 0.25rem;
@@ -1521,6 +1587,10 @@ textarea:focus-visible {
 }
 
 @media (max-width: 1400px) {
+  .kpi-grid-ops {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .ops-status-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1532,6 +1602,7 @@ textarea:focus-visible {
   .mode-grid,
   .compare-grid,
   .sequence-board,
+  .closeout-callout,
   .report-card-grid,
   .dossier-list,
   .control-grid,
@@ -1590,6 +1661,11 @@ textarea:focus-visible {
   .workspace-header {
     flex-direction: column;
     padding: 1.25rem;
+  }
+
+  .artifact-strip {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .workspace-header-meta {

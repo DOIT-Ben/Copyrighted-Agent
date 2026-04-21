@@ -34,6 +34,93 @@ def _history_base_paths(dev_root: Path, generated_at: str) -> tuple[Path, Path]:
     )
 
 
+def _empty_delivery_closeout_status(summary: str, *, dev_root: Path) -> dict:
+    target = dev_root / LATEST_JSON_NAME
+    return {
+        "exists": False,
+        "status": "warning",
+        "milestone": "not_ready",
+        "summary": summary,
+        "generated_at": "",
+        "file_name": target.name,
+        "file_path": str(target),
+        "operator_actions": [],
+        "checks": [],
+        "artifacts": {},
+    }
+
+
+def _load_delivery_closeout_status_from_path(path: Path, *, fallback_summary: str = "Delivery closeout artifact loaded.") -> dict:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {
+            "exists": True,
+            "status": "warning",
+            "milestone": "not_ready",
+            "summary": f"Delivery closeout artifact could not be parsed: {exc}",
+            "generated_at": "",
+            "file_name": path.name,
+            "file_path": str(path),
+            "operator_actions": [],
+            "checks": [],
+            "artifacts": {},
+        }
+
+    return {
+        "exists": True,
+        "status": str(payload.get("status", "warning") or "warning"),
+        "milestone": str(payload.get("milestone", "not_ready") or "not_ready"),
+        "summary": str(payload.get("summary", "") or fallback_summary),
+        "generated_at": str(payload.get("generated_at", "") or ""),
+        "file_name": path.name,
+        "file_path": str(path),
+        "operator_actions": list(payload.get("operator_actions", []) or []),
+        "checks": list(payload.get("checks", []) or []),
+        "artifacts": dict(payload.get("artifacts", {}) or {}),
+    }
+
+
+def latest_delivery_closeout_status(dev_root: str | Path | None = None) -> dict:
+    root = Path(dev_root or DEFAULT_DEV_ROOT)
+    target = root / LATEST_JSON_NAME
+    if not root.exists():
+        return _empty_delivery_closeout_status("docs/dev does not exist yet.", dev_root=root)
+    if not target.exists():
+        return _empty_delivery_closeout_status("No delivery closeout artifact is available yet.", dev_root=root)
+    return _load_delivery_closeout_status_from_path(target)
+
+
+def get_delivery_closeout_artifact_download(
+    *,
+    dev_root: str | Path | None = None,
+    file_name: str | None = None,
+) -> dict:
+    root = Path(dev_root or DEFAULT_DEV_ROOT)
+    normalized_name = str(file_name or "").strip()
+    if normalized_name:
+        candidate_name = Path(normalized_name)
+        if candidate_name.name != normalized_name or any(part in {"..", ""} for part in candidate_name.parts):
+            raise ValueError("Invalid delivery closeout artifact path")
+        if normalized_name in {LATEST_JSON_NAME, LATEST_MARKDOWN_NAME}:
+            target = root / normalized_name
+        else:
+            target = root / "history" / normalized_name
+    else:
+        target = root / LATEST_JSON_NAME
+
+    if not target.exists() or not target.is_file():
+        raise FileNotFoundError(str(target))
+
+    media_type = "application/json" if target.suffix.lower() == ".json" else "text/markdown; charset=utf-8"
+    return {
+        "path": str(target),
+        "filename": target.name,
+        "payload": target.read_bytes(),
+        "media_type": media_type,
+    }
+
+
 def _load_latest_release_validation(dev_root: Path) -> dict:
     target = dev_root / REAL_PROVIDER_VALIDATION_LATEST
     if not target.exists():

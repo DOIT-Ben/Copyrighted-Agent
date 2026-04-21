@@ -47,6 +47,10 @@ LABEL_MAP = {
     "Latest Baseline": "最新基线",
     "Latest Backup": "最新备份",
     "Release Gate": "发布闸门",
+    "Latest Release Validation": "最新真实验证",
+    "Real Sample Baseline": "真实样本基线",
+    "Runtime Backup": "运行时备份",
+    "Acceptance Checklist": "验收清单",
 }
 
 PHASE_MAP = {
@@ -91,6 +95,9 @@ TEXT_REPLACEMENTS = {
     "none recorded": "无",
     "not configured": "未配置",
     "desensitized only": "仅允许脱敏载荷",
+    "ready_for_business_handoff": "可进入业务交付",
+    "ready_for_operator_trial": "可进入操作员试跑",
+    "not_ready": "尚未就绪",
 }
 
 
@@ -253,6 +260,26 @@ def _trend_summary(latest_item: dict) -> str:
     return "待复核数量与上一份基线持平，适合结合低质量数量和探针历史做最终判断。"
 
 
+def _closeout_milestone_label(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    mapping = {
+        "ready_for_business_handoff": "可进入业务交付",
+        "ready_for_operator_trial": "可进入试跑",
+        "blocked": "交付阻塞",
+        "not_ready": "尚未就绪",
+    }
+    return mapping.get(normalized, _localize_text(value, "-"))
+
+
+def _closeout_summary(status: str, milestone: str) -> str:
+    normalized = str(status or "").strip().lower()
+    if normalized == "pass":
+        return f"业务收尾已完成，当前里程碑为“{_closeout_milestone_label(milestone)}”，可以直接进入交付。"
+    if normalized == "blocked":
+        return "业务收尾仍有阻塞项，先清掉阻塞动作，再推进最终交付或试跑。"
+    return "业务收尾已经可见，但仍有提示项未清，适合先做一轮操作员试跑。"
+
+
 def render_ops_page(config: dict, self_check: dict) -> str:
     provider_readiness = self_check.get("provider_readiness", {})
     provider_probe_status = self_check.get("provider_probe_status", {})
@@ -260,6 +287,7 @@ def render_ops_page(config: dict, self_check: dict) -> str:
     provider_probe_last_success = self_check.get("provider_probe_last_success", {})
     provider_probe_last_failure = self_check.get("provider_probe_last_failure", {})
     release_gate = self_check.get("release_gate", {})
+    delivery_closeout = self_check.get("delivery_closeout", {})
     local_config = self_check.get("local_config", {})
     backup_status = latest_runtime_backup_status()
     baseline_status = latest_metrics_baseline_status()
@@ -322,6 +350,15 @@ def render_ops_page(config: dict, self_check: dict) -> str:
             escape_html(format_signed_delta(item.get("delta_totals", {}).get("needs_review"))),
         ]
         for item in baseline_history
+    ]
+    closeout_rows = [
+        [
+            escape_html(_label(item.get("label", item.get("name", "")))),
+            _display_status(item.get("status", "warning")),
+            escape_html(_display_value(item.get("value", ""))),
+            escape_html(_localize_text(item.get("summary", ""))),
+        ]
+        for item in delivery_closeout.get("checks", [])
     ]
 
     launch_cluster = _command_cluster(
@@ -420,6 +457,40 @@ def render_ops_page(config: dict, self_check: dict) -> str:
             ("项目数", escape_html(str(snapshot["cases"]))),
         ]
     )
+    closeout_actions = list(delivery_closeout.get("operator_actions", []) or [])
+    closeout_actions_html = "".join(
+        f"<li>{escape_html(_localize_text(item, item))}</li>" for item in closeout_actions
+    ) or "<li>当前没有后续动作，保持现有交付节奏即可。</li>"
+    closeout_generated_at = str(delivery_closeout.get("generated_at", "") or "未生成")
+    closeout_body = f"""
+    <div class="closeout-board">
+      <div class="closeout-callout">
+        <div class="closeout-callout-copy">
+          <strong>当前交付结论</strong>
+          <p>{escape_html(_closeout_summary(delivery_closeout.get("status", "warning"), delivery_closeout.get("milestone", "not_ready")))}</p>
+        </div>
+        <div class="ops-status-badges">
+          {_display_status(delivery_closeout.get("status", "warning"))}
+          {pill(_closeout_milestone_label(delivery_closeout.get("milestone", "not_ready")), "info")}
+        </div>
+      </div>
+      <div class="summary-grid closeout-summary-grid">
+        {_summary_tile("交付里程碑", _closeout_milestone_label(delivery_closeout.get("milestone", "not_ready")), "业务侧当前可以推进到哪一步")}
+        {_summary_tile("生成时间", closeout_generated_at, "最近一次业务收尾产物的生成时间")}
+        {_summary_tile("后续动作", str(len(closeout_actions)), "仍需人工跟进的动作数量")}
+        {_summary_tile("当前状态", status_label(str(delivery_closeout.get("status", "warning"))), "统一汇总后的业务收尾结论")}
+      </div>
+      <div class="artifact-strip">
+        {download_chip("/downloads/ops/delivery-closeout/latest-md", "最新 Closeout MD") if delivery_closeout.get("exists") else ""}
+        {download_chip("/downloads/ops/delivery-closeout/latest-json", "最新 Closeout JSON") if delivery_closeout.get("exists") else ""}
+        {download_chip("/downloads/ops/provider-probe/latest", "最新 Probe JSON") if provider_probe_status.get("exists") else ""}
+      </div>
+      <div class="closeout-action-block">
+        <strong>下一步动作</strong>
+        <ul class="action-list">{closeout_actions_html}</ul>
+      </div>
+    </div>
+    """
 
     status_cards = (
         '<div class="ops-status-grid">'
@@ -469,6 +540,18 @@ def render_ops_page(config: dict, self_check: dict) -> str:
             [
                 ("配置文件", escape_html(local_config.get("path", "config/local.json"))),
                 ("是否存在", "是" if local_config.get("exists", False) else "否"),
+            ],
+        )
+        + _ops_status_card(
+            "业务收尾",
+            _closeout_summary(delivery_closeout.get("status", "warning"), delivery_closeout.get("milestone", "not_ready")),
+            [
+                _display_status(delivery_closeout.get("status", "warning")),
+                pill(_closeout_milestone_label(delivery_closeout.get("milestone", "not_ready")), "info"),
+            ],
+            [
+                ("最新产物", escape_html(delivery_closeout.get("file_name", "") or "未生成")),
+                ("后续动作", escape_html(str(len(closeout_actions)))),
             ],
         )
         + "</div>"
@@ -524,6 +607,7 @@ def render_ops_page(config: dict, self_check: dict) -> str:
       </article>
     </div>
     <div class="inline-actions">
+      <a class="button-secondary button-compact" href="#delivery-closeout">先看业务收尾</a>
       <a class="button-secondary button-compact" href="#release-gate">先看发布闸门</a>
       <a class="button-secondary button-compact" href="#provider-readiness">再看通道就绪</a>
       <a class="button-secondary button-compact" href="#probe-history">查看探针历史</a>
@@ -533,7 +617,8 @@ def render_ops_page(config: dict, self_check: dict) -> str:
 
     content = f"""
     {panel('这页应该怎么看', flight_plan_body, kicker='运维顺序', extra_class='span-12 panel-soft', icon_name='bar', description='把运维和联调动作按顺序串起来，减少来回跳页和误判。', panel_id='ops-flight-plan')}
-    <section class="kpi-grid">
+    <section class="kpi-grid kpi-grid-ops">
+      {metric_card('业务收尾', status_label(str(delivery_closeout.get('status', 'warning'))), '直接判断当前是否已经具备业务交付条件', status_tone(delivery_closeout.get('status', 'warning')), icon_name='shield')}
       {metric_card('发布闸门', status_label(str(release_gate.get('status', 'warning'))), '用于判断是否进入真实模型发布验证', status_tone(release_gate.get('status', 'warning')), icon_name='shield')}
       {metric_card('启动自检', status_label(str(self_check.get('status', 'warning'))), '检查路径可写、配置与安全边界', status_tone(self_check.get('status', 'warning')), icon_name='check')}
       {metric_card('最新探针', status_label(str(provider_probe_status.get('probe_status', 'not_run'))), '观察最近一次通道探针的结果', status_tone(provider_probe_status.get('probe_status', 'not_run')), icon_name='spark')}
@@ -541,6 +626,7 @@ def render_ops_page(config: dict, self_check: dict) -> str:
     </section>
     {status_cards}
     <section class="dashboard-grid">
+      {panel('业务收尾', closeout_body + table(['检查项', '状态', '当前值', '说明'], closeout_rows), kicker='交付结论', extra_class='span-12 panel-soft', icon_name='shield', description='把能不能交付、下一步做什么、该看哪些产物压缩到一个面板里。', panel_id='delivery-closeout')}
       {panel('常用运维入口', command_panel_body, kicker='运维操作', extra_class='span-12', icon_name='terminal', description='把启动、联调、验证和维护命令按阶段分组，减少来回切换。', panel_id='operator-commands')}
       {panel('发布闸门详情', table(['检查项', '状态', '当前值', '说明'], release_gate_rows), kicker='发布闸门', extra_class='span-6', icon_name='shield', description='把能不能推进真实模型验证的主信号压缩到一张表里。', panel_id='release-gate')}
       {panel('模型通道就绪度', table(['检查项', '状态', '当前值', '说明'], provider_rows), kicker='模型通道', extra_class='span-6', icon_name='spark', description='确认当前提供方的接口、模型、Key 和回退策略是否完整。', panel_id='provider-readiness')}
@@ -566,6 +652,7 @@ def render_ops_page(config: dict, self_check: dict) -> str:
         content=content,
         header_note="先看发布闸门和模型通道就绪度，再看探针历史与质量趋势，最后再决定是否进入真实模型联调。",
         page_links=[
+            ("#delivery-closeout", "业务收尾", "shield"),
             ("#release-gate", "发布闸门", "shield"),
             ("#provider-readiness", "通道就绪", "spark"),
             ("#probe-history", "探针历史", "clock"),
