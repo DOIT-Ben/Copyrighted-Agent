@@ -341,6 +341,51 @@ textarea {
   box-shadow: 0 12px 28px rgba(37, 99, 235, 0.12);
 }
 
+.page-link-strip {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-sm);
+}
+
+.page-link-strip-label {
+  font-family: var(--font-heading);
+  font-size: 0.88rem;
+  letter-spacing: 0.02em;
+}
+
+.page-link-strip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.page-link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 38px;
+  padding: 0.58rem 0.85rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.96);
+  color: var(--secondary);
+  font-size: 0.84rem;
+  font-weight: 700;
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.page-link-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.16);
+  background: rgba(37, 99, 235, 0.06);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
 .workspace-header {
   display: flex;
   align-items: flex-start;
@@ -1596,6 +1641,7 @@ input[type="file"]::file-selector-button {
 .dossier-list div {
   display: grid;
   gap: 0.2rem;
+  min-width: 0;
   padding: 0.8rem 0.9rem;
   border: 1px solid rgba(15, 23, 42, 0.06);
   border-radius: var(--radius-md);
@@ -1604,6 +1650,11 @@ input[type="file"]::file-selector-button {
 
 .dossier-list strong {
   color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.dossier-list-single {
+  grid-template-columns: 1fr;
 }
 
 .highlight-note {
@@ -1728,6 +1779,10 @@ textarea:focus-visible {
     justify-content: flex-start;
   }
 
+  .page-link-strip {
+    padding: 0.95rem 1rem;
+  }
+
   .span-4,
   .span-5,
   .span-6,
@@ -1791,6 +1846,15 @@ textarea:focus-visible {
   }
 
   .workspace-shortcuts {
+    justify-content: flex-start;
+  }
+
+  .page-link-strip-row {
+    flex-direction: column;
+  }
+
+  .page-link-chip {
+    width: 100%;
     justify-content: flex-start;
   }
 

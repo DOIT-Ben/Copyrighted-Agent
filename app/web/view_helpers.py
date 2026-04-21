@@ -277,12 +277,12 @@ def panel(
     )
 
 
-def list_pairs(items: list[tuple[str, str]]) -> str:
+def list_pairs(items: list[tuple[str, str]], *, css_class: str = "dossier-list") -> str:
     content = "".join(
         f"<div><span>{escape_html(label)}</span><strong>{value}</strong></div>"
         for label, value in items
     )
-    return f'<div class="dossier-list">{content}</div>'
+    return f'<div class="{escape_html(css_class)}">{content}</div>'
 
 
 def read_text_file(path_value: str) -> str:
@@ -328,16 +328,31 @@ def _workspace_shortcuts(active_nav: str, page_links: list[tuple[str, str, str]]
         seen.add(marker)
         items.append((path, label, icon_name))
 
-    for path, label, icon_name in page_links or []:
-        marker = (path, label)
-        if marker in seen:
-            continue
-        seen.add(marker)
-        items.append((path, label, icon_name))
-
     return '<div class="workspace-shortcuts">' + "".join(
         _shortcut_link(path, label, icon_name) for path, label, icon_name in items
     ) + "</div>"
+
+
+def _page_link_strip(page_links: list[tuple[str, str, str]] | None) -> str:
+    items = page_links or []
+    if not items:
+        return ""
+
+    chips = "".join(
+        (
+            f'<a class="page-link-chip" href="{escape_html(path)}">'
+            f'{icon(icon_name, "icon icon-sm")}'
+            f"<span>{escape_html(label)}</span>"
+            "</a>"
+        )
+        for path, label, icon_name in items
+    )
+    return (
+        '<section class="page-link-strip" aria-label="Page shortcuts">'
+        '<strong class="page-link-strip-label">本页导航</strong>'
+        f'<div class="page-link-strip-row">{chips}</div>'
+        "</section>"
+    )
 
 
 def _release_card(title: str, note: str, tone: str, icon_name: str) -> str:
@@ -475,6 +490,7 @@ def layout(
         <div class="workspace-header-meta">{header_meta}</div>
       </header>
       {workspace_notice}
+      {_page_link_strip(page_links)}
       <section class="workspace-trust-grid" aria-label="System trust signals">
         {release_cards}
       </section>
