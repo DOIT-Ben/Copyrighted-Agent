@@ -18,6 +18,7 @@ from app.web.view_helpers import (
     panel,
     pill,
     report_label,
+    review_stage_label,
     review_strategy_label,
     status_label,
     status_tone,
@@ -33,6 +34,7 @@ CORRECTION_LABELS = {
     "merge_cases": "合并项目",
     "rerun_case_review": "重新审查项目",
     "continue_case_review_from_desensitized": "脱敏后继续审查",
+    "upload_desensitized_package": "上传脱敏包",
 }
 
 
@@ -101,6 +103,7 @@ def _submission_header_meta(submission: dict, cases: list[dict]) -> str:
             pill(status_label(submission.get("status", "unknown")), status_tone(submission.get("status", "unknown"))),
             pill(mode_label(submission.get("mode", "")), "info"),
             pill(review_strategy_label(submission.get("review_strategy", "auto_review")), "neutral"),
+            pill(review_stage_label(submission.get("review_stage", "review_completed")), "neutral"),
             pill(f"{len(cases)} 个项目", "neutral"),
         ]
     )
@@ -199,6 +202,7 @@ def _submission_view_data(
                 escape_html(case.get("software_name", "") or "-"),
                 escape_html(case.get("version", "") or "-"),
                 pill(status_label(case.get("status", "unknown")), status_tone(case.get("status", "unknown"))),
+                escape_html(review_stage_label(case.get("review_stage", "review_completed"))),
                 report_cell,
             ]
         )
@@ -236,6 +240,7 @@ def render_submissions_index() -> str:
             link(f"/submissions/{submission.id}", submission.filename),
             escape_html(mode_label(submission.mode)),
             escape_html(review_strategy_label(getattr(submission, "review_strategy", "auto_review"))),
+            escape_html(review_stage_label(getattr(submission, "review_stage", "review_completed"))),
             pill(status_label(submission.status), status_tone(submission.status)),
             escape_html(str(len(submission.material_ids))),
             escape_html(str(len(submission.case_ids))),
@@ -274,7 +279,7 @@ def render_submissions_index() -> str:
       {metric_card('报告数', str(reports_total), '当前已生成的项目级报告数量', 'neutral', icon_name='report')}
     </section>
     <section class="dashboard-grid">
-      {panel('批次台账', table(['压缩包', '导入模式', '审查策略', '状态', '材料数', '项目数', '报告数', '创建时间'], rows) if rows else empty_state('暂无批次', '导入 ZIP 后，这里会出现批次记录。'), kicker='批次总览', extra_class='span-8', icon_name='layers', description='这里只保留列表和入口，避免总览页继续堆复杂操作。', panel_id='batch-registry')}
+      {panel('批次台账', table(['压缩包', '导入模式', '审查策略', '当前阶段', '状态', '材料数', '项目数', '报告数', '创建时间'], rows) if rows else empty_state('暂无批次', '导入 ZIP 后，这里会出现批次记录。'), kicker='批次总览', extra_class='span-8', icon_name='layers', description='这里只保留列表和入口，避免总览页继续堆复杂操作。', panel_id='batch-registry')}
       {panel('状态分布', distribution_body, kicker='运行状态', extra_class='span-4', icon_name='bar', description='快速判断当前批次池是否稳定。', panel_id='status-distribution')}
       {panel('查看方式', action_body, kicker='处理顺序', extra_class='span-12 panel-soft', icon_name='search', description='先在这里找到目标批次，再进入详情页处理。', panel_id='registry-actions')}
     </section>
@@ -286,12 +291,7 @@ def render_submissions_index() -> str:
         header_tag="批次总览",
         header_title="批次总览台账",
         header_subtitle="先定位目标批次，再进入批次详情页处理具体审查工作。",
-        header_meta="".join(
-            [
-                pill(f"{len(submissions)} 个批次", "info"),
-                pill(status_label(latest_status), status_tone(latest_status)),
-            ]
-        ),
+        header_meta="".join([pill(f"{len(submissions)} 个批次", "info"), pill(status_label(latest_status), status_tone(latest_status))]),
         content=content,
         header_note="总览页只负责发现问题和进入详情，不承载材料纠偏、导出和大表浏览。",
         page_links=[
@@ -319,23 +319,23 @@ def render_submission_detail(
             _summary_tile("导入文件", str(submission.get("filename", "") or "-"), "当前导入的 ZIP 包"),
             _summary_tile("导入模式", mode_label(str(submission.get("mode", ""))), "本批次采用的整理方式"),
             _summary_tile("审查策略", review_strategy_label(str(submission.get("review_strategy", "auto_review"))), "决定是直接审查还是先脱敏后继续"),
+            _summary_tile("当前阶段", review_stage_label(str(submission.get("review_stage", "review_completed"))), "精确显示本批次正在脱敏、待回传或已完成审查"),
             _summary_tile("材料数", str(len(materials)), "当前批次识别出的材料数量"),
             _summary_tile("项目数", str(len(cases)), "当前已形成的项目分组"),
-            _summary_tile("创建时间", str(submission.get("created_at", "") or "-"), "批次记录创建时间"),
         ]
     )
 
     workflow_body = (
         '<div class="summary-grid">'
-        + _summary_tile("当前状态", status_label(submission.get("status", "unknown")), "当前批次所处的业务阶段")
+        + _summary_tile("当前状态", status_label(submission.get("status", "unknown")), "当前批次所处的业务状态")
         + _summary_tile("待继续审查", str(len(pending_cases)), "仅脱敏优先模式下会出现")
-        + _summary_tile("材料矩阵", "独立页面", "到材料页集中看材料矩阵和脱敏件下载")
-        + _summary_tile("人工干预台", "独立页面", "到人工干预台做继续审查和人工修正")
+        + _summary_tile("产物浏览", "独立页面", "到产物页集中看材料矩阵和脱敏件下载")
+        + _summary_tile("人工干预台", "独立页面", "到人工干预台回传脱敏包或继续审查")
         + "</div>"
         + '<div class="inline-actions">'
-        + f'<a class="button-secondary" href="/submissions/{submission_id}/materials">{icon("cluster", "icon icon-sm")}产物浏览 / 材料矩阵</a>'
-        + f'<a class="button-secondary" href="/submissions/{submission_id}/operator">{icon("wrench", "icon icon-sm")}人工干预台</a>'
-        + f'<a class="button-secondary" href="/submissions/{submission_id}/exports">{icon("download", "icon icon-sm")}导出中心</a>'
+        + f'<a class="button-secondary" href="/submissions/{submission_id}/materials">{icon("cluster", "icon icon-sm")}进入产物浏览</a>'
+        + f'<a class="button-secondary" href="/submissions/{submission_id}/operator">{icon("wrench", "icon icon-sm")}进入人工干预台</a>'
+        + f'<a class="button-secondary" href="/submissions/{submission_id}/exports">{icon("download", "icon icon-sm")}进入导出中心</a>'
         + "</div>"
     )
 
@@ -372,7 +372,7 @@ def render_submission_detail(
     </section>
     <section class="dashboard-grid">
       {panel('导入摘要', f'<div class="summary-grid">{import_digest}</div>', kicker='批次摘要', extra_class='span-12 panel-soft', icon_name='file', description='主页面只保留这个批次的关键概览。', panel_id='import-digest')}
-      {panel('业务流程', workflow_body, kicker='双模式审查', extra_class='span-12', icon_name='spark', description='明确展示本批次当前采用的审查策略和下一步入口。', panel_id='review-workflow')}
+      {panel('业务流程', workflow_body, kicker='双模式审查', extra_class='span-12', icon_name='spark', description='明确展示本批次当前采用的审查策略、所处阶段和下一步入口。', panel_id='review-workflow')}
       {panel('待复核队列', needs_review_body, kicker='材料提醒', extra_class='span-12', icon_name='alert', description='优先确认这些材料，再决定是否进入人工处理或继续审查。', panel_id='needs-review')}
       {panel('更正审计', audit_body, kicker='留痕记录', extra_class='span-12', icon_name='clock', description='所有人工动作和继续审查都会在这里记录。', panel_id='correction-audit')}
     </section>
@@ -383,10 +383,10 @@ def render_submission_detail(
         active_nav="submissions",
         header_tag="批次详情",
         header_title=submission.get("filename", "批次详情"),
-        header_subtitle="这个页面只保留概览、待复核队列和进入各子页面的入口。",
+        header_subtitle="这个页面只保留概览、业务阶段和进入各子页面的入口。",
         header_meta=_submission_header_meta(submission, cases),
         content=content,
-        header_note="导入摘要、产物浏览、人工干预台、导出中心已经拆开，主页面不再承载所有内容。",
+        header_note="如果当前是“先脱敏后继续审查”模式，请先去产物浏览页下载脱敏件，再到人工干预台回传脱敏包或继续审查。",
         page_links=[
             ("#import-digest", "导入摘要", "file"),
             ("#review-workflow", "业务流程", "spark"),
@@ -410,14 +410,14 @@ def render_submission_materials_page(
     data = _submission_view_data(submission, materials, cases, reports, parse_results)
     pending_cases = _pending_manual_cases(cases)
 
-    workflow_hint = empty_state("当前是直接审查模式", "材料页主要用于查看原件、清洗件、脱敏件和项目归组。")
+    workflow_hint = empty_state("当前是直接审查模式", "产物页主要用于查看原件、清洗件、脱敏件和项目归组。")
     if submission.get("review_strategy") == "manual_desensitized_review":
         workflow_hint = (
             '<div class="summary-grid">'
-            + _summary_tile("脱敏优先模式", "先下载再继续", "先查看脱敏件，再去人工处理页继续审查")
-            + _summary_tile("待继续项目", str(len(pending_cases)), "待继续项目会在人工处理页出现按钮")
+            + _summary_tile("脱敏优先模式", review_stage_label(submission.get("review_stage", "desensitized_ready")), "先查看脱敏件，再上传脱敏包或继续审查")
+            + _summary_tile("待继续项目", str(len(pending_cases)), "待继续项目会在人工干预台出现按钮")
             + "</div>"
-            + f'<div class="inline-actions"><a class="button-secondary" href="/submissions/{escape_html(submission.get("id", ""))}/operator">{icon("wrench", "icon icon-sm")}去人工处理页继续审查</a></div>'
+            + f'<div class="inline-actions"><a class="button-secondary" href="/submissions/{escape_html(submission.get("id", ""))}/operator">{icon("wrench", "icon icon-sm")}去人工干预台</a></div>'
         )
 
     queue_body = (
@@ -438,7 +438,7 @@ def render_submission_materials_page(
       {panel('脱敏工作台', workflow_hint, kicker='业务侧收尾', extra_class='span-12 panel-soft', icon_name='shield', description='先看脱敏件，再决定是否继续进入正式审查。', panel_id='desensitized-workbench')}
       {panel('待复核队列', queue_body, kicker='优先处理', extra_class='span-12', icon_name='alert', description='先看需要人工判断的材料。', panel_id='needs-review')}
       {panel('材料矩阵', table(['文件名', '类型', '软件名', '版本', '问题数', '解析质量', '状态'], data['material_rows']) if data['material_rows'] else empty_state('暂无材料', '当前批次还没有可显示的材料。'), kicker='材料诊断', extra_class='span-12', icon_name='cluster', description='空间不足时宁可向下排，也不再横向挤压。', panel_id='material-matrix')}
-      {panel('项目分组', table(['项目', '软件名', '版本', '状态', '报告'], data['case_rows']) if data['case_rows'] else empty_state('暂无项目', '当前批次还没有形成项目分组。'), kicker='分组结果', extra_class='span-12', icon_name='lock', description='查看系统如何把材料聚合成项目。', panel_id='case-registry')}
+      {panel('项目分组', table(['项目', '软件名', '版本', '状态', '阶段', '报告'], data['case_rows']) if data['case_rows'] else empty_state('暂无项目', '当前批次还没有形成项目分组。'), kicker='分组结果', extra_class='span-12', icon_name='lock', description='查看系统如何把材料聚合成项目。', panel_id='case-registry')}
       {panel('产物浏览', table(['文件名', '原件', '清洗件', '脱敏件', '隐私说明'], data['artifact_rows']) if data['artifact_rows'] else empty_state('暂无产物', '当前批次还没有可下载的产物。'), kicker='材料产物', extra_class='span-12', icon_name='download', description='原件、清洗件和脱敏件都集中在这里。', panel_id='artifact-browser')}
     </section>
     """
@@ -489,9 +489,9 @@ def render_submission_operator_page(
 
     operator_intro = (
         '<div class="summary-grid">'
-        + _summary_tile("顺序", "先改材料再调分组", "先修正材料，再处理项目，最后重新审查。")
+        + _summary_tile("当前阶段", review_stage_label(submission.get("review_stage", "review_completed")), "显示当前是否已完成脱敏、已回传脱敏包或正在正式审查")
+        + _summary_tile("顺序", "先脱敏包再继续", "脱敏优先模式建议先下载、再回传、再继续审查")
         + _summary_tile("影响", "动作会留痕", "所有操作都会写入更正审计。")
-        + _summary_tile("建议", "只做必要动作", "脱敏优先模式先确认脱敏件，再点击继续审查。")
         + "</div>"
     )
 
@@ -504,10 +504,18 @@ def render_submission_operator_page(
         <summary>
           <span class="operator-group-index">1</span>
           <div>
-            <strong>脱敏后继续审查</strong>
-            <small>仅在“先脱敏后继续审查”模式下真正需要执行。</small>
+            <strong>脱敏回传与继续审查</strong>
+            <small>支持上传脱敏包，或在确认脱敏件后直接继续项目审查。</small>
           </div>
         </summary>
+        <div class="control-grid">
+          <form class="operator-form" action="/submissions/{submission_id}/actions/upload-desensitized-package" method="post" enctype="multipart/form-data">
+            <strong>上传脱敏包</strong>
+            <label class="field"><span>ZIP 文件</span><input type="file" name="file" accept=".zip" required></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="例如：人工确认后重新打包上传"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('upload', 'icon icon-sm')}上传并刷新</button>
+          </form>
+        </div>
         {continue_review_body}
       </details>
 
@@ -605,7 +613,7 @@ def render_submission_operator_page(
         header_subtitle="纠偏表单单独承载，主页面不再被长表单压缩。",
         header_meta=_submission_header_meta(submission, cases),
         content=content,
-        header_note="先在产物浏览页确认问题，再回到这里执行必要的人工修正或继续审查。",
+        header_note="先在产物浏览页确认问题，再回到这里执行必要的人工修正、上传脱敏包或继续审查。",
         page_links=[
             (f"/submissions/{submission.get('id', '')}", "批次总览", "file"),
             ("#operator-console", "人工干预台", "wrench"),
@@ -642,6 +650,7 @@ def render_submission_exports_page(
         + _summary_tile("报告数", str(len(reports)), "当前批次可下载的项目级报告数量")
         + _summary_tile("批次包", "可直接下载", "适合整体交付或归档")
         + _summary_tile("应用日志", "可直接下载", "需要追踪处理过程时再使用")
+        + _summary_tile("当前阶段", review_stage_label(submission.get("review_stage", "review_completed")), "导出前可快速确认当前是否已经完成正式审查")
         + "</div>"
         + '<div class="inline-actions">'
         + f'<a class="button-secondary" href="/downloads/submissions/{submission_id}/bundle">{icon("download", "icon icon-sm")}下载批次包</a>'

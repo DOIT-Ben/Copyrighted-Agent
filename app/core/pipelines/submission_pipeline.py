@@ -195,6 +195,7 @@ def ingest_submission(
         status="processing",
         created_at=now_iso(),
         review_strategy=review_strategy,
+        review_stage="intake_processing",
         created_by=created_by,
     )
     store.add_submission(submission)
@@ -335,6 +336,7 @@ def ingest_submission(
             source_submission_id=submission_id,
             created_at=now_iso(),
             material_ids=[item.id for item in materials],
+            review_stage="desensitized_ready" if waiting_manual_review else "review_completed",
         )
         for item in materials:
             item.case_id = case.id
@@ -448,6 +450,11 @@ def ingest_submission(
         "awaiting_manual_review"
         if review_strategy == ReviewStrategy.MANUAL_DESENSITIZED_REVIEW.value and mode == SubmissionMode.SINGLE_CASE_PACKAGE.value
         else "completed"
+    )
+    submission.review_stage = (
+        "desensitized_ready"
+        if review_strategy == ReviewStrategy.MANUAL_DESENSITIZED_REVIEW.value and mode == SubmissionMode.SINGLE_CASE_PACKAGE.value
+        else "review_completed"
     )
     job.status = "completed"
     job.progress = 100

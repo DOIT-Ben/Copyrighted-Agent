@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import zipfile
 
 from app.core.domain.enums import MaterialType
 from app.core.domain.models import Case, Correction, ReportArtifact, ReviewResult
@@ -58,9 +59,25 @@ def _sync_submission_status(submission_id: str) -> None:
         return
     if any(case.status == "awaiting_manual_review" for case in cases):
         submission.status = "awaiting_manual_review"
+        if any(getattr(case, "review_stage", "") == "desensitized_uploaded" for case in cases):
+            submission.review_stage = "desensitized_uploaded"
+        else:
+            submission.review_stage = "desensitized_ready"
         return
     if all(case.status in {"completed", "grouped"} for case in cases):
         submission.status = "completed"
+        submission.review_stage = "review_completed"
+
+
+def _desensitized_entry_candidates(material_id: str, original_filename: str) -> list[str]:
+    filename = str(original_filename or "").replace("\\", "/").split("/")[-1]
+    return [
+        f"artifacts/{material_id}/desensitized.txt",
+        f"{material_id}/desensitized.txt",
+        f"{material_id}.desensitized.txt",
+        f"{filename}.desensitized.txt",
+        filename,
+    ]
 
 
 def _material_review_bucket(material_type: str, text: str) -> dict:
@@ -496,7 +513,9 @@ def continue_case_review_from_desensitized(case_id: str, corrected_by: str = "lo
         note=note,
         corrected_by=corrected_by,
     )
+    case.review_stage = "review_processing"
     rebuilt = _rebuild_case(case.id)
+    case.review_stage = "review_completed"
     _sync_submission_status(submission.id)
     save_submission_graph(submission.id)
     log_event(
@@ -509,3 +528,75 @@ def continue_case_review_from_desensitized(case_id: str, corrected_by: str = "lo
         "review_result": rebuilt["review_result"],
         "report": rebuilt["report"],
     }
+
+
+def upload_desensitized_package(
+    submission_id: str,
+    package_path: str | Path,
+    corrected_by: str = "local",
+    note: str = "",
+) -> dict:
+    submission = store.submissions.get(submission_id)
+    if not submission:
+        raise ValueError(f"Submission not found: {submission_id}")
+
+    archive_path = Path(package_path)
+    if archive_path.suffix.lower() != ".zip":
+        raise ValueError("Desensitized package must be a zip file")
+    if not archive_path.exists():
+        raise ValueError(f"Desensitized package not found: {archive_path}")
+
+    matched_materials: list[str] = []
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        names = set(archive.namelist())
+        for material_id in submission.material_ids:
+            material = store.materials.get(material_id)
+            parse_result = store.parse_results.get(material_id)
+            if not material or not parse_result:
+                continue
+            matched_name = next(
+                (candidate for candidate in _desensitized_entry_candidates(material.id, material.original_filename) if candidate in names),
+                "",
+            )
+            if not matched_name:
+                continue
+            text = archive.read(matched_name).decode("utf-8", errors="ignore")
+            Path(parse_result.desensitized_text_path).write_text(text, encoding="utf-8")
+            material.content = text
+            material.metadata = {
+                **material.metadata,
+                "desensitized_upload": {
+                    "file_name": archive_path.name,
+                    "matched_entry": matched_name,
+                    "uploaded_by": corrected_by,
+                    "uploaded_at": now_iso(),
+                    "note": note,
+                },
+            }
+            matched_materials.append(material.id)
+
+    if not matched_materials:
+        raise ValueError("No desensitized artifacts in the zip matched this submission")
+
+    original_stage = getattr(submission, "review_stage", "desensitized_ready")
+    for case_id in submission.case_ids:
+        case = store.cases.get(case_id)
+        if case and case.status == "awaiting_manual_review":
+            case.review_stage = "desensitized_uploaded"
+
+    submission.review_stage = "desensitized_uploaded"
+    correction = _record_correction(
+        submission.id,
+        "upload_desensitized_package",
+        original_value={"review_stage": original_stage},
+        corrected_value={"review_stage": "desensitized_uploaded", "matched_material_ids": matched_materials},
+        note=note or archive_path.name,
+        corrected_by=corrected_by,
+    )
+    _sync_submission_status(submission.id)
+    save_submission_graph(submission.id)
+    log_event(
+        "upload_desensitized_package",
+        {"submission_id": submission.id, "matched_material_count": len(matched_materials), "corrected_by": corrected_by},
+    )
+    return {"correction": correction.to_dict(), "matched_material_ids": matched_materials, "submission": submission.to_dict()}

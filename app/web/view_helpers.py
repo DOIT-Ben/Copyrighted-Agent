@@ -22,6 +22,14 @@ REVIEW_STRATEGY_LABELS = {
     "manual_desensitized_review": "先脱敏后继续审查",
 }
 
+REVIEW_STAGE_LABELS = {
+    "intake_processing": "导入处理中",
+    "desensitized_ready": "脱敏文件已就绪",
+    "desensitized_uploaded": "脱敏包已回传",
+    "review_processing": "正式审查中",
+    "review_completed": "审查已完成",
+}
+
 TYPE_LABELS = {
     "agreement": "合作协议",
     "source_code": "源代码",
@@ -120,6 +128,10 @@ def type_label(material_type: str) -> str:
 
 def review_strategy_label(review_strategy: str) -> str:
     return REVIEW_STRATEGY_LABELS.get(review_strategy, review_strategy or "-")
+
+
+def review_stage_label(review_stage: str) -> str:
+    return REVIEW_STAGE_LABELS.get(review_stage, review_stage or "-")
 
 
 def report_label(report_type: str) -> str:
@@ -462,6 +474,7 @@ __all__ = [
     "panel",
     "pill",
     "read_text_file",
+    "review_stage_label",
     "review_strategy_label",
     "render_stylesheet",
     "report_label",

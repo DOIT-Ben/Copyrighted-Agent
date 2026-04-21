@@ -12,6 +12,7 @@ from app.web.view_helpers import (
     mode_label,
     panel,
     pill,
+    review_stage_label,
     review_strategy_label,
     status_label,
     status_tone,
@@ -31,7 +32,6 @@ def _summary_tile(label: str, value: str, note: str) -> str:
 
 def render_home_page() -> str:
     submissions = sorted(store.submissions.values(), key=lambda item: item.created_at, reverse=True)
-    materials = list(store.materials.values())
     cases = list(store.cases.values())
     reports = list(store.report_artifacts.values())
 
@@ -49,7 +49,7 @@ def render_home_page() -> str:
 
     kpis = "".join(
         [
-            metric_card("批次数", str(len(submissions)), "当前运行时已导入的批次数量", "info", icon_name="layers"),
+            metric_card("批次数", str(len(submissions)), "当前已导入的批次数量", "info", icon_name="layers"),
             metric_card("项目数", str(len(cases)), "当前已形成的项目视图数量", "success", icon_name="lock"),
             metric_card("报告数", str(len(reports)), "当前已生成的交付型报告数量", "neutral", icon_name="report"),
             metric_card(
@@ -72,7 +72,7 @@ def render_home_page() -> str:
         </div>
         <div class="import-console-copy">
           <strong>上传一个软著包，然后按你需要的节奏完成审查</strong>
-          <p>首页现在只负责导入。提交后会自动跳到批次详情页，在那里继续下载脱敏件、查看进度、继续审查和导出结果。</p>
+          <p>首页只负责导入。提交后会自动跳到批次详情页，在那里继续下载脱敏件、查看进度、回传脱敏包、继续审查和导出结果。</p>
         </div>
         <div class="summary-grid task-focus-grid">
           <div class="summary-tile">
@@ -83,7 +83,7 @@ def render_home_page() -> str:
           <div class="summary-tile">
             <span>策略二</span>
             <strong>先脱敏后继续审查</strong>
-            <small>系统先完成解析与脱敏，用户确认脱敏件后再点击继续审查。</small>
+            <small>系统先完成解析与脱敏，支持下载脱敏件，或上传脱敏包后再继续审查。</small>
           </div>
           <div class="summary-tile">
             <span>结果入口</span>
@@ -152,12 +152,8 @@ def render_home_page() -> str:
             _summary_tile("最近批次", latest_submission.filename, "最近一次上传的 ZIP"),
             _summary_tile("处理状态", status_label(latest_submission.status), "当前这次导入的最新状态"),
             _summary_tile("导入模式", mode_label(latest_submission.mode), "当前批次使用的导入模式"),
-            _summary_tile(
-                "审查策略",
-                review_strategy_label(getattr(latest_submission, "review_strategy", "auto_review")),
-                "决定是否先下载脱敏件再继续审查",
-            ),
-            _summary_tile("项目数", str(len(latest_submission.case_ids)), "当前批次已形成的项目数量"),
+            _summary_tile("审查策略", review_strategy_label(getattr(latest_submission, "review_strategy", "auto_review")), "决定是直接审查还是先脱敏后继续"),
+            _summary_tile("当前阶段", review_stage_label(getattr(latest_submission, "review_stage", "review_completed")), "显示是否已完成脱敏、已回传脱敏包或已完成正式审查"),
             latest_submission.id,
             icon("search", "icon icon-sm"),
             latest_submission.id,
@@ -180,6 +176,7 @@ def render_home_page() -> str:
             link(f"/submissions/{submission.id}", submission.filename),
             escape_html(mode_label(submission.mode)),
             escape_html(review_strategy_label(getattr(submission, "review_strategy", "auto_review"))),
+            escape_html(review_stage_label(getattr(submission, "review_stage", "review_completed"))),
             pill(status_label(submission.status), status_tone(submission.status)),
             escape_html(str(len(submission.material_ids))),
             escape_html(str(len(submission.case_ids))),
@@ -189,7 +186,7 @@ def render_home_page() -> str:
     ]
 
     recent_body = (
-        table(["批次", "导入模式", "审查策略", "状态", "材料数", "项目数", "导入时间"], recent_rows)
+        table(["批次", "导入模式", "审查策略", "当前阶段", "状态", "材料数", "项目数", "导入时间"], recent_rows)
         if recent_rows
         else empty_state("暂无导入记录", "上传 ZIP 后，这里会出现最近的批次和状态。")
     )
@@ -207,14 +204,14 @@ def render_home_page() -> str:
         <span class="sequence-index">2</span>
         <div>
           <strong>查看脱敏与进度</strong>
-          <p>系统完成解析后，进入批次详情页查看材料、脱敏件和当前进度。</p>
+          <p>系统完成解析后，进入批次详情页查看材料、脱敏件和当前阶段。</p>
         </div>
       </article>
       <article class="sequence-step">
         <span class="sequence-index">3</span>
         <div>
-          <strong>继续审查或直接看结果</strong>
-          <p>直接审查模式会立即出结果；脱敏优先模式可先下载脱敏件，再点击继续审查。</p>
+          <strong>回传脱敏包或继续审查</strong>
+          <p>脱敏优先模式支持先下载脱敏件，也支持上传脱敏包后再继续项目审查。</p>
         </div>
       </article>
     </div>

@@ -223,4 +223,40 @@ def test_html_manual_desensitized_flow_exposes_continue_review_entry(api_client,
 
     submission_after = api_client.get(f"/api/submissions/{submission_id}").json()
     assert submission_after["status"] == "completed"
+    assert submission_after["review_stage"] == "review_completed"
     assert submission_after["report_ids"]
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
+def test_html_manual_desensitized_flow_supports_uploading_desensitized_package(api_client, mode_a_zip_path, tmp_path):
+    submission_id = _create_submission(
+        api_client,
+        mode_a_zip_path,
+        review_strategy="manual_desensitized_review",
+    )
+
+    files_payload = api_client.get(f"/api/submissions/{submission_id}/files").json()["files"]
+    zip_path = tmp_path / "desensitized-package.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for item in files_payload:
+            download = api_client.get(f"/downloads/materials/{item['id']}/desensitized")
+            assert download.status_code == 200
+            archive.writestr(f"{item['original_filename']}.desensitized.txt", download.content)
+
+    with zip_path.open("rb") as handle:
+        upload_response = api_client.post(
+            f"/submissions/{submission_id}/actions/upload-desensitized-package",
+            files={"file": (zip_path.name, handle, "application/zip")},
+            data={"note": "html upload package"},
+        )
+
+    assert upload_response.status_code == 303
+    upload_location = upload_response.headers.get("Location", "")
+    assert "notice=desensitized_package_uploaded" in upload_location
+    assert "#operator-console" in upload_location
+
+    submission_after = api_client.get(f"/api/submissions/{submission_id}").json()
+    assert submission_after["status"] == "awaiting_manual_review"
+    assert submission_after["review_stage"] == "desensitized_uploaded"

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import zipfile
+
 import pytest
 
 
@@ -17,6 +19,17 @@ def _create_submission(
         )
     assert response.status_code in (200, 201, 202)
     return response.json()["id"]
+
+
+def _build_desensitized_zip(api_client, submission_id: str, tmp_path):
+    files_payload = api_client.get(f"/api/submissions/{submission_id}/files").json()["files"]
+    zip_path = tmp_path / "desensitized-upload.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for item in files_payload:
+            download = api_client.get(f"/downloads/materials/{item['id']}/desensitized")
+            assert download.status_code == 200
+            archive.writestr(f"{item['original_filename']}.desensitized.txt", download.content)
+    return zip_path
 
 
 @pytest.mark.integration
@@ -117,12 +130,14 @@ def test_manual_desensitized_review_can_continue_after_download_stage(api_client
     files_payload = api_client.get(f"/api/submissions/{submission_id}/files").json()
 
     assert submission_payload["status"] == "awaiting_manual_review"
+    assert submission_payload["review_stage"] == "desensitized_ready"
     assert submission_payload["report_ids"] == []
     assert submission_payload["case_ids"]
 
     case_id = submission_payload["case_ids"][0]
     case_before = api_client.get(f"/api/cases/{case_id}").json()
     assert case_before["status"] == "awaiting_manual_review"
+    assert case_before["review_stage"] == "desensitized_ready"
     assert case_before["report_id"] == ""
     assert files_payload["files"]
 
@@ -142,7 +157,35 @@ def test_manual_desensitized_review_can_continue_after_download_stage(api_client
 
     submission_after = api_client.get(f"/api/submissions/{submission_id}").json()
     assert submission_after["status"] == "completed"
+    assert submission_after["review_stage"] == "review_completed"
     assert submission_after["report_ids"]
 
     corrections = api_client.get(f"/api/submissions/{submission_id}/corrections").json()["corrections"]
     assert corrections[0]["correction_type"] == "continue_case_review_from_desensitized"
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.api
+def test_manual_desensitized_review_accepts_uploaded_desensitized_package(api_client, mode_a_zip_path, tmp_path):
+    submission_id = _create_submission(api_client, mode_a_zip_path, review_strategy="manual_desensitized_review")
+    zip_path = _build_desensitized_zip(api_client, submission_id, tmp_path)
+
+    with zip_path.open("rb") as handle:
+        response = api_client.post(
+            f"/api/submissions/{submission_id}/desensitized-package",
+            files={"file": (zip_path.name, handle, "application/zip")},
+            data={"corrected_by": "tester", "note": "upload reviewed package"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["matched_material_ids"]
+    assert payload["submission"]["review_stage"] == "desensitized_uploaded"
+
+    submission_after = api_client.get(f"/api/submissions/{submission_id}").json()
+    assert submission_after["status"] == "awaiting_manual_review"
+    assert submission_after["review_stage"] == "desensitized_uploaded"
+
+    corrections = api_client.get(f"/api/submissions/{submission_id}/corrections").json()["corrections"]
+    assert corrections[0]["correction_type"] == "upload_desensitized_package"

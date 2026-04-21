@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from wsgiref.simple_server import make_server
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
@@ -17,6 +17,7 @@ from app.core.services.corrections import (
     create_case_from_materials,
     merge_cases,
     rerun_case_review,
+    upload_desensitized_package,
 )
 from app.core.services.delivery_closeout import get_delivery_closeout_artifact_download, latest_delivery_closeout_status
 from app.core.services.exports import build_submission_export_bundle, get_material_artifact, get_report_download
@@ -54,8 +55,17 @@ def _save_uploaded_zip(upload: UploadFile) -> Path:
     return target
 
 
+def _download_filename_fallback(filename: str) -> str:
+    fallback = "".join(character if 32 <= ord(character) < 127 and character not in {'"', "\\"} else "_" for character in filename)
+    fallback = fallback.strip(" .") or "download"
+    return fallback
+
+
 def _download_response(payload: bytes, filename: str, media_type: str) -> Response:
-    response = Response(payload, status_code=200, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    fallback = _download_filename_fallback(filename)
+    encoded = quote(filename, safe="")
+    disposition = f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"
+    response = Response(payload, status_code=200, headers={"Content-Disposition": disposition})
     response.media_type = media_type
     return response
 
@@ -112,6 +122,13 @@ SUBMISSION_NOTICE_MAP = {
         "tone": "success",
         "icon_name": "check",
         "meta": ["脱敏流程已闭环", "可立即查看报告"],
+    },
+    "desensitized_package_uploaded": {
+        "title": "脱敏包已导入",
+        "message": "系统已接收你上传的脱敏包，当前批次可继续进入正式审查。",
+        "tone": "success",
+        "icon_name": "upload",
+        "meta": ["脱敏文件已回传", "可进入下一步审查"],
     },
 }
 
@@ -351,6 +368,22 @@ def create_app(testing: bool = False):
             raise HTTPException(400, str(exc)) from exc
         return JSONResponse(result)
 
+    @app.post("/api/submissions/{submission_id}/desensitized-package")
+    def api_upload_desensitized_package(request: Request, submission_id: str):
+        upload = request.files.get("file")
+        note = request.form_data.get("note", "")
+        corrected_by = request.form_data.get("corrected_by", "local")
+        if not upload:
+            raise HTTPException(400, "缺少 ZIP 文件")
+        if not upload.filename.lower().endswith(".zip"):
+            raise HTTPException(415, "仅支持 ZIP 文件")
+        saved = _save_uploaded_zip(upload)
+        try:
+            result = upload_desensitized_package(submission_id, saved, corrected_by=corrected_by, note=note)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return JSONResponse(result)
+
     @app.post("/submissions/{submission_id}/actions/change-type")
     def change_material_type_page(request: Request, submission_id: str):
         material_id = request.form_data.get("material_id", "")
@@ -461,6 +494,26 @@ def create_app(testing: bool = False):
             raise HTTPException(400, str(exc)) from exc
         log_event("continue_case_review_html", {"submission_id": submission_id, "case_id": case_id, "by": corrected_by})
         return RedirectResponse(_submission_notice_location(submission_id, "case_review_continued", focus="export-center"), status_code=303)
+
+    @app.post("/submissions/{submission_id}/actions/upload-desensitized-package")
+    def upload_desensitized_package_page(request: Request, submission_id: str):
+        upload = request.files.get("file")
+        note = request.form_data.get("note", "")
+        corrected_by = request.form_data.get("corrected_by", "operator_ui")
+        if not upload:
+            raise HTTPException(400, "缺少 ZIP 文件")
+        if not upload.filename.lower().endswith(".zip"):
+            raise HTTPException(415, "仅支持 ZIP 文件")
+        saved = _save_uploaded_zip(upload)
+        try:
+            upload_desensitized_package(submission_id, saved, corrected_by=corrected_by, note=note)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        log_event("upload_desensitized_package_html", {"submission_id": submission_id, "filename": upload.filename, "by": corrected_by})
+        return RedirectResponse(
+            _submission_notice_location(submission_id, "desensitized_package_uploaded", focus="operator-console"),
+            status_code=303,
+        )
 
     @app.get("/downloads/reports/{report_id}")
     def download_report(request: Request, report_id: str):

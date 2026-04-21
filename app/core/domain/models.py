@@ -13,6 +13,7 @@ class Submission:
     status: str
     created_at: str
     review_strategy: str = "auto_review"
+    review_stage: str = "review_completed"
     created_by: str = "local"
     material_ids: list[str] = field(default_factory=list)
     case_ids: list[str] = field(default_factory=list)
@@ -34,6 +35,7 @@ class Case:
     source_submission_id: str
     created_at: str
     material_ids: list[str] = field(default_factory=list)
+    review_stage: str = "review_completed"
     review_result_id: str = ""
     report_id: str = ""
 

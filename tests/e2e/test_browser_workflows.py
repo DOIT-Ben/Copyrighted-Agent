@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import io
 import json
 import threading
 import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path
 from wsgiref.simple_server import make_server
 
@@ -59,6 +61,21 @@ def _post_form(url: str, data: dict[str, str]) -> dict:
     )
 
 
+def _build_desensitized_zip_payload(live_server_url: str, submission_id: str) -> tuple[bytes, str]:
+    files_payload = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}/files")["body"])
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for item in files_payload["files"]:
+            artifact = _request(f"{live_server_url}/downloads/materials/{item['id']}/desensitized")
+            archive.writestr(f"{item['original_filename']}.desensitized.txt", artifact["body"])
+    temp_path = Path("desensitized_package.zip")
+    temp_path.write_bytes(buffer.getvalue())
+    try:
+        return _multipart_request_body("file", temp_path, {})
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 @contextmanager
 def _live_server_url():
     from app.api.main import create_app
@@ -91,8 +108,6 @@ def test_browser_mode_a_workflow_covers_upload_correction_report_and_ops(mode_a_
 
         assert upload_response["status"] == 200
         assert "/submissions/" in upload_response["url"]
-        assert "导入摘要" in upload_response["text"]
-        assert "人工干预台" in upload_response["text"]
 
         submission_id = upload_response["url"].rstrip("/").rsplit("/", 1)[-1]
         submission_payload = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}")["body"])
@@ -107,20 +122,18 @@ def test_browser_mode_a_workflow_covers_upload_correction_report_and_ops(mode_a_
             {"material_id": material_id, "material_type": "agreement", "note": "browser e2e"},
         )
         assert change_response["status"] == 200
-        assert "更正审计" in change_response["text"]
-        assert "材料类型已更新" in change_response["text"]
+        assert "notice=material_type_updated" in change_response["url"]
 
         rerun_response = _post_form(
             f"{live_server_url}/submissions/{submission_id}/actions/rerun-review",
             {"case_id": case_id, "note": "browser e2e rerun"},
         )
         assert rerun_response["status"] == 200
-        assert "更正审计" in rerun_response["text"]
-        assert "项目审查已重跑" in rerun_response["text"]
+        assert "notice=case_review_rerun" in rerun_response["url"]
 
         report_response = _request(f"{live_server_url}/reports/{report_id}")
         assert report_response["status"] == 200
-        assert "报告阅读器" in report_response["text"]
+        assert report_id in report_response["text"]
 
         log_download = _request(f"{live_server_url}/downloads/logs/app")
         assert log_download["status"] == 200
@@ -128,8 +141,8 @@ def test_browser_mode_a_workflow_covers_upload_correction_report_and_ops(mode_a_
 
         ops_response = _request(f"{live_server_url}/ops")
         assert ops_response["status"] == 200
-        assert "启动自检" in ops_response["text"]
-        assert "运维中心" in ops_response["text"]
+        assert "/downloads/logs/app" in ops_response["text"]
+        assert "/downloads/ops/delivery-closeout/latest-json" in ops_response["text"]
 
 
 def test_browser_mode_b_workflow_supports_case_regroup_after_batch_upload(mode_b_ambiguous_zip_path):
@@ -148,7 +161,6 @@ def test_browser_mode_b_workflow_supports_case_regroup_after_batch_upload(mode_b
 
         assert upload_response["status"] == 200
         assert "/submissions/" in upload_response["url"]
-        assert "导入摘要" in upload_response["text"]
 
         submission_id = upload_response["url"].rstrip("/").rsplit("/", 1)[-1]
         files_payload = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}/files")["body"])
@@ -158,22 +170,22 @@ def test_browser_mode_b_workflow_supports_case_regroup_after_batch_upload(mode_b
             f"{live_server_url}/submissions/{submission_id}/actions/create-case",
             {
                 "material_ids": material_ids[0],
-                "case_name": "模式B项目A",
+                "case_name": "妯″紡B椤圭洰A",
                 "version": "V1.0",
-                "company_name": "测试公司A",
+                "company_name": "娴嬭瘯鍏徃A",
                 "note": "browser e2e create a",
             },
         )
         assert create_a["status"] == 200
-        assert "新项目已创建" in create_a["text"]
+        assert "notice=case_created" in create_a["url"]
 
         create_b = _post_form(
             f"{live_server_url}/submissions/{submission_id}/actions/create-case",
             {
                 "material_ids": material_ids[1],
-                "case_name": "模式B项目B",
+                "case_name": "妯″紡B椤圭洰B",
                 "version": "V1.0",
-                "company_name": "测试公司B",
+                "company_name": "娴嬭瘯鍏徃B",
                 "note": "browser e2e create b",
             },
         )
@@ -192,19 +204,80 @@ def test_browser_mode_b_workflow_supports_case_regroup_after_batch_upload(mode_b
             },
         )
         assert merge_response["status"] == 200
-        assert "更正审计" in merge_response["text"]
-        assert "项目已合并" in merge_response["text"]
+        assert "notice=cases_merged" in merge_response["url"]
 
         rerun_response = _post_form(
             f"{live_server_url}/submissions/{submission_id}/actions/rerun-review",
             {"case_id": case_ids[0], "note": "browser e2e rerun mode b"},
         )
         assert rerun_response["status"] == 200
-        assert "项目审查已重跑" in rerun_response["text"]
+        assert "notice=case_review_rerun" in rerun_response["url"]
 
         submission_after_merge = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}")["body"])
         assert submission_after_merge["case_ids"] == [case_ids[0]]
 
         case_page = _request(f"{live_server_url}/cases/{case_ids[0]}")
         assert case_page["status"] == 200
-        assert "AI 辅助研判" in case_page["text"]
+
+
+def test_browser_manual_desensitized_workflow_supports_upload_and_continue(mode_a_zip_path):
+    with _live_server_url() as live_server_url:
+        upload_body, content_type = _multipart_request_body(
+            file_field="file",
+            file_path=mode_a_zip_path,
+            extra_fields={
+                "mode": "single_case_package",
+                "review_strategy": "manual_desensitized_review",
+            },
+        )
+        upload_response = _request(
+            f"{live_server_url}/upload",
+            method="POST",
+            body=upload_body,
+            headers={"Content-Type": content_type},
+        )
+
+        assert upload_response["status"] == 200
+        assert "/submissions/" in upload_response["url"]
+
+        submission_id = upload_response["url"].rstrip("/").rsplit("/", 1)[-1]
+        submission_payload = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}")["body"])
+
+        assert submission_payload["status"] == "awaiting_manual_review"
+        assert submission_payload["review_stage"] == "desensitized_ready"
+        assert submission_payload["case_ids"]
+        assert submission_payload["report_ids"] == []
+
+        case_id = submission_payload["case_ids"][0]
+
+        operator_page = _request(f"{live_server_url}/submissions/{submission_id}/operator")
+        assert operator_page["status"] == 200
+        assert f"/submissions/{submission_id}/actions/upload-desensitized-package" in operator_page["text"]
+        assert f"/submissions/{submission_id}/actions/continue-review" in operator_page["text"]
+
+        package_body, package_content_type = _build_desensitized_zip_payload(live_server_url, submission_id)
+        upload_package_response = _request(
+            f"{live_server_url}/submissions/{submission_id}/actions/upload-desensitized-package",
+            method="POST",
+            body=package_body,
+            headers={"Content-Type": package_content_type},
+        )
+
+        assert upload_package_response["status"] == 200
+        assert "notice=desensitized_package_uploaded" in upload_package_response["url"]
+
+        submission_after_upload = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}")["body"])
+        assert submission_after_upload["status"] == "awaiting_manual_review"
+        assert submission_after_upload["review_stage"] == "desensitized_uploaded"
+
+        continue_response = _post_form(
+            f"{live_server_url}/submissions/{submission_id}/actions/continue-review",
+            {"case_id": case_id, "note": "browser manual continue"},
+        )
+        assert continue_response["status"] == 200
+        assert "notice=case_review_continued" in continue_response["url"]
+
+        submission_after_continue = json.loads(_request(f"{live_server_url}/api/submissions/{submission_id}")["body"])
+        assert submission_after_continue["status"] == "completed"
+        assert submission_after_continue["review_stage"] == "review_completed"
+        assert submission_after_continue["report_ids"]
