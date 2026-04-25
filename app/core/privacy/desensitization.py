@@ -53,6 +53,16 @@ EXPLICIT_VALUE_FIELDS = {
 }
 
 AI_SAFE_POLICY = "local_manual_redaction_v1"
+AI_SAFE_MATERIAL_KEYS = {
+    "material_type",
+    "file_ext",
+    "parse_status",
+    "review_status",
+    "quality_level",
+    "quality_reason_code",
+    "legacy_doc_bucket",
+}
+AI_SAFE_COLLECTION_KEYS = {"material_inventory", "material_type_counts", "material_count"}
 
 
 def _build_label_rule(label: str, placeholder: str) -> RedactionRule:
@@ -195,7 +205,7 @@ def desensitize_text(text: str, metadata: dict[str, str] | None = None) -> dict:
     }
 
 
-def build_ai_safe_case_payload(case_payload: dict) -> dict:
+def _legacy_build_ai_safe_case_payload(case_payload: dict) -> dict:
     version = case_payload.get("version", "")
     return {
         "software_name": "[已脱敏-软件名称]" if case_payload.get("software_name") else "",
@@ -206,7 +216,7 @@ def build_ai_safe_case_payload(case_payload: dict) -> dict:
     }
 
 
-def is_ai_safe_case_payload(case_payload: dict) -> bool:
+def _legacy_is_ai_safe_case_payload(case_payload: dict) -> bool:
     if not isinstance(case_payload, dict):
         return False
 
@@ -223,4 +233,80 @@ def is_ai_safe_case_payload(case_payload: dict) -> bool:
         if value and value != placeholder:
             return False
 
+    return bool(case_payload.get("llm_safe"))
+
+
+def build_ai_safe_case_payload(case_payload: dict) -> dict:
+    version = case_payload.get("version", "")
+    safe_payload = {
+        "software_name": EXPLICIT_VALUE_FIELDS["software_name"] if case_payload.get("software_name") else "",
+        "version": EXPLICIT_VALUE_FIELDS["version"] if version else "",
+        "company_name": EXPLICIT_VALUE_FIELDS["company_name"] if case_payload.get("company_name") else "",
+        "privacy_policy": AI_SAFE_POLICY,
+        "llm_safe": True,
+    }
+    inventory = case_payload.get("material_inventory")
+    if isinstance(inventory, list):
+        safe_payload["material_inventory"] = [
+            {
+                key: str(item.get(key, "") or "")[:80]
+                for key in AI_SAFE_MATERIAL_KEYS
+                if isinstance(item, dict) and item.get(key) not in (None, "")
+            }
+            for item in inventory[:40]
+            if isinstance(item, dict)
+        ]
+    counts = case_payload.get("material_type_counts")
+    if isinstance(counts, dict):
+        safe_payload["material_type_counts"] = {
+            str(key)[:40]: int(value)
+            for key, value in counts.items()
+            if isinstance(value, int) and value >= 0
+        }
+    material_count = case_payload.get("material_count")
+    if isinstance(material_count, int) and material_count >= 0:
+        safe_payload["material_count"] = material_count
+    return safe_payload
+
+
+def _is_safe_material_inventory(value: object) -> bool:
+    if not isinstance(value, list):
+        return False
+    for item in value:
+        if not isinstance(item, dict):
+            return False
+        if any(key not in AI_SAFE_MATERIAL_KEYS for key in item):
+            return False
+        if any(not isinstance(entry_value, str) for entry_value in item.values()):
+            return False
+    return True
+
+
+def _is_safe_material_type_counts(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    return all(isinstance(key, str) and isinstance(count, int) and count >= 0 for key, count in value.items())
+
+
+def is_ai_safe_case_payload(case_payload: dict) -> bool:
+    if not isinstance(case_payload, dict):
+        return False
+    if case_payload.get("privacy_policy") != AI_SAFE_POLICY:
+        return False
+
+    allowed_keys = set(EXPLICIT_VALUE_FIELDS) | {"privacy_policy", "llm_safe"} | AI_SAFE_COLLECTION_KEYS
+    for key, value in case_payload.items():
+        if key not in allowed_keys and value not in ("", None, False):
+            return False
+        if key == "material_inventory" and not _is_safe_material_inventory(value):
+            return False
+        if key == "material_type_counts" and not _is_safe_material_type_counts(value):
+            return False
+        if key == "material_count" and not isinstance(value, int):
+            return False
+
+    for field_name, placeholder in EXPLICIT_VALUE_FIELDS.items():
+        value = str(case_payload.get(field_name, "") or "")
+        if value and value != placeholder:
+            return False
     return bool(case_payload.get("llm_safe"))

@@ -91,6 +91,39 @@ def _review_by_material_type(material_type: str, text: str) -> dict:
     return {"issues": []}
 
 
+def _build_case_ai_payload(case: Case, case_materials: list[Material]) -> dict:
+    material_type_counts: dict[str, int] = {}
+    material_inventory: list[dict[str, str]] = []
+    for material in case_materials:
+        material_type_counts[material.material_type] = material_type_counts.get(material.material_type, 0) + 1
+        parse_quality = dict(material.metadata.get("parse_quality") or {})
+        triage = dict(material.metadata.get("triage") or {})
+        material_inventory.append(
+            {
+                "material_type": material.material_type,
+                "file_ext": material.file_ext,
+                "parse_status": material.parse_status,
+                "review_status": material.review_status,
+                "quality_level": str(parse_quality.get("quality_level", "") or ""),
+                "quality_reason_code": str(
+                    triage.get("quality_review_reason_code")
+                    or parse_quality.get("review_reason_code")
+                    or parse_quality.get("quality_reason")
+                    or ""
+                ),
+                "legacy_doc_bucket": str(parse_quality.get("legacy_doc_bucket", "") or ""),
+            }
+        )
+    return {
+        "software_name": case.software_name,
+        "version": case.version,
+        "company_name": case.company_name,
+        "material_count": len(case_materials),
+        "material_type_counts": material_type_counts,
+        "material_inventory": material_inventory,
+    }
+
+
 def _select_classification(first_pass: dict, second_pass: dict | None, parse_quality: dict) -> dict:
     selected = dict(first_pass)
 
@@ -463,7 +496,7 @@ def ingest_submission(
             )
             combined_issues = consistency.get("issues", [])
             ai_provider = resolve_case_ai_provider()
-            ai_case_payload = {"software_name": case.software_name, "version": case.version, "company_name": case.company_name}
+            ai_case_payload = _build_case_ai_payload(case, materials)
             if ai_provider != "mock":
                 ai_case_payload = build_ai_safe_case_payload(ai_case_payload)
             ai_review = generate_case_ai_review(
@@ -474,7 +507,7 @@ def ingest_submission(
             )
             review_record = _build_case_review_record(
                 case,
-                materials + agreements,
+                materials,
                 combined_issues,
                 ai_review,
                 normalized_review_profile,

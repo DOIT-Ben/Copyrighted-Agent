@@ -41,3 +41,33 @@ def test_build_ai_safe_case_payload_masks_case_fields():
     assert safe_payload["version"] == "[已脱敏-版本号]"
     assert safe_payload["company_name"] == "[已脱敏-公司名称]"
     assert safe_payload["privacy_policy"] == "local_manual_redaction_v1"
+def test_build_ai_safe_case_payload_keeps_safe_material_inventory_only():
+    build_ai_safe_case_payload = require_symbol("app.core.privacy.desensitization", "build_ai_safe_case_payload")
+    is_ai_safe_case_payload = require_symbol("app.core.privacy.desensitization", "is_ai_safe_case_payload")
+
+    safe_payload = build_ai_safe_case_payload(
+        {
+            "software_name": "Sensitive Product",
+            "version": "V1.0",
+            "company_name": "Sensitive Company",
+            "material_count": 2,
+            "material_type_counts": {"source_code": 1, "software_doc": 1},
+            "material_inventory": [
+                {
+                    "material_type": "source_code",
+                    "file_ext": ".docx",
+                    "parse_status": "completed",
+                    "review_status": "completed",
+                    "quality_level": "medium",
+                    "original_filename": "Sensitive Product source.docx",
+                }
+            ],
+        }
+    )
+
+    assert safe_payload["material_count"] == 2
+    assert safe_payload["material_type_counts"]["source_code"] == 1
+    assert safe_payload["material_inventory"][0]["material_type"] == "source_code"
+    assert "original_filename" not in safe_payload["material_inventory"][0]
+    assert "Sensitive Product" not in str(safe_payload)
+    assert is_ai_safe_case_payload(safe_payload) is True
