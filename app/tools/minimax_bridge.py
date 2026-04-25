@@ -24,7 +24,7 @@ class MiniMaxBridgeSettings:
     port: int = 18011
     endpoint_path: str = "/review"
     upstream_base_url: str = "https://api.minimaxi.com/v1"
-    upstream_model: str = "MiniMax-M2.7-highspeed"
+    upstream_model: str = "minimax-m2.7-highspeed"
     upstream_api_key_env: str = "MINIMAX_API_KEY"
     request_log_path: str = ""
     strict_desensitized: bool = True
@@ -307,7 +307,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=18011, help="Port to bind.")
     parser.add_argument("--endpoint-path", default="/review", help="Bridge endpoint path.")
     parser.add_argument("--upstream-base-url", default="https://api.minimaxi.com/v1", help="MiniMax OpenAI-compatible base URL.")
-    parser.add_argument("--upstream-model", default="MiniMax-M2.7-highspeed", help="MiniMax model name.")
+    parser.add_argument("--upstream-model", default="minimax-m2.7-highspeed", help="MiniMax model name.")
     parser.add_argument("--upstream-api-key-env", default="MINIMAX_API_KEY", help="Environment variable that stores the MiniMax API key.")
     parser.add_argument("--request-log-path", default="", help="Optional JSONL bridge request log path.")
     parser.add_argument("--timeout-seconds", type=int, default=30, help="Upstream timeout in seconds.")
