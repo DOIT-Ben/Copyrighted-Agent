@@ -22,6 +22,8 @@ from app.core.reviewers.rules.source_code import review_source_code_text
 from app.core.services.app_logging import log_event
 from app.core.services.input_intake import stage_directory_input
 from app.core.services.material_classifier import classify_material
+from app.core.services.review_dimensions import build_case_review_dimensions
+from app.core.services.review_profile import normalize_review_profile
 from app.core.services.sqlite_repository import save_submission_graph
 from app.core.services.runtime_store import store
 from app.core.services.zip_ingestion import safe_extract_zip
@@ -39,6 +41,30 @@ def _write_text(path: Path, content: str) -> Path:
     ensure_dir(path.parent)
     path.write_text(content, encoding="utf-8")
     return path
+
+
+def _update_job(
+    job: Job,
+    *,
+    status: str | None = None,
+    progress: int | None = None,
+    stage: str | None = None,
+    detail: str | None = None,
+    finished: bool = False,
+    persist_submission_id: str = "",
+) -> None:
+    if status is not None:
+        job.status = status
+    if progress is not None:
+        job.progress = progress
+    if stage is not None:
+        job.stage = stage
+    if detail is not None:
+        job.detail = detail
+    if finished:
+        job.finished_at = now_iso()
+    if persist_submission_id:
+        save_submission_graph(persist_submission_id)
 
 
 def _prepare_input_source(source_path: Path, submission_dir: Path) -> tuple[str, list[Path]]:
@@ -125,13 +151,28 @@ def _build_triage(classification: dict, parse_quality: dict) -> dict:
     }
 
 
-def _build_case_review_record(case: Case, combined_issues: list[dict], ai_review: dict) -> dict:
+def _build_case_review_record(
+    case: Case,
+    case_materials: list[Material],
+    combined_issues: list[dict],
+    ai_review: dict,
+    review_profile: dict,
+) -> dict:
     rule_conclusion = str(ai_review.get("rule_summary") or ai_review.get("conclusion") or "").strip()
     ai_summary = str(ai_review.get("ai_note") or ai_review.get("summary") or "").strip()
+    review_dimensions = build_case_review_dimensions(
+        case,
+        case_materials,
+        cross_material_issues=combined_issues,
+        ai_resolution=str(ai_review.get("resolution", "explicit_mock") or ""),
+        review_profile=review_profile,
+    )
     report_payload = {
         "case_name": case.case_name,
         "materials": [],
         "cross_material_issues": combined_issues,
+        "review_dimensions": review_dimensions,
+        "review_profile": dict(review_profile),
         "rule_conclusion": rule_conclusion or "规则引擎未返回额外结论",
         "ai_summary": ai_summary or "当前没有额外 AI 补充说明",
         "ai_provider": ai_review.get("provider", "mock"),
@@ -146,6 +187,8 @@ def _build_case_review_record(case: Case, combined_issues: list[dict], ai_review
         "ai_summary": ai_summary,
         "ai_provider": ai_review.get("provider", "mock"),
         "ai_resolution": ai_review.get("resolution", "explicit_mock"),
+        "review_profile_snapshot": dict(review_profile),
+        "prompt_snapshot_json": dict(ai_review.get("prompt_snapshot") or {}),
     }
     return {"report_payload": report_payload, "review_payload": review_payload}
 
@@ -155,12 +198,17 @@ def ingest_submission(
     mode: str,
     created_by: str = "local",
     review_strategy: str = ReviewStrategy.AUTO_REVIEW.value,
+    review_profile: dict | None = None,
+    *,
+    submission_id: str = "",
+    job_id: str = "",
 ) -> dict:
     source_path = Path(zip_path)
     if mode not in {item.value for item in SubmissionMode}:
         raise ValueError(f"Unsupported submission mode: {mode}")
     if review_strategy not in {item.value for item in ReviewStrategy}:
         raise ValueError(f"Unsupported review strategy: {review_strategy}")
+    normalized_review_profile = normalize_review_profile(review_profile)
     log_event(
         "ingest_submission_started",
         {
@@ -168,44 +216,81 @@ def ingest_submission(
             "mode": mode,
             "created_by": created_by,
             "review_strategy": review_strategy,
+            "review_profile": normalized_review_profile,
         },
     )
 
     runtime_root = _runtime_root()
-    submission_id = slug_id("sub")
+    submission_id = submission_id or slug_id("sub")
     submission_dir = ensure_dir(runtime_root / "submissions" / submission_id)
-    storage_path, extracted_files = _prepare_input_source(source_path, submission_dir)
-
-    job = Job(
-        id=slug_id("job"),
-        job_type="ingest_submission",
-        scope_type="submission",
-        scope_id=submission_id,
-        status="running",
-        progress=10,
-        started_at=now_iso(),
-    )
-    store.add_job(job)
+    job = store.jobs.get(job_id) if job_id else None
+    if job:
+        job.scope_id = submission_id
+        _update_job(
+            job,
+            status="running",
+            progress=6,
+            stage="正在登记批次",
+            detail="系统已接收文件，正在创建批次记录。",
+        )
+    else:
+        job = Job(
+            id=job_id or slug_id("job"),
+            job_type="ingest_submission",
+            scope_type="submission",
+            scope_id=submission_id,
+            status="running",
+            progress=6,
+            stage="正在登记批次",
+            detail="系统已接收文件，正在创建批次记录。",
+            started_at=now_iso(),
+        )
+        store.add_job(job)
 
     submission = Submission(
         id=submission_id,
         mode=mode,
         filename=source_path.name,
-        storage_path=storage_path,
+        storage_path=str(source_path),
         status="processing",
         created_at=now_iso(),
         review_strategy=review_strategy,
         review_stage="intake_processing",
         created_by=created_by,
+        review_profile=normalized_review_profile,
     )
     store.add_submission(submission)
+    _update_job(
+        job,
+        progress=12,
+        stage="正在解压文件",
+        detail="批次已创建，正在解压 ZIP 并识别可处理文件。",
+        persist_submission_id=submission_id,
+    )
+    storage_path, extracted_files = _prepare_input_source(source_path, submission_dir)
+    submission.storage_path = storage_path
+    allowed_files = [item for item in sorted(extracted_files) if item.suffix.lower() in ALLOWED_FILE_SUFFIXES]
+    _update_job(
+        job,
+        progress=18,
+        stage="正在解析材料",
+        detail=f"已发现 {len(allowed_files)} 份可处理材料，开始解析与分类。",
+        persist_submission_id=submission_id,
+    )
 
     materials: list[Material] = []
     parse_results: list[ParseResult] = []
 
-    for file_path in sorted(extracted_files):
-        if file_path.suffix.lower() not in ALLOWED_FILE_SUFFIXES:
-            continue
+    total_files = len(allowed_files)
+    for index, file_path in enumerate(allowed_files, start=1):
+        parse_progress = 18 if total_files <= 0 else min(64, 18 + round((index / total_files) * 46))
+        _update_job(
+            job,
+            progress=parse_progress,
+            stage="正在解析材料",
+            detail=f"正在处理第 {index}/{total_files} 份材料：{file_path.name}",
+            persist_submission_id=submission_id,
+        )
         parse_hint = file_path.read_text(encoding="utf-8", errors="ignore") if file_path.suffix.lower() in {".txt", ".md"} else ""
         first_pass_classification = classify_material(file_name=file_path.name, content=parse_hint, directory_hint=file_path.parent.name)
         parsed = parse_material(file_path=file_path, material_type=first_pass_classification["material_type"])
@@ -305,6 +390,13 @@ def ingest_submission(
     cases: list[Case] = []
     reports: list[ReportArtifact] = []
     review_results: list[ReviewResult] = []
+    _update_job(
+        job,
+        progress=72,
+        stage="正在整理项目",
+        detail="材料解析完成，正在归并项目并准备生成审查结果。",
+        persist_submission_id=submission_id,
+    )
 
     if mode == SubmissionMode.SINGLE_CASE_PACKAGE.value:
         info_form = next((item for item in materials if item.material_type == MaterialType.INFO_FORM.value), None)
@@ -345,11 +437,25 @@ def ingest_submission(
         cases.append(case)
 
         if waiting_manual_review:
+            _update_job(
+                job,
+                progress=86,
+                stage="正在生成脱敏交付",
+                detail="已完成脱敏准备，等待人工确认后继续正式审查。",
+                persist_submission_id=submission_id,
+            )
             log_event(
                 "submission_review_deferred",
                 {"submission_id": submission.id, "case_id": case.id, "review_strategy": review_strategy},
             )
         else:
+            _update_job(
+                job,
+                progress=86,
+                stage="正在生成审查结果",
+                detail="项目已归并完成，正在输出审查结论与报告。",
+                persist_submission_id=submission_id,
+            )
             consistency = review_case_consistency(
                 info_form.metadata if info_form else {},
                 source_code.metadata if source_code else {},
@@ -360,8 +466,19 @@ def ingest_submission(
             ai_case_payload = {"software_name": case.software_name, "version": case.version, "company_name": case.company_name}
             if ai_provider != "mock":
                 ai_case_payload = build_ai_safe_case_payload(ai_case_payload)
-            ai_review = generate_case_ai_review(ai_case_payload, {"issues": combined_issues}, provider=ai_provider)
-            review_record = _build_case_review_record(case, combined_issues, ai_review)
+            ai_review = generate_case_ai_review(
+                ai_case_payload,
+                {"issues": combined_issues},
+                provider=ai_provider,
+                review_profile=normalized_review_profile,
+            )
+            review_record = _build_case_review_record(
+                case,
+                materials + agreements,
+                combined_issues,
+                ai_review,
+                normalized_review_profile,
+            )
             review_result = ReviewResult(
                 id=slug_id("rev"),
                 scope_type="case",
@@ -376,6 +493,8 @@ def ingest_submission(
                 ai_summary=review_record["review_payload"]["ai_summary"],
                 ai_provider=review_record["review_payload"]["ai_provider"],
                 ai_resolution=review_record["review_payload"]["ai_resolution"],
+                review_profile_snapshot=review_record["review_payload"]["review_profile_snapshot"],
+                prompt_snapshot_json=review_record["review_payload"]["prompt_snapshot_json"],
             )
             store.add_review_result(review_result)
             case.review_result_id = review_result.id
@@ -401,6 +520,13 @@ def ingest_submission(
             submission.report_ids.append(case_report.id)
             reports.append(case_report)
     else:
+        _update_job(
+            job,
+            progress=86,
+            stage="正在生成批次报告",
+            detail="批量归档已完成，正在整理材料汇总与批次报告。",
+            persist_submission_id=submission_id,
+        )
         groups: dict[tuple[str, str], list[Material]] = {}
         for material in materials:
             key = (material.detected_software_name, material.detected_version)
@@ -456,9 +582,18 @@ def ingest_submission(
         if review_strategy == ReviewStrategy.MANUAL_DESENSITIZED_REVIEW.value and mode == SubmissionMode.SINGLE_CASE_PACKAGE.value
         else "review_completed"
     )
-    job.status = "completed"
-    job.progress = 100
-    job.finished_at = now_iso()
+    _update_job(
+        job,
+        status="completed",
+        progress=100,
+        stage="结果已生成",
+        detail=(
+            "脱敏件已准备完成，可进入批次详情继续审查。"
+            if review_strategy == ReviewStrategy.MANUAL_DESENSITIZED_REVIEW.value and mode == SubmissionMode.SINGLE_CASE_PACKAGE.value
+            else "批次解析与审查已完成，正在进入结果页面。"
+        ),
+        finished=True,
+    )
     save_submission_graph(submission.id)
     log_event(
         "ingest_submission_completed",

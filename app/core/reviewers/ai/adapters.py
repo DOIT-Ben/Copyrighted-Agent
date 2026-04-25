@@ -6,6 +6,7 @@ import socket
 import urllib.error
 import urllib.request
 
+from app.core.reviewers.ai.prompt_builder import build_ai_prompt_snapshot
 from app.core.services.app_config import AppConfig
 
 EXTERNAL_HTTP_REQUEST_VERSION = "soft_review.external_http.v1"
@@ -32,7 +33,20 @@ def review_with_safe_stub(case_payload: dict, rule_results: dict, requested_prov
     }
 
 
-def build_external_http_request_payload(case_payload: dict, rule_results: dict, requested_provider: str, config: AppConfig) -> dict:
+def build_external_http_request_payload(
+    case_payload: dict,
+    rule_results: dict,
+    requested_provider: str,
+    config: AppConfig,
+    *,
+    review_profile: dict | None = None,
+) -> dict:
+    prompt_snapshot = build_ai_prompt_snapshot(
+        case_payload,
+        rule_results,
+        review_profile,
+        requested_provider=requested_provider,
+    )
     return {
         "contract_version": EXTERNAL_HTTP_REQUEST_VERSION,
         "requested_provider": requested_provider,
@@ -44,6 +58,9 @@ def build_external_http_request_payload(case_payload: dict, rule_results: dict, 
         },
         "case_payload": case_payload,
         "rule_results": rule_results,
+        "review_profile": dict(review_profile or {}),
+        "dimension_rulebook": dict((review_profile or {}).get("dimension_rulebook") or {}),
+        "prompt_snapshot": prompt_snapshot,
     }
 
 
@@ -85,12 +102,25 @@ def normalize_external_http_response(payload_json: dict, rule_results: dict, req
     }
 
 
-def review_with_external_http(case_payload: dict, rule_results: dict, requested_provider: str, config: AppConfig) -> dict:
+def review_with_external_http(
+    case_payload: dict,
+    rule_results: dict,
+    requested_provider: str,
+    config: AppConfig,
+    *,
+    review_profile: dict | None = None,
+) -> dict:
     endpoint = str(config.ai_endpoint or "").strip()
     if not endpoint:
         raise RuntimeError("external_http_missing_endpoint")
 
-    payload = build_external_http_request_payload(case_payload, rule_results, requested_provider, config)
+    payload = build_external_http_request_payload(
+        case_payload,
+        rule_results,
+        requested_provider,
+        config,
+        review_profile=review_profile,
+    )
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json; charset=utf-8"}
     if config.ai_api_key_env:
@@ -114,4 +144,6 @@ def review_with_external_http(case_payload: dict, rule_results: dict, requested_
     except json.JSONDecodeError as exc:
         raise RuntimeError("external_http_invalid_json") from exc
 
-    return normalize_external_http_response(payload_json, rule_results, requested_provider, config)
+    result = normalize_external_http_response(payload_json, rule_results, requested_provider, config)
+    result["prompt_snapshot"] = dict(payload.get("prompt_snapshot") or {})
+    return result

@@ -70,6 +70,13 @@ def init_db() -> None:
                 submission_id TEXT NOT NULL,
                 payload_json TEXT NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS idx_cases_submission_id ON cases(submission_id);
+            CREATE INDEX IF NOT EXISTS idx_materials_submission_id ON materials(submission_id);
+            CREATE INDEX IF NOT EXISTS idx_parse_results_submission_id ON parse_results(submission_id);
+            CREATE INDEX IF NOT EXISTS idx_review_results_submission_id ON review_results(submission_id);
+            CREATE INDEX IF NOT EXISTS idx_report_artifacts_submission_id ON report_artifacts(submission_id);
+            CREATE INDEX IF NOT EXISTS idx_jobs_submission_id ON jobs(submission_id);
+            CREATE INDEX IF NOT EXISTS idx_corrections_submission_id ON corrections(submission_id);
             """
         )
 

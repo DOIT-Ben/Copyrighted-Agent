@@ -7,6 +7,7 @@ from app.core.reviewers.ai.adapters import (
     review_with_external_http,
     review_with_safe_stub,
 )
+from app.core.reviewers.ai.prompt_builder import build_ai_prompt_snapshot
 from app.core.services.app_config import AppConfig, load_app_config
 from app.core.services.app_logging import log_event
 
@@ -45,14 +46,28 @@ def _mock_review(case_payload: dict, rule_results: dict, requested_provider: str
         "summary": f"{software_name} {version} 共发现 {len(issues)} 个规则问题，建议先处理版本与一致性问题。",
         "ai_note": ai_note,
         "issues": issues,
+        "prompt_snapshot": {},
     }
 
 
-def generate_case_ai_review(case_payload: dict, rule_results: dict, provider: str | None = None, config: AppConfig | None = None) -> dict:
+def generate_case_ai_review(
+    case_payload: dict,
+    rule_results: dict,
+    provider: str | None = None,
+    config: AppConfig | None = None,
+    *,
+    review_profile: dict | None = None,
+) -> dict:
     settings = config or load_app_config()
     requested_provider = str(provider or settings.ai_provider or "mock").strip().lower() or "mock"
     active_provider = resolve_case_ai_provider(requested_provider, config=settings)
     issue_count = len(rule_results.get("issues", []))
+    prompt_snapshot = build_ai_prompt_snapshot(
+        case_payload,
+        rule_results,
+        review_profile,
+        requested_provider=requested_provider,
+    )
 
     if active_provider == "mock":
         if requested_provider == "mock":
@@ -63,7 +78,9 @@ def generate_case_ai_review(case_payload: dict, rule_results: dict, provider: st
             resolution = "unsupported_provider_fallback"
         else:
             resolution = "mock_fallback"
-        return _mock_review(case_payload, rule_results, requested_provider, resolution)
+        result = _mock_review(case_payload, rule_results, requested_provider, resolution)
+        result["prompt_snapshot"] = prompt_snapshot
+        return result
 
     if settings.ai_require_desensitized and not is_ai_safe_case_payload(case_payload):
         raise ValueError("Non-mock AI provider requires desensitized payload")
@@ -82,7 +99,13 @@ def generate_case_ai_review(case_payload: dict, rule_results: dict, provider: st
         if active_provider == "safe_stub":
             result = review_with_safe_stub(case_payload, rule_results, requested_provider)
         elif active_provider == "external_http":
-            result = review_with_external_http(case_payload, rule_results, requested_provider, settings)
+            result = review_with_external_http(
+                case_payload,
+                rule_results,
+                requested_provider,
+                settings,
+                review_profile=review_profile,
+            )
         else:
             result = _mock_review(case_payload, rule_results, requested_provider, "unsupported_provider_fallback")
     except Exception as exc:
@@ -104,7 +127,9 @@ def generate_case_ai_review(case_payload: dict, rule_results: dict, provider: st
         )
         if not settings.ai_fallback_to_mock:
             raise
-        return _mock_review(case_payload, rule_results, requested_provider, "provider_exception_fallback")
+        result = _mock_review(case_payload, rule_results, requested_provider, "provider_exception_fallback")
+        result["prompt_snapshot"] = prompt_snapshot
+        return result
 
     log_event(
         "ai_provider_call_completed",
@@ -115,4 +140,6 @@ def generate_case_ai_review(case_payload: dict, rule_results: dict, provider: st
             "issue_count": issue_count,
         },
     )
+    if not result.get("prompt_snapshot"):
+        result["prompt_snapshot"] = prompt_snapshot
     return result

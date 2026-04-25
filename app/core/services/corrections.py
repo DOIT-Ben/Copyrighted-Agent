@@ -15,6 +15,9 @@ from app.core.reviewers.rules.source_code import review_source_code_text
 from app.core.reviewers.rules.agreement import review_agreement_text
 from app.core.services.app_config import load_app_config
 from app.core.services.app_logging import log_event
+from app.core.services.review_dimensions import build_case_review_dimensions
+from app.core.services.review_profile import normalize_review_profile
+from app.core.services.review_rulebook import reset_profile_dimension_rule, update_profile_dimension_rule
 from app.core.services.sqlite_repository import save_submission_graph
 from app.core.services.runtime_store import store
 from app.core.utils.text import ensure_dir, now_iso, slug_id, summarize_severity
@@ -175,9 +178,22 @@ def _write_case_report(case: Case, report_path: Path, report_content: str) -> Re
     return report
 
 
-def _compose_case_review_payload(case: Case, combined_issues: list[dict], ai_review: dict) -> dict:
+def _compose_case_review_payload(
+    case: Case,
+    materials: list,
+    combined_issues: list[dict],
+    ai_review: dict,
+    review_profile: dict,
+) -> dict:
     rule_conclusion = str(ai_review.get("rule_summary") or ai_review.get("conclusion") or "").strip()
     ai_summary = str(ai_review.get("ai_note") or ai_review.get("summary") or "").strip()
+    review_dimensions = build_case_review_dimensions(
+        case,
+        materials,
+        cross_material_issues=combined_issues,
+        ai_resolution=str(ai_review.get("resolution", "explicit_mock") or ""),
+        review_profile=review_profile,
+    )
     return {
         "review": {
             "severity_summary_json": summarize_severity(combined_issues),
@@ -188,21 +204,26 @@ def _compose_case_review_payload(case: Case, combined_issues: list[dict], ai_rev
             "ai_summary": ai_summary,
             "ai_provider": ai_review.get("provider", "mock"),
             "ai_resolution": ai_review.get("resolution", "explicit_mock"),
+            "review_profile_snapshot": dict(review_profile),
+            "prompt_snapshot_json": dict(ai_review.get("prompt_snapshot") or {}),
         },
         "report": {
             "case_name": case.case_name,
             "materials": [],
             "cross_material_issues": combined_issues,
+            "review_dimensions": review_dimensions,
             "rule_conclusion": rule_conclusion or "规则引擎未返回额外结论",
             "ai_summary": ai_summary or "当前没有额外 AI 补充说明",
             "ai_provider": ai_review.get("provider", "mock"),
             "ai_resolution": ai_review.get("resolution", "explicit_mock"),
+            "review_profile": dict(review_profile),
         },
     }
 
 
 def _rebuild_case(case_id: str) -> dict:
     case, submission = _submission_for_case(case_id)
+    review_profile = normalize_review_profile(getattr(submission, "review_profile", {}))
     materials = _case_materials(case_id)
     if not materials:
         return {"case": case.to_dict(), "review_result": None, "report": None}
@@ -231,8 +252,13 @@ def _rebuild_case(case_id: str) -> dict:
     }
     if ai_provider != "mock":
         ai_payload = build_ai_safe_case_payload(ai_payload)
-    ai_review = generate_case_ai_review(ai_payload, {"issues": combined_issues}, provider=ai_provider)
-    review_payload = _compose_case_review_payload(case, combined_issues, ai_review)
+    ai_review = generate_case_ai_review(
+        ai_payload,
+        {"issues": combined_issues},
+        provider=ai_provider,
+        review_profile=review_profile,
+    )
+    review_payload = _compose_case_review_payload(case, materials, combined_issues, ai_review, review_profile)
 
     if case.review_result_id and case.review_result_id in store.review_results:
         review_result = store.review_results[case.review_result_id]
@@ -245,6 +271,8 @@ def _rebuild_case(case_id: str) -> dict:
         review_result.ai_summary = review_payload["review"]["ai_summary"]
         review_result.ai_provider = review_payload["review"]["ai_provider"]
         review_result.ai_resolution = review_payload["review"]["ai_resolution"]
+        review_result.review_profile_snapshot = review_payload["review"]["review_profile_snapshot"]
+        review_result.prompt_snapshot_json = review_payload["review"]["prompt_snapshot_json"]
         review_result.created_at = now_iso()
     else:
         review_result = ReviewResult(
@@ -261,6 +289,8 @@ def _rebuild_case(case_id: str) -> dict:
             ai_summary=review_payload["review"]["ai_summary"],
             ai_provider=review_payload["review"]["ai_provider"],
             ai_resolution=review_payload["review"]["ai_resolution"],
+            review_profile_snapshot=review_payload["review"]["review_profile_snapshot"],
+            prompt_snapshot_json=review_payload["review"]["prompt_snapshot_json"],
         )
         store.add_review_result(review_result)
         case.review_result_id = review_result.id
@@ -479,14 +509,17 @@ def merge_cases(source_case_id: str, target_case_id: str, corrected_by: str = "l
     }
 
 
-def rerun_case_review(case_id: str, corrected_by: str = "local", note: str = "") -> dict:
+def rerun_case_review(case_id: str, corrected_by: str = "local", note: str = "", review_profile: dict | None = None) -> dict:
     case, submission = _submission_for_case(case_id)
+    original_review_profile = normalize_review_profile(getattr(submission, "review_profile", {}))
+    if review_profile is not None:
+        submission.review_profile = normalize_review_profile(review_profile)
     correction = _record_correction(
         submission.id,
         "rerun_case_review",
         case_id=case.id,
-        original_value={"review_result_id": case.review_result_id},
-        corrected_value={"review_result_id": case.review_result_id},
+        original_value={"review_result_id": case.review_result_id, "review_profile": original_review_profile},
+        corrected_value={"review_result_id": case.review_result_id, "review_profile": normalize_review_profile(getattr(submission, "review_profile", {}))},
         note=note,
         corrected_by=corrected_by,
     )
@@ -500,6 +533,79 @@ def rerun_case_review(case_id: str, corrected_by: str = "local", note: str = "")
         "review_result": rebuilt["review_result"],
         "report": rebuilt["report"],
     }
+
+
+def update_submission_review_dimension_rule(
+    submission_id: str,
+    dimension_key: str,
+    *,
+    title: str = "",
+    objective: str = "",
+    checkpoints: str = "",
+    llm_focus: str = "",
+    corrected_by: str = "local",
+    note: str = "",
+) -> dict:
+    submission = store.submissions.get(submission_id)
+    if not submission:
+        raise ValueError(f"Submission not found: {submission_id}")
+
+    original_review_profile = normalize_review_profile(getattr(submission, "review_profile", {}))
+    updated_review_profile = update_profile_dimension_rule(
+        original_review_profile,
+        dimension_key,
+        {
+            "title": title,
+            "objective": objective,
+            "checkpoints": checkpoints,
+            "llm_focus": llm_focus,
+        },
+    )
+    submission.review_profile = normalize_review_profile(updated_review_profile)
+    correction = _record_correction(
+        submission.id,
+        "update_review_dimension_rule",
+        original_value={"dimension_key": dimension_key, "review_profile": original_review_profile},
+        corrected_value={"dimension_key": dimension_key, "review_profile": submission.review_profile},
+        note=note or f"updated:{dimension_key}",
+        corrected_by=corrected_by,
+    )
+    save_submission_graph(submission.id)
+    log_event(
+        "update_review_dimension_rule",
+        {"submission_id": submission.id, "dimension_key": dimension_key, "corrected_by": corrected_by},
+    )
+    return {"correction": correction.to_dict(), "review_profile": submission.review_profile}
+
+
+def reset_submission_review_dimension_rule(
+    submission_id: str,
+    dimension_key: str,
+    *,
+    corrected_by: str = "local",
+    note: str = "",
+) -> dict:
+    submission = store.submissions.get(submission_id)
+    if not submission:
+        raise ValueError(f"Submission not found: {submission_id}")
+
+    original_review_profile = normalize_review_profile(getattr(submission, "review_profile", {}))
+    updated_review_profile = reset_profile_dimension_rule(original_review_profile, dimension_key)
+    submission.review_profile = normalize_review_profile(updated_review_profile)
+    correction = _record_correction(
+        submission.id,
+        "reset_review_dimension_rule",
+        original_value={"dimension_key": dimension_key, "review_profile": original_review_profile},
+        corrected_value={"dimension_key": dimension_key, "review_profile": submission.review_profile},
+        note=note or f"reset:{dimension_key}",
+        corrected_by=corrected_by,
+    )
+    save_submission_graph(submission.id)
+    log_event(
+        "reset_review_dimension_rule",
+        {"submission_id": submission.id, "dimension_key": dimension_key, "corrected_by": corrected_by},
+    )
+    return {"correction": correction.to_dict(), "review_profile": submission.review_profile}
 
 
 def continue_case_review_from_desensitized(case_id: str, corrected_by: str = "local", note: str = "") -> dict:

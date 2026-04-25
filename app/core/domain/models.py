@@ -15,6 +15,7 @@ class Submission:
     review_strategy: str = "auto_review"
     review_stage: str = "review_completed"
     created_by: str = "local"
+    review_profile: dict[str, Any] = field(default_factory=dict)
     material_ids: list[str] = field(default_factory=list)
     case_ids: list[str] = field(default_factory=list)
     report_ids: list[str] = field(default_factory=list)
@@ -95,6 +96,8 @@ class ReviewResult:
     ai_summary: str = ""
     ai_provider: str = "mock"
     ai_resolution: str = "explicit_mock"
+    review_profile_snapshot: dict[str, Any] = field(default_factory=dict)
+    prompt_snapshot_json: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -124,6 +127,8 @@ class Job:
     status: str
     progress: int
     error_message: str = ""
+    stage: str = ""
+    detail: str = ""
     started_at: str = ""
     finished_at: str = ""
 

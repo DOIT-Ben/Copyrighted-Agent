@@ -58,6 +58,9 @@ def test_external_http_request_payload_includes_contract_and_privacy_guard():
     assert payload["timeout_seconds"] == 12
     assert payload["privacy_guard"]["require_desensitized"] is True
     assert payload["privacy_guard"]["payload_marked_llm_safe"] is True
+    assert payload["prompt_snapshot"]["system_prompt"]
+    assert payload["prompt_snapshot"]["user_prompt"]
+    assert payload["prompt_snapshot"]["review_profile_summary"]["enabled_dimensions"]
 
 
 @pytest.mark.unit
@@ -188,11 +191,14 @@ def test_review_with_external_http_posts_json_contract_and_normalizes_response()
     assert posted_payload["contract_version"] == adapters.EXTERNAL_HTTP_REQUEST_VERSION
     assert posted_payload["model"] == "demo-model"
     assert posted_payload["privacy_guard"]["payload_marked_llm_safe"] is True
+    assert posted_payload["prompt_snapshot"]["system_prompt"]
+    assert "Dimension rulebook:" in posted_payload["prompt_snapshot"]["user_prompt"]
     assert captured_request["headers"]["Authorization"] == "Bearer secret-token"
     assert result["provider"] == "external_http"
     assert result["resolution"] == "remote_completed"
     assert result["summary"] == "Remote summary"
     assert result["provider_request_id"] == "req-200"
+    assert result["prompt_snapshot"]["system_prompt"]
 
 
 @pytest.mark.unit

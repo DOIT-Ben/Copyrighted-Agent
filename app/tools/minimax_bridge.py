@@ -14,6 +14,7 @@ from wsgiref.simple_server import make_server
 
 from app.core.privacy.desensitization import is_ai_safe_case_payload
 from app.core.reviewers.ai.adapters import EXTERNAL_HTTP_REQUEST_VERSION, EXTERNAL_HTTP_RESPONSE_VERSION
+from app.core.reviewers.ai.prompt_builder import build_ai_prompt_snapshot
 from app.core.utils.text import ensure_dir, now_iso
 
 
@@ -75,27 +76,17 @@ def _text_response(start_response, status: str, text: str, content_type: str = "
 def build_minimax_bridge_messages(payload_json: dict) -> list[dict[str, str]]:
     case_payload = dict(payload_json.get("case_payload") or {})
     rule_results = dict(payload_json.get("rule_results") or {})
+    review_profile = dict(payload_json.get("review_profile") or {})
     requested_provider = str(payload_json.get("requested_provider") or "external_http")
-    prompt_payload = {
-        "requested_provider": requested_provider,
-        "case_payload": case_payload,
-        "rule_results": rule_results,
-    }
-    system_prompt = (
-        "You are a software copyright review assistant. "
-        "The input is already desensitized and llm_safe. "
-        "Return exactly one JSON object and nothing else. "
-        'Required keys: "summary", "conclusion", "resolution". '
-        'Set "resolution" to "minimax_bridge_success". '
-        "Keep summary concise and grounded in the rule results."
-    )
-    user_prompt = (
-        "Analyze this desensitized review payload and respond with JSON only:\n"
-        f"{json.dumps(prompt_payload, ensure_ascii=False, indent=2)}"
+    prompt_snapshot = dict(payload_json.get("prompt_snapshot") or {}) or build_ai_prompt_snapshot(
+        case_payload,
+        rule_results,
+        review_profile,
+        requested_provider=requested_provider,
     )
     return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
+        {"role": "system", "content": str(prompt_snapshot.get("system_prompt") or "")},
+        {"role": "user", "content": str(prompt_snapshot.get("user_prompt") or "")},
     ]
 
 

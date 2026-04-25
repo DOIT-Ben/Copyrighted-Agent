@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from collections import Counter
 
+from app.core.services.review_profile import dimension_title, normalize_review_profile, review_profile_summary
+from app.core.services.review_rulebook import dimension_rulebook_from_profile
 from app.core.services.runtime_store import store
 from app.core.utils.text import escape_html
 
+from app.web.review_profile_widgets import render_review_profile_form_fields
 from app.web.view_helpers import (
     download_chip,
     empty_state,
@@ -12,6 +15,7 @@ from app.web.view_helpers import (
     issue_tone,
     layout,
     link,
+    list_pairs,
     metric_card,
     mode_label,
     notice_banner,
@@ -33,6 +37,8 @@ CORRECTION_LABELS = {
     "create_case_from_materials": "从材料创建项目",
     "merge_cases": "合并项目",
     "rerun_case_review": "重新审查项目",
+    "update_review_dimension_rule": "更新审查规则",
+    "reset_review_dimension_rule": "恢复默认规则",
     "continue_case_review_from_desensitized": "脱敏后继续审查",
     "upload_desensitized_package": "上传脱敏包",
 }
@@ -226,6 +232,23 @@ def _submission_view_data(
     }
 
 
+def _review_rule_links(submission_id: str, review_profile: dict, *, case_id: str = "") -> str:
+    enabled_dimensions = list(review_profile.get("enabled_dimensions", []) or [])
+    rulebook = dimension_rulebook_from_profile(review_profile)
+    if not enabled_dimensions:
+        return empty_state("暂无规则入口", "当前没有启用的审查重点。")
+    chips = []
+    suffix = f"?case_id={escape_html(case_id)}" if case_id else ""
+    for key in enabled_dimensions:
+        entry = rulebook.get(key, {})
+        chips.append(
+            f'<a class="button-secondary button-compact" href="/submissions/{escape_html(submission_id)}/review-rules/{escape_html(key)}{suffix}">'
+            f'{icon("wrench", "icon icon-sm")}编辑规则：{escape_html(entry.get("title", dimension_title(key)))}'
+            "</a>"
+        )
+    return '<div class="inline-actions">' + "".join(chips) + "</div>"
+
+
 def render_submissions_index() -> str:
     submissions = sorted(store.submissions.values(), key=lambda item: item.created_at, reverse=True)
     total = len(submissions)
@@ -235,17 +258,35 @@ def render_submissions_index() -> str:
     latest_status = submissions[0].status if submissions else "idle"
     status_counts = Counter(str(item.status or "unknown") for item in submissions)
 
+    def _batch_name_cell(submission) -> str:
+        filename = escape_html(str(submission.filename or "-"))
+        submission_id = escape_html(str(submission.id))
+        return (
+            '<div class="batch-file-cell">'
+            f'<a class="batch-file-name table-link" href="/submissions/{submission_id}" title="{filename}">{filename}</a>'
+            '<div class="batch-meta-row">'
+            f'<span>{escape_html(mode_label(submission.mode))}</span>'
+            f'<span>{escape_html(review_strategy_label(getattr(submission, "review_strategy", "auto_review")))}</span>'
+            "</div></div>"
+        )
+
+    def _batch_count_cell(submission) -> str:
+        return (
+            '<div class="batch-counts">'
+            f'<span><strong>{escape_html(str(len(submission.material_ids)))}</strong>材料</span>'
+            f'<span><strong>{escape_html(str(len(submission.case_ids)))}</strong>项目</span>'
+            f'<span><strong>{escape_html(str(len(submission.report_ids)))}</strong>报告</span>'
+            "</div>"
+        )
+
     rows = [
         [
-            link(f"/submissions/{submission.id}", submission.filename),
-            escape_html(mode_label(submission.mode)),
-            escape_html(review_strategy_label(getattr(submission, "review_strategy", "auto_review"))),
-            escape_html(review_stage_label(getattr(submission, "review_stage", "review_completed"))),
+            _batch_name_cell(submission),
             pill(status_label(submission.status), status_tone(submission.status)),
-            escape_html(str(len(submission.material_ids))),
-            escape_html(str(len(submission.case_ids))),
-            escape_html(str(len(submission.report_ids))),
+            escape_html(review_stage_label(getattr(submission, "review_stage", "review_completed"))),
+            _batch_count_cell(submission),
             escape_html(submission.created_at),
+            f'<a class="button-secondary button-compact" href="/submissions/{escape_html(str(submission.id))}">{icon("search", "icon icon-sm")}详情</a>',
         ]
         for submission in submissions
     ]
@@ -259,18 +300,6 @@ def render_submissions_index() -> str:
         ]
     )
 
-    action_body = (
-        '<div class="summary-grid">'
-        + _summary_tile("先看状态", "快速定位", "先找到失败、处理中和待继续审查的批次。")
-        + _summary_tile("再进详情", "按批处理", "进入批次页后再看导入摘要、材料矩阵、人工干预台和导出中心。")
-        + _summary_tile("保持简洁", "少即是多", "总览页只负责发现批次和进入下一步。")
-        + "</div>"
-        + '<div class="inline-actions">'
-        + f'<a class="button-secondary button-compact" href="/">{icon("dashboard", "icon icon-sm")}返回总控台</a>'
-        + f'<a class="button-secondary button-compact" href="#batch-registry">{icon("layers", "icon icon-sm")}查看批次台账</a>'
-        + "</div>"
-    )
-
     content = f"""
     <section class="kpi-grid">
       {metric_card('批次数', str(total), '当前已导入的批次数量', 'info', icon_name='layers')}
@@ -279,9 +308,8 @@ def render_submissions_index() -> str:
       {metric_card('报告数', str(reports_total), '当前已生成的项目级报告数量', 'neutral', icon_name='report')}
     </section>
     <section class="dashboard-grid">
-      {panel('批次台账', table(['压缩包', '导入模式', '审查策略', '当前阶段', '状态', '材料数', '项目数', '报告数', '创建时间'], rows) if rows else empty_state('暂无批次', '导入 ZIP 后，这里会出现批次记录。'), kicker='批次总览', extra_class='span-8', icon_name='layers', description='这里只保留列表和入口，避免总览页继续堆复杂操作。', panel_id='batch-registry')}
-      {panel('状态分布', distribution_body, kicker='运行状态', extra_class='span-4', icon_name='bar', description='快速判断当前批次池是否稳定。', panel_id='status-distribution')}
-      {panel('查看方式', action_body, kicker='处理顺序', extra_class='span-12 panel-soft', icon_name='search', description='先在这里找到目标批次，再进入详情页处理。', panel_id='registry-actions')}
+      {panel('批次台账', table(['批次', '状态', '阶段', '数量', '创建时间', '操作'], rows) if rows else empty_state('暂无批次', '导入 ZIP 后，这里会出现批次记录。'), kicker='批次总览', extra_class='span-12 panel-batch-registry', icon_name='layers', description='这里只保留列表和入口，避免总览页继续堆复杂操作。', panel_id='batch-registry')}
+      {panel('状态分布', distribution_body, kicker='运行状态', extra_class='span-12 panel-soft', icon_name='bar', description='快速判断当前批次池是否稳定。', panel_id='status-distribution')}
     </section>
     """
 
@@ -297,7 +325,6 @@ def render_submissions_index() -> str:
         page_links=[
             ("#batch-registry", "批次台账", "layers"),
             ("#status-distribution", "状态分布", "bar"),
-            ("#registry-actions", "查看方式", "search"),
         ],
     )
 
@@ -313,6 +340,17 @@ def render_submission_detail(
     data = _submission_view_data(submission, materials, cases, reports, parse_results)
     submission_id = escape_html(submission.get("id", ""))
     pending_cases = _pending_manual_cases(cases)
+    review_profile = normalize_review_profile(submission.get("review_profile", {}))
+
+    workspace_notice = ""
+    if notice:
+        workspace_notice = notice_banner(
+            notice.get("title", "已更新"),
+            notice.get("message", "当前批次页面已刷新。"),
+            tone=notice.get("tone", "info"),
+            icon_name=notice.get("icon_name", "check"),
+            meta=notice.get("meta"),
+        )
 
     import_digest = "".join(
         [
@@ -320,6 +358,8 @@ def render_submission_detail(
             _summary_tile("导入模式", mode_label(str(submission.get("mode", ""))), "本批次采用的整理方式"),
             _summary_tile("审查策略", review_strategy_label(str(submission.get("review_strategy", "auto_review"))), "决定是直接审查还是先脱敏后继续"),
             _summary_tile("当前阶段", review_stage_label(str(submission.get("review_stage", "review_completed"))), "精确显示本批次正在脱敏、待回传或已完成审查"),
+            _summary_tile("下一步", "进入产物或导出", "按当前阶段选择产物浏览、人工干预或导出中心"),
+            _summary_tile("更多信息", "已收起", "材料、审查配置和留痕在下方分区查看"),
             _summary_tile("材料数", str(len(materials)), "当前批次识别出的材料数量"),
             _summary_tile("项目数", str(len(cases)), "当前已形成的项目分组"),
         ]
@@ -352,6 +392,8 @@ def render_submission_detail(
         if data["correction_rows"]
         else empty_state("暂无更正记录", "人工纠偏和继续审查发生后，这里会保留完整留痕。")
     )
+    review_profile_body = list_pairs(review_profile_summary(review_profile), css_class="dossier-list dossier-list-single")
+    review_rule_links = _review_rule_links(str(submission.get("id", "")), review_profile)
 
     workspace_notice = ""
     if notice:
@@ -373,6 +415,7 @@ def render_submission_detail(
     <section class="dashboard-grid">
       {panel('导入摘要', f'<div class="summary-grid">{import_digest}</div>', kicker='批次摘要', extra_class='span-12 panel-soft', icon_name='file', description='主页面只保留这个批次的关键概览。', panel_id='import-digest')}
       {panel('业务流程', workflow_body, kicker='双模式审查', extra_class='span-12', icon_name='spark', description='明确展示本批次当前采用的审查策略、所处阶段和下一步入口。', panel_id='review-workflow')}
+      {panel('审查配置', review_profile_body + review_rule_links, kicker='当前配置', extra_class='span-12', icon_name='shield', description='这组配置会影响维度展示与 LLM 补充研判。', panel_id='review-profile')}
       {panel('待复核队列', needs_review_body, kicker='材料提醒', extra_class='span-12', icon_name='alert', description='优先确认这些材料，再决定是否进入人工处理或继续审查。', panel_id='needs-review')}
       {panel('更正审计', audit_body, kicker='留痕记录', extra_class='span-12', icon_name='clock', description='所有人工动作和继续审查都会在这里记录。', panel_id='correction-audit')}
     </section>
@@ -390,6 +433,7 @@ def render_submission_detail(
         page_links=[
             ("#import-digest", "导入摘要", "file"),
             ("#review-workflow", "业务流程", "spark"),
+            ("#review-profile", "审查配置", "shield"),
             ("#needs-review", "待复核队列", "alert"),
             (f"/submissions/{submission.get('id', '')}/materials", "产物浏览", "cluster"),
             (f"/submissions/{submission.get('id', '')}/operator", "人工干预台", "wrench"),
@@ -470,6 +514,7 @@ def render_submission_operator_page(
 ) -> str:
     data = _submission_view_data(submission, materials, cases, reports, parse_results)
     submission_id = escape_html(submission.get("id", ""))
+    review_profile = normalize_review_profile(submission.get("review_profile", {}))
 
     case_options = (
         "".join(
@@ -496,6 +541,15 @@ def render_submission_operator_page(
     )
 
     continue_review_body = _continue_review_forms(submission, cases)
+    default_case_id = str(cases[0].get("id", "")) if cases else ""
+    review_profile_fields = render_review_profile_form_fields(
+        review_profile,
+        submit_context="rerun",
+        submission_id=str(submission.get("id", "")),
+        case_id=default_case_id,
+    )
+    review_profile_digest = list_pairs(review_profile_summary(review_profile), css_class="dossier-list dossier-list-single")
+    review_rule_links = _review_rule_links(str(submission.get("id", "")), review_profile)
 
     operator_body = f"""
     {operator_intro}
@@ -578,20 +632,26 @@ def render_submission_operator_page(
         </div>
       </details>
 
-      <details class="operator-group">
+      <details class="operator-group" open>
         <summary>
           <span class="operator-group-index">4</span>
           <div>
-            <strong>复核重跑</strong>
-            <small>确认项目整理完成后，再统一重跑审查。</small>
+            <strong>审查配置与重跑</strong>
+            <small>控制审查维度和 LLM 角度，然后按当前配置重新审查。</small>
           </div>
         </summary>
         <div class="control-grid">
+          <div class="operator-form operator-form-static">
+            <strong>当前配置</strong>
+            {review_profile_digest}
+            {review_rule_links}
+          </div>
           <form class="operator-form" action="/submissions/{submission_id}/actions/rerun-review" method="post">
             <strong>重新审查项目</strong>
             <label class="field"><span>项目</span><select name="case_id">{case_options}</select></label>
+            {review_profile_fields}
             <label class="field"><span>备注</span><input type="text" name="note" placeholder="说明为什么重跑"></label>
-            <button class="button-secondary button-compact" type="submit">{icon('refresh', 'icon icon-sm')}重跑并刷新</button>
+            <button class="button-secondary button-compact" type="submit">{icon('refresh', 'icon icon-sm')}保存配置并重跑</button>
           </form>
         </div>
       </details>

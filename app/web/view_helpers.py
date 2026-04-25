@@ -230,13 +230,13 @@ def table(headers: list[str], rows: list[list[str]]) -> str:
 
 
 def metric_card(label: str, value: str, note: str, tone: str = "neutral", *, icon_name: str = "dashboard") -> str:
+    del note
     return (
         f'<article class="kpi-card kpi-card-{tone}">'
         f'<div class="kpi-icon">{icon(icon_name, "icon icon-md")}</div>'
         '<div class="kpi-copy">'
         f'<span class="kpi-label">{escape_html(label)}</span>'
         f"<strong>{escape_html(value)}</strong>"
-        f"<small>{escape_html(note)}</small>"
         "</div></article>"
     )
 
@@ -258,18 +258,13 @@ def notice_banner(
     icon_name: str = "spark",
     meta: list[str] | None = None,
 ) -> str:
-    meta_html = ""
-    if meta:
-        meta_html = '<div class="notice-meta-row">' + "".join(
-            f'<span class="helper-chip">{escape_html(item)}</span>' for item in meta
-        ) + "</div>"
+    del meta
     return (
         f'<section class="notice-banner notice-banner-{escape_html(tone)}">'
         f'<div class="notice-banner-icon">{icon(icon_name, "icon icon-md")}</div>'
         '<div class="notice-banner-copy">'
         f"<strong>{escape_html(title)}</strong>"
         f"<p>{escape_html(message)}</p>"
-        f"{meta_html}"
         "</div></section>"
     )
 
@@ -284,13 +279,12 @@ def panel(
     description: str = "",
     panel_id: str = "",
 ) -> str:
-    kicker_html = f'<span class="panel-kicker">{escape_html(kicker)}</span>' if kicker else ""
-    description_html = f"<p>{escape_html(description)}</p>" if description else ""
+    del kicker, description
     class_name = f"panel {extra_class}".strip()
     id_attr = f' id="{escape_html(panel_id)}"' if panel_id else ""
     return (
         f'<section{id_attr} class="{class_name}"><div class="panel-head"><div class="panel-head-copy">'
-        f"{kicker_html}<h2>{escape_html(title)}</h2>{description_html}</div>"
+        f"<h2>{escape_html(title)}</h2></div>"
         f'<div class="panel-head-icon">{icon(icon_name, "icon icon-lg")}</div>'
         f"</div>{body}</section>"
     )
@@ -313,19 +307,6 @@ def read_text_file(path_value: str) -> str:
         return ""
 
 
-def _breadcrumb(active_nav: str, header_tag: str) -> str:
-    current_path, current_label, _ = SECTION_LINKS.get(active_nav, ("/", "总控台", "dashboard"))
-    return (
-        '<nav class="workspace-breadcrumbs" aria-label="Breadcrumb">'
-        '<a href="/">工作台</a>'
-        '<span>/</span>'
-        f'<a href="{escape_html(current_path)}">{escape_html(current_label)}</a>'
-        '<span>/</span>'
-        f"<strong>{escape_html(header_tag)}</strong>"
-        "</nav>"
-    )
-
-
 def _page_link_strip(page_links: list[tuple[str, str, str]] | None) -> str:
     items = page_links or []
     if not items:
@@ -341,7 +322,6 @@ def _page_link_strip(page_links: list[tuple[str, str, str]] | None) -> str:
     )
     return (
         '<section class="page-link-strip" aria-label="Page shortcuts">'
-        '<strong class="page-link-strip-label">本页导航</strong>'
         f'<div class="page-link-strip-row">{chips}</div>'
         "</section>"
     )
@@ -368,12 +348,13 @@ def layout(
     page_links: list[tuple[str, str, str]] | None = None,
     workspace_notice: str = "",
 ) -> str:
-    mode_count = len(MODE_LABELS)
-    type_count = len([key for key in TYPE_LABELS if key != "unknown"])
-    release_note = header_note or "从同一个可视工作面中，直接看到导入、审查、导出与人工决策。"
+    del header_note
     home_label = SECTION_LINKS["home"][1]
     submissions_label = SECTION_LINKS["submissions"][1]
     ops_label = SECTION_LINKS["ops"][1]
+    mode_count = len(MODE_LABELS)
+    type_count = max(len(TYPE_LABELS) - 1, 0)
+    page_link_strip = _page_link_strip(page_links)
 
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -428,16 +409,6 @@ def layout(
     </aside>
 
     <main id="main-content" class="workspace">
-      <section class="workspace-rail" aria-label="Page context">
-        <div class="workspace-rail-copy">
-          {_breadcrumb(active_nav, header_tag)}
-          <div class="workspace-rail-summary">
-            <strong>当前说明</strong>
-            <span>{escape_html(release_note)}</span>
-          </div>
-        </div>
-      </section>
-
       <header class="workspace-header">
         <div class="workspace-header-main">
           <span class="workspace-tag">{escape_html(header_tag)}</span>
@@ -446,11 +417,281 @@ def layout(
         </div>
         <div class="workspace-header-meta">{header_meta}</div>
       </header>
+      {page_link_strip}
       {workspace_notice}
-      {_page_link_strip(page_links)}
       <div class="workspace-content">{content}</div>
     </main>
   </div>
+  <div class="submit-feedback" id="submit-feedback" hidden aria-live="polite" aria-atomic="true">
+    <div class="submit-feedback-card">
+      <span class="submit-feedback-spinner" aria-hidden="true"></span>
+      <div class="submit-feedback-copy">
+        <div class="submit-feedback-progress" aria-hidden="true">
+          <span class="submit-feedback-progress-fill" id="submit-feedback-progress-fill"></span>
+        </div>
+        <div class="submit-feedback-step" id="submit-feedback-step">文件已提交</div>
+        <strong id="submit-feedback-title">正在处理，请稍候</strong>
+        <p id="submit-feedback-detail">系统正在提交你的请求。</p>
+      </div>
+    </div>
+  </div>
+  <script>
+    (() => {{
+      const feedback = document.getElementById("submit-feedback");
+      const feedbackTitle = document.getElementById("submit-feedback-title");
+      const feedbackDetail = document.getElementById("submit-feedback-detail");
+      const feedbackProgressFill = document.getElementById("submit-feedback-progress-fill");
+      const feedbackStep = document.getElementById("submit-feedback-step");
+      if (!feedback || !feedbackTitle || !feedbackDetail || !feedbackProgressFill || !feedbackStep) {{
+        return;
+      }}
+
+      let stageTimer = null;
+      const defaultSteps = ["文件已提交", "正在解析材料", "正在执行脱敏与审查", "正在整理结果页"];
+      const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+      const dimensionKeys = ["identity", "completeness", "consistency", "source_code", "software_doc", "agreement", "ai"];
+
+      const stopStageTimer = () => {{
+        if (stageTimer !== null) {{
+          window.clearInterval(stageTimer);
+          stageTimer = null;
+        }}
+      }};
+
+      const runStageSequence = (steps, inlineStep) => {{
+        const activeSteps = steps.length ? steps : defaultSteps;
+        let activeIndex = 0;
+
+        const renderStep = () => {{
+          const progress = activeSteps.length <= 1 ? 100 : 18 + Math.round((activeIndex / (activeSteps.length - 1)) * 82);
+          feedbackStep.textContent = activeSteps[activeIndex];
+          feedbackProgressFill.style.width = progress + "%";
+          if (inlineStep) {{
+            inlineStep.textContent = activeSteps.slice(0, activeIndex + 1).join(" -> ");
+          }}
+        }};
+
+        stopStageTimer();
+        renderStep();
+        if (activeSteps.length <= 1) {{
+          return;
+        }}
+
+        stageTimer = window.setInterval(() => {{
+          if (activeIndex >= activeSteps.length - 1) {{
+            stopStageTimer();
+            return;
+          }}
+          activeIndex += 1;
+          renderStep();
+        }}, 1200);
+      }};
+
+      const setFeedbackState = (state) => {{
+        feedback.classList.toggle("is-error", state === "error");
+      }};
+
+      const restoreForm = (form) => {{
+        form.dataset.submitting = "false";
+        form.classList.remove("is-submitting");
+        const submitButtons = Array.from(form.querySelectorAll('button[type="submit"], input[type="submit"]'));
+        for (const button of submitButtons) {{
+          button.disabled = false;
+          button.classList.remove("is-loading");
+          if (button.tagName === "BUTTON" && button.dataset.originalHtml) {{
+            button.innerHTML = button.dataset.originalHtml;
+          }}
+        }}
+      }};
+
+      const applyJobFeedback = (payload, inlineStep, fallbackDetail) => {{
+        const jobStage = String(payload.stage || "").trim();
+        const jobDetail = String(payload.detail || "").trim();
+        const jobProgress = Number(payload.progress || 0);
+        feedbackStep.textContent = jobStage || defaultSteps[defaultSteps.length - 1];
+        feedbackDetail.textContent = jobDetail || fallbackDetail;
+        feedbackProgressFill.style.width = Math.max(8, Math.min(100, jobProgress || 8)) + "%";
+        if (inlineStep) {{
+          inlineStep.textContent = jobStage || jobDetail || fallbackDetail;
+        }}
+      }};
+
+      const readErrorMessage = async (response) => {{
+        try {{
+          const payload = await response.json();
+          return payload.detail || payload.message || "提交失败，请稍后重试。";
+        }} catch (_error) {{
+          return "提交失败，请稍后重试。";
+        }}
+      }};
+
+      const applyReviewPreset = (button) => {{
+        const form = button.closest("form");
+        if (!form) {{
+          return;
+        }}
+        const presetKey = String(button.dataset.reviewPreset || "").trim();
+        const hiddenPreset = form.querySelector('input[name="review_profile_preset"]');
+        if (hiddenPreset) {{
+          hiddenPreset.value = presetKey;
+        }}
+        let profile = null;
+        try {{
+          profile = JSON.parse(String(button.dataset.reviewProfile || "{{}}"));
+        }} catch (_error) {{
+          profile = null;
+        }}
+        if (!profile) {{
+          return;
+        }}
+
+        const focusMode = form.querySelector('select[name="focus_mode"]');
+        const strictness = form.querySelector('select[name="strictness"]');
+        const llmInstruction = form.querySelector('textarea[name="llm_instruction"]');
+        if (focusMode && profile.focus_mode) {{
+          focusMode.value = profile.focus_mode;
+        }}
+        if (strictness && profile.strictness) {{
+          strictness.value = profile.strictness;
+        }}
+        if (llmInstruction) {{
+          llmInstruction.value = String(profile.llm_instruction || "");
+        }}
+        const enabledDimensions = new Set(Array.isArray(profile.enabled_dimensions) ? profile.enabled_dimensions : []);
+        for (const key of dimensionKeys) {{
+          const checkbox = form.querySelector('input[name="dimension_' + key + '"]');
+          if (checkbox) {{
+            checkbox.checked = enabledDimensions.has(key);
+          }}
+        }}
+        const siblingButtons = Array.from(form.querySelectorAll("[data-review-preset]"));
+        for (const item of siblingButtons) {{
+          item.classList.toggle("is-active", item === button);
+        }}
+      }};
+
+      const presetButtons = Array.from(document.querySelectorAll("[data-review-preset]"));
+      for (const button of presetButtons) {{
+        button.addEventListener("click", () => applyReviewPreset(button));
+      }}
+
+      const forms = Array.from(document.querySelectorAll("form[data-pending-text]"));
+      for (const form of forms) {{
+        form.addEventListener("submit", async (event) => {{
+          if (form.dataset.submitting === "true") {{
+            event.preventDefault();
+            return;
+          }}
+
+          if (typeof form.reportValidity === "function" && !form.reportValidity()) {{
+            return;
+          }}
+
+          form.dataset.submitting = "true";
+          form.classList.add("is-submitting");
+          document.body.classList.add("has-submit-feedback");
+
+          const pendingText = form.dataset.pendingText || "正在处理，请稍候";
+          const pendingDetail = form.dataset.pendingDetail || "系统正在提交你的请求。";
+          const steps = (form.dataset.pendingSteps || "")
+            .split("|")
+            .map((item) => item.trim())
+            .filter(Boolean);
+          const inlineNote = form.querySelector("[data-inline-pending]");
+          const inlineStep = form.querySelector("[data-inline-step]");
+          if (inlineNote) {{
+            inlineNote.classList.remove("is-error");
+            inlineNote.hidden = false;
+          }}
+          feedbackTitle.textContent = pendingText;
+          feedbackDetail.textContent = pendingDetail;
+          feedback.hidden = false;
+          setFeedbackState("running");
+          runStageSequence(steps, inlineStep);
+
+          const submitButtons = Array.from(form.querySelectorAll('button[type="submit"], input[type="submit"]'));
+          for (const button of submitButtons) {{
+            button.disabled = true;
+            button.classList.add("is-loading");
+            if (button.tagName === "BUTTON") {{
+              if (!button.dataset.originalHtml) {{
+                button.dataset.originalHtml = button.innerHTML;
+              }}
+              const pendingLabel = button.dataset.pendingLabel || pendingText;
+              button.innerHTML = '<span class="button-spinner" aria-hidden="true"></span><span>' + pendingLabel + "</span>";
+            }}
+          }}
+
+          const asyncUrl = form.dataset.asyncUploadUrl;
+          if (!asyncUrl || !window.fetch || !window.FormData) {{
+            return;
+          }}
+
+          event.preventDefault();
+          try {{
+            const submitResponse = await window.fetch(asyncUrl, {{
+              method: (form.method || "POST").toUpperCase(),
+              body: new window.FormData(form),
+              headers: {{ Accept: "application/json" }},
+            }});
+            if (!submitResponse.ok) {{
+              throw new Error(await readErrorMessage(submitResponse));
+            }}
+
+            const submitPayload = await submitResponse.json();
+            const statusUrl = submitPayload.status_url || (submitPayload.job_id ? "/api/jobs/" + submitPayload.job_id : "");
+            const redirectUrl = submitPayload.redirect_url || (submitPayload.submission_id ? "/submissions/" + submitPayload.submission_id : "/submissions");
+            stopStageTimer();
+
+            if (!statusUrl) {{
+              window.location.href = redirectUrl;
+              return;
+            }}
+
+            for (;;) {{
+              const jobResponse = await window.fetch(statusUrl, {{ headers: {{ Accept: "application/json" }} }});
+              if (!jobResponse.ok) {{
+                throw new Error(await readErrorMessage(jobResponse));
+              }}
+              const jobPayload = await jobResponse.json();
+              applyJobFeedback(jobPayload, inlineStep, pendingDetail);
+              if (jobPayload.status === "completed") {{
+                feedbackTitle.textContent = "分析完成，正在跳转";
+                feedbackDetail.textContent = jobPayload.detail || "批次结果已生成，即将进入详情页。";
+                feedbackStep.textContent = jobPayload.stage || "结果已生成";
+                feedbackProgressFill.style.width = "100%";
+                if (inlineStep) {{
+                  inlineStep.textContent = jobPayload.stage || "结果已生成";
+                }}
+                window.setTimeout(() => {{
+                  window.location.href = redirectUrl;
+                }}, 380);
+                return;
+              }}
+              if (jobPayload.status === "failed") {{
+                throw new Error(jobPayload.error_message || jobPayload.detail || "处理失败，请稍后重试。");
+              }}
+              await wait(900);
+            }}
+          }} catch (error) {{
+            stopStageTimer();
+            setFeedbackState("error");
+            feedbackTitle.textContent = "分析失败，请重试";
+            feedbackDetail.textContent = error instanceof Error ? error.message : "系统处理失败，请稍后重试。";
+            feedbackStep.textContent = "本次提交未完成";
+            feedbackProgressFill.style.width = "100%";
+            if (inlineNote) {{
+              inlineNote.classList.add("is-error");
+            }}
+            if (inlineStep) {{
+              inlineStep.textContent = error instanceof Error ? error.message : "系统处理失败，请稍后重试。";
+            }}
+            restoreForm(form);
+          }}
+        }});
+      }}
+    }})();
+  </script>
 </body>
 </html>"""
 
@@ -474,10 +715,10 @@ __all__ = [
     "panel",
     "pill",
     "read_text_file",
-    "review_stage_label",
-    "review_strategy_label",
     "render_stylesheet",
     "report_label",
+    "review_stage_label",
+    "review_strategy_label",
     "severity_label",
     "status_label",
     "status_tone",

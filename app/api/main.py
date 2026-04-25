@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Thread
 from urllib.parse import quote, urlencode
 from wsgiref.simple_server import make_server
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
+from app.core.domain.models import Job
 from app.core.pipelines.submission_pipeline import ingest_submission
 from app.core.services.app_config import load_app_config
 from app.core.services.app_logging import log_event, read_log_text
@@ -17,6 +19,8 @@ from app.core.services.corrections import (
     create_case_from_materials,
     merge_cases,
     rerun_case_review,
+    reset_submission_review_dimension_rule,
+    update_submission_review_dimension_rule,
     upload_desensitized_package,
 )
 from app.core.services.delivery_closeout import get_delivery_closeout_artifact_download, latest_delivery_closeout_status
@@ -27,16 +31,18 @@ from app.core.services.provider_probe import (
     latest_successful_provider_probe_status,
     list_provider_probe_history,
 )
+from app.core.services.review_profile import normalize_review_profile, parse_review_profile_form
 from app.core.services.release_gate import evaluate_release_gate
 from app.core.services.runtime_store import store
-from app.core.services.sqlite_repository import load_all_into_store
+from app.core.services.sqlite_repository import load_all_into_store, save_submission_graph
 from app.core.services.startup_checks import run_startup_self_check
-from app.core.utils.text import ensure_dir, slug_id
+from app.core.utils.text import ensure_dir, now_iso, slug_id
 from app.web.page_submission import (
     render_submission_exports_page,
     render_submission_materials_page,
     render_submission_operator_page,
 )
+from app.web.page_review_rule import render_review_rule_detail_page
 from app.web.pages import (
     render_case_detail,
     render_home_page,
@@ -68,6 +74,70 @@ def _download_response(payload: bytes, filename: str, media_type: str) -> Respon
     response = Response(payload, status_code=200, headers={"Content-Disposition": disposition})
     response.media_type = media_type
     return response
+
+
+def _extract_review_profile(form_data, *, fallback: dict | None = None) -> dict:
+    return normalize_review_profile(parse_review_profile_form(form_data, fallback=fallback))
+
+
+def _run_async_submission(
+    saved_path: Path,
+    *,
+    original_filename: str,
+    mode: str,
+    review_strategy: str,
+    review_profile: dict,
+    submission_id: str,
+    job_id: str,
+) -> None:
+    try:
+        result = ingest_submission(
+            saved_path,
+            mode=mode,
+            created_by="web_async",
+            review_strategy=review_strategy,
+            review_profile=review_profile,
+            submission_id=submission_id,
+            job_id=job_id,
+        )
+        log_event(
+            "upload_submission_async_completed",
+            {
+                "submission_id": submission_id,
+                "job_id": job_id,
+                "mode": mode,
+                "review_strategy": review_strategy,
+                "review_profile": review_profile,
+                "filename": original_filename,
+                "material_count": len(result.get("materials", [])),
+            },
+        )
+    except Exception as exc:
+        error_message = str(exc)
+        job = store.jobs.get(job_id)
+        if job:
+            job.status = "failed"
+            job.progress = 100
+            job.stage = "处理失败"
+            job.detail = error_message or "系统处理时发生错误。"
+            job.error_message = error_message
+            job.finished_at = now_iso()
+        submission = store.submissions.get(submission_id)
+        if submission:
+            submission.status = "failed"
+            save_submission_graph(submission_id)
+        log_event(
+            "upload_submission_async_failed",
+            {
+                "submission_id": submission_id,
+                "job_id": job_id,
+                "mode": mode,
+                "review_strategy": review_strategy,
+                "review_profile": review_profile,
+                "filename": original_filename,
+                "error": error_message,
+            },
+        )
 
 
 def _build_ops_report(config) -> dict:
@@ -202,16 +272,23 @@ def create_app(testing: bool = False):
         upload = request.files.get("file")
         mode = request.form_data.get("mode", "single_case_package")
         review_strategy = request.form_data.get("review_strategy", "auto_review")
+        review_profile = _extract_review_profile(request.form_data)
         if not upload:
             raise HTTPException(400, "缺少 ZIP 文件")
         if not upload.filename.lower().endswith(".zip"):
             raise HTTPException(415, "仅支持 ZIP 文件")
         saved = _save_uploaded_zip(upload)
-        result = ingest_submission(saved, mode=mode, review_strategy=review_strategy)
+        result = ingest_submission(saved, mode=mode, review_strategy=review_strategy, review_profile=review_profile)
         submission_id = result["submission"]["id"]
         log_event(
             "upload_submission_html",
-            {"submission_id": submission_id, "mode": mode, "review_strategy": review_strategy, "filename": upload.filename},
+            {
+                "submission_id": submission_id,
+                "mode": mode,
+                "review_strategy": review_strategy,
+                "review_profile": review_profile,
+                "filename": upload.filename,
+            },
         )
         return RedirectResponse(f"/submissions/{submission_id}", status_code=302)
 
@@ -220,6 +297,7 @@ def create_app(testing: bool = False):
         upload = request.files.get("file")
         mode = request.form_data.get("mode", "")
         review_strategy = request.form_data.get("review_strategy", "auto_review")
+        review_profile = _extract_review_profile(request.form_data)
         if not upload:
             raise HTTPException(400, "缺少文件")
         if not upload.filename.lower().endswith(".zip"):
@@ -227,20 +305,90 @@ def create_app(testing: bool = False):
         if not mode:
             raise HTTPException(422, "缺少导入模式")
         saved = _save_uploaded_zip(upload)
-        result = ingest_submission(saved, mode=mode, review_strategy=review_strategy)
+        result = ingest_submission(saved, mode=mode, review_strategy=review_strategy, review_profile=review_profile)
         payload = {
             "id": result["submission"]["id"],
             "status": result["submission"]["status"],
             "review_strategy": result["submission"]["review_strategy"],
+            "review_profile": result["submission"].get("review_profile", {}),
             "cases": result["cases"],
             "materials": result["materials"],
             "reports": result["reports"],
         }
         log_event(
             "upload_submission_api",
-            {"submission_id": payload["id"], "mode": mode, "review_strategy": review_strategy, "filename": upload.filename},
+            {
+                "submission_id": payload["id"],
+                "mode": mode,
+                "review_strategy": review_strategy,
+                "review_profile": review_profile,
+                "filename": upload.filename,
+            },
         )
         return JSONResponse(payload, status_code=201)
+
+    @app.post("/api/submissions/async")
+    def api_create_submission_async(request: Request):
+        upload = request.files.get("file")
+        mode = request.form_data.get("mode", "")
+        review_strategy = request.form_data.get("review_strategy", "auto_review")
+        review_profile = _extract_review_profile(request.form_data)
+        if not upload:
+            raise HTTPException(400, "缺少文件")
+        if not upload.filename.lower().endswith(".zip"):
+            raise HTTPException(415, "仅支持 ZIP 文件")
+        if not mode:
+            raise HTTPException(422, "缺少导入模式")
+
+        saved = _save_uploaded_zip(upload)
+        submission_id = slug_id("sub")
+        job = store.add_job(
+            Job(
+                id=slug_id("job"),
+                job_type="ingest_submission",
+                scope_type="submission",
+                scope_id=submission_id,
+                status="queued",
+                progress=2,
+                stage="文件已接收",
+                detail=f"已收到 {upload.filename}，正在进入处理队列。",
+                started_at=now_iso(),
+            )
+        )
+        worker = Thread(
+            target=_run_async_submission,
+            kwargs={
+                "saved_path": saved,
+                "original_filename": upload.filename,
+                "mode": mode,
+                "review_strategy": review_strategy,
+                "review_profile": review_profile,
+                "submission_id": submission_id,
+                "job_id": job.id,
+            },
+            daemon=True,
+        )
+        worker.start()
+        log_event(
+            "upload_submission_async_started",
+            {
+                "submission_id": submission_id,
+                "job_id": job.id,
+                "mode": mode,
+                "review_strategy": review_strategy,
+                "review_profile": review_profile,
+                "filename": upload.filename,
+            },
+        )
+        return JSONResponse(
+            {
+                "job_id": job.id,
+                "submission_id": submission_id,
+                "status_url": f"/api/jobs/{job.id}",
+                "redirect_url": f"/submissions/{submission_id}",
+            },
+            status_code=202,
+        )
 
     @app.get("/api/submissions/{submission_id}")
     def api_get_submission(request: Request, submission_id: str):
@@ -472,13 +620,21 @@ def create_app(testing: bool = False):
         case_id = request.form_data.get("case_id", "")
         note = request.form_data.get("note", "")
         corrected_by = request.form_data.get("corrected_by", "operator_ui")
+        submission = store.submissions.get(submission_id)
+        review_profile = _extract_review_profile(
+            request.form_data,
+            fallback=getattr(submission, "review_profile", {}) if submission else {},
+        )
         if not case_id:
             raise HTTPException(422, "缺少 case_id")
         try:
-            rerun_case_review(case_id, corrected_by=corrected_by, note=note)
+            rerun_case_review(case_id, corrected_by=corrected_by, note=note, review_profile=review_profile)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        log_event("rerun_case_review_html", {"submission_id": submission_id, "case_id": case_id, "by": corrected_by})
+        log_event(
+            "rerun_case_review_html",
+            {"submission_id": submission_id, "case_id": case_id, "review_profile": review_profile, "by": corrected_by},
+        )
         return RedirectResponse(_submission_notice_location(submission_id, "case_review_rerun", focus="export-center"), status_code=303)
 
     @app.post("/submissions/{submission_id}/actions/continue-review")
@@ -617,6 +773,71 @@ def create_app(testing: bool = False):
         del request
         submission, materials, cases, reports, parse_results = _submission_context(submission_id)
         return HTMLResponse(render_submission_exports_page(submission, materials, cases, reports, parse_results))
+
+    @app.get("/submissions/{submission_id}/review-rules/{dimension_key}")
+    def submission_review_rule_page(request: Request, submission_id: str, dimension_key: str):
+        selected_case_id = str(request.query_params.get("case_id", "") or "").strip()
+        submission, materials, cases, reports, parse_results = _submission_context(submission_id)
+        del materials, reports, parse_results
+        try:
+            return HTMLResponse(
+                render_review_rule_detail_page(
+                    submission,
+                    cases,
+                    dimension_key,
+                    selected_case_id=selected_case_id,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
+
+    @app.post("/submissions/{submission_id}/review-rules/{dimension_key}")
+    def submission_review_rule_save(request: Request, submission_id: str, dimension_key: str):
+        action = str(request.form_data.get("action", "save") or "save").strip()
+        case_id = str(request.form_data.get("case_id", "") or "").strip()
+        note = str(request.form_data.get("note", "") or "").strip()
+        corrected_by = str(request.form_data.get("corrected_by", "operator_ui") or "operator_ui").strip()
+        try:
+            if action == "restore_default":
+                result = reset_submission_review_dimension_rule(
+                    submission_id,
+                    dimension_key,
+                    corrected_by=corrected_by,
+                    note=note,
+                )
+            else:
+                result = update_submission_review_dimension_rule(
+                    submission_id,
+                    dimension_key,
+                    title=str(request.form_data.get("title", "") or "").strip(),
+                    objective=str(request.form_data.get("objective", "") or "").strip(),
+                    checkpoints=str(request.form_data.get("checkpoints", "") or "").strip(),
+                    llm_focus=str(request.form_data.get("llm_focus", "") or "").strip(),
+                    corrected_by=corrected_by,
+                    note=note,
+                )
+            if action == "save_and_rerun" and case_id:
+                rerun_case_review(
+                    case_id,
+                    corrected_by=corrected_by,
+                    note=note or f"rule_update:{dimension_key}",
+                    review_profile=result["review_profile"],
+                )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        log_event(
+            "submission_review_rule_saved_html",
+            {
+                "submission_id": submission_id,
+                "dimension_key": dimension_key,
+                "action": action,
+                "case_id": case_id,
+                "by": corrected_by,
+            },
+        )
+        if action == "save_and_rerun" and case_id:
+            return RedirectResponse(_submission_notice_location(submission_id, "case_review_rerun", focus="review-profile"), status_code=303)
+        return RedirectResponse(f"/submissions/{submission_id}/review-rules/{dimension_key}?case_id={quote(case_id)}", status_code=303)
 
     @app.get("/cases/{case_id}")
     def case_detail(request: Request, case_id: str):

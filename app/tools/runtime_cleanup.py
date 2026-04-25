@@ -41,15 +41,37 @@ def _path_size(path: Path) -> int:
 def _age_days(path: Path, now: datetime) -> int:
     if not path.exists():
         return 0
-    modified_at = datetime.fromtimestamp(path.stat().st_mtime)
-    age = now - modified_at
-    return max(int(age.total_seconds() // 86400), 0)
+    modified_at = _effective_mtime(path)
+    return max((now.date() - modified_at.date()).days, 0)
 
 
 def _mtime_text(path: Path) -> str:
     if not path.exists():
         return ""
-    return datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds")
+    return _effective_mtime(path).isoformat(timespec="seconds")
+
+
+def _effective_mtime(path: Path) -> datetime:
+    """Use the newest nested file timestamp for directories.
+
+    On Windows, directory mtimes are not always reliable after file updates.
+    Cleanup decisions should follow the actual artifact content, not the
+    parent directory metadata.
+    """
+    if not path.exists():
+        return datetime.fromtimestamp(0)
+    if path.is_file():
+        return datetime.fromtimestamp(path.stat().st_mtime)
+
+    newest_timestamp = path.stat().st_mtime
+    for child in path.rglob("*"):
+        try:
+            child_timestamp = child.stat().st_mtime
+        except OSError:
+            continue
+        if child_timestamp > newest_timestamp:
+            newest_timestamp = child_timestamp
+    return datetime.fromtimestamp(newest_timestamp)
 
 
 def _candidate_record(scope: str, path: Path, now: datetime) -> dict:
@@ -76,27 +98,25 @@ def _skip_record(scope: str, path: Path, reason: str, now: datetime) -> dict:
     }
 
 
-def _expired_children(root: Path, scope: str, *, cutoff: datetime, now: datetime) -> list[dict]:
+def _expired_children(root: Path, scope: str, *, retention_days: int, now: datetime) -> list[dict]:
     if not root.exists():
         return []
 
     candidates: list[dict] = []
     for child in sorted(root.iterdir(), key=lambda item: item.name):
-        modified_at = datetime.fromtimestamp(child.stat().st_mtime)
-        if modified_at <= cutoff:
+        if _age_days(child, now) >= retention_days:
             candidates.append(_candidate_record(scope, child, now))
     return candidates
 
 
-def _scan_logs(log_dir: Path, active_log_path: Path, *, cutoff: datetime, now: datetime) -> tuple[list[dict], list[dict]]:
+def _scan_logs(log_dir: Path, active_log_path: Path, *, retention_days: int, now: datetime) -> tuple[list[dict], list[dict]]:
     if not log_dir.exists():
         return [], []
 
     candidates: list[dict] = []
     skipped: list[dict] = []
     for child in sorted(log_dir.iterdir(), key=lambda item: item.name):
-        modified_at = datetime.fromtimestamp(child.stat().st_mtime)
-        if modified_at > cutoff:
+        if _age_days(child, now) < retention_days:
             continue
         if child.resolve() == active_log_path.resolve():
             skipped.append(_skip_record("logs", child, "active_log_file", now))
@@ -150,10 +170,10 @@ def build_runtime_cleanup_plan(
     sqlite_path = Path(settings.sqlite_path)
 
     candidates = []
-    candidates.extend(_expired_children(submissions_dir, "submissions", cutoff=cutoff, now=clock))
-    candidates.extend(_expired_children(uploads_dir, "uploads", cutoff=cutoff, now=clock))
+    candidates.extend(_expired_children(submissions_dir, "submissions", retention_days=retention, now=clock))
+    candidates.extend(_expired_children(uploads_dir, "uploads", retention_days=retention, now=clock))
 
-    log_candidates, log_skips = _scan_logs(log_dir, log_path, cutoff=cutoff, now=clock)
+    log_candidates, log_skips = _scan_logs(log_dir, log_path, retention_days=retention, now=clock)
     candidates.extend(log_candidates)
 
     skipped = list(log_skips)
