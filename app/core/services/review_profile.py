@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.services.review_rulebook import dimension_rulebook_from_profile
+from app.core.services.review_rulebook import dimension_rulebook_from_profile, parse_dimension_rule_items_from_form
 
 
 DIMENSION_CATALOG = [
@@ -12,6 +12,7 @@ DIMENSION_CATALOG = [
     {"key": "source_code", "title": "源码可审查性", "description": "源码是否可读、是否存在关键逻辑缺失风险。"},
     {"key": "software_doc", "title": "说明文档规范", "description": "说明文档是否规范、版本描述是否清晰。"},
     {"key": "agreement", "title": "协议与权属规范", "description": "协议、权属类材料是否存在明显风险。"},
+    {"key": "online_filing", "title": "在线填报信息审查", "description": "在线填报的分类、日期和主体类型是否与材料一致。"},
     {"key": "ai", "title": "AI 补充研判", "description": "让 LLM 从指定角度补充总结和提示。"},
 ]
 
@@ -153,7 +154,11 @@ def parse_review_profile_form(form_data, *, fallback: dict[str, Any] | None = No
         objective = str(form_data.get(f"rule_{key}_objective", "") or "").strip()
         checkpoints_raw = str(form_data.get(f"rule_{key}_checkpoints", "") or "").strip()
         llm_focus = str(form_data.get(f"rule_{key}_llm_focus", "") or "").strip()
+        rule_items = parse_dimension_rule_items_from_form(form_data, key)
         if not any([title, objective, checkpoints_raw, llm_focus]):
+            current = dict(rulebook.get(key, {}) or {})
+            current["rules"] = rule_items
+            rulebook[key] = current
             continue
         current = dict(rulebook.get(key, {}) or {})
         checkpoints = [
@@ -169,6 +174,7 @@ def parse_review_profile_form(form_data, *, fallback: dict[str, Any] | None = No
             current["checkpoints"] = checkpoints
         if llm_focus:
             current["llm_focus"] = llm_focus
+        current["rules"] = rule_items
         rulebook[key] = current
 
     return normalize_review_profile(

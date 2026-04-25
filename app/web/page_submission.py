@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+from app.core.services.online_filing import normalize_online_filing, online_filing_summary
 from app.core.services.review_profile import dimension_title, normalize_review_profile, review_profile_summary
 from app.core.services.review_rulebook import dimension_rulebook_from_profile
 from app.core.services.runtime_store import store
@@ -741,6 +742,228 @@ def render_submission_exports_page(
         page_links=[
             (f"/submissions/{submission.get('id', '')}", "批次总览", "file"),
             ("#export-center", "导出中心", "download"),
+        ],
+    )
+
+
+def _render_online_filing_operator_forms(submission_id: str, cases: list[dict]) -> str:
+    forms: list[str] = []
+    for case in cases:
+        filing = normalize_online_filing(case.get("online_filing", {}) or {})
+        summary = list_pairs(online_filing_summary(filing), css_class="dossier-list dossier-list-single")
+        forms.append(
+            '<form class="operator-form" action="/submissions/'
+            + escape_html(submission_id)
+            + '/actions/update-online-filing" method="post">'
+            + f"<strong>{escape_html(case.get('case_name', '') or case.get('id', 'case'))}</strong>"
+            + f'<input type="hidden" name="case_id" value="{escape_html(case.get("id", ""))}">'
+            + summary
+            + f'<label class="field"><span>软件名称</span><input type="text" name="online_software_name" value="{escape_html(filing.get("software_name", ""))}"></label>'
+            + f'<label class="field"><span>版本号</span><input type="text" name="online_version" value="{escape_html(filing.get("version", ""))}"></label>'
+            + f'<label class="field"><span>软件分类</span><input type="text" name="online_software_category" value="{escape_html(filing.get("software_category", ""))}" placeholder="例如：应用软件"></label>'
+            + f'<label class="field"><span>开发方式</span><input type="text" name="online_development_mode" value="{escape_html(filing.get("development_mode", ""))}" placeholder="例如：原创 / 合作开发"></label>'
+            + f'<label class="field"><span>主体类型</span><input type="text" name="online_subject_type" value="{escape_html(filing.get("subject_type", ""))}" placeholder="例如：企业法人 / 事业单位"></label>'
+            + f'<label class="field"><span>申请日期</span><input type="text" name="online_apply_date" value="{escape_html(filing.get("apply_date", ""))}" placeholder="YYYY-MM-DD"></label>'
+            + f'<label class="field"><span>开发完成日期</span><input type="text" name="online_completion_date" value="{escape_html(filing.get("completion_date", ""))}" placeholder="YYYY-MM-DD"></label>'
+            + f'<label class="field"><span>申请人顺序</span><textarea name="online_applicants" rows="4" placeholder="每行一位申请人">{escape_html(chr(10).join(filing.get("applicants", [])))}</textarea></label>'
+            + f'<label class="field"><span>地址</span><textarea name="online_address" rows="3">{escape_html(filing.get("address", ""))}</textarea></label>'
+            + f'<label class="field"><span>电子证书地址</span><textarea name="online_certificate_address" rows="3">{escape_html(filing.get("certificate_address", ""))}</textarea></label>'
+            + '<label class="field"><span>备注</span><input type="text" name="note" placeholder="例如：按本次申报口径修正"></label>'
+            + '<div class="inline-actions">'
+            + f'<a class="button-secondary button-compact" href="/cases/{escape_html(case.get("id", ""))}">查看项目</a>'
+            + f'<button class="button-secondary button-compact" type="submit">{icon("refresh", "icon icon-sm")}保存并重跑</button>'
+            + "</div></form>"
+        )
+    if not forms:
+        return empty_state("暂无项目", "请先形成项目后再录入在线填报信息。")
+    return '<div class="control-grid">' + "".join(forms) + "</div>"
+
+
+def render_submission_operator_page(
+    submission: dict,
+    materials: list[dict],
+    cases: list[dict],
+    reports: list[dict],
+    parse_results: list[dict],
+) -> str:
+    del reports
+    data = _submission_view_data(submission, materials, cases, [], parse_results)
+    submission_id = escape_html(submission.get("id", ""))
+    review_profile = normalize_review_profile(submission.get("review_profile", {}))
+
+    case_options = (
+        "".join(
+            f'<option value="{escape_html(case.get("id", ""))}">{escape_html(case.get("case_name", "") or case.get("id", ""))}</option>'
+            for case in cases
+        )
+        or '<option value="">暂无项目</option>'
+    )
+    material_options = (
+        "".join(
+            f'<option value="{escape_html(material.get("id", ""))}">{escape_html(material.get("original_filename", "") or material.get("id", ""))}</option>'
+            for material in materials
+        )
+        or '<option value="">暂无材料</option>'
+    )
+    default_material_ids = ",".join(str(item.get("id", "")) for item in materials[:1])
+
+    operator_intro = (
+        '<div class="summary-grid">'
+        + _summary_tile("当前阶段", review_stage_label(submission.get("review_stage", "review_completed")), "显示当前是否已完成脱敏、已回传脱敏包或正在正式审查")
+        + _summary_tile("建议顺序", "先整理再重跑", "优先纠偏材料和在线填报，再按最新规则重新审查")
+        + _summary_tile("留痕", "自动记录", "所有人工动作都会写入更正审计")
+        + "</div>"
+    )
+
+    continue_review_body = _continue_review_forms(submission, cases)
+    default_case_id = str(cases[0].get("id", "")) if cases else ""
+    review_profile_fields = render_review_profile_form_fields(
+        review_profile,
+        submit_context="rerun",
+        submission_id=str(submission.get("id", "")),
+        case_id=default_case_id,
+    )
+    review_profile_digest = list_pairs(review_profile_summary(review_profile), css_class="dossier-list dossier-list-single")
+    review_rule_links = _review_rule_links(str(submission.get("id", "")), review_profile)
+
+    operator_body = f"""
+    {operator_intro}
+    <div class="operator-group-grid">
+      <details class="operator-group" open>
+        <summary>
+          <span class="operator-group-index">1</span>
+          <div>
+            <strong>脱敏回传与继续审查</strong>
+            <small>上传脱敏包，或在确认脱敏件后继续正式审查。</small>
+          </div>
+        </summary>
+        <div class="control-grid">
+          <form class="operator-form" action="/submissions/{submission_id}/actions/upload-desensitized-package" method="post" enctype="multipart/form-data">
+            <strong>上传脱敏包</strong>
+            <label class="field"><span>ZIP 文件</span><input type="file" name="file" accept=".zip" required></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="例如：人工确认后重新打包上传"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('upload', 'icon icon-sm')}上传并刷新</button>
+          </form>
+        </div>
+        {continue_review_body}
+      </details>
+
+      <details class="operator-group">
+        <summary>
+          <span class="operator-group-index">2</span>
+          <div>
+            <strong>材料纠偏</strong>
+            <small>先修正识别错误的材料类型和归属。</small>
+          </div>
+        </summary>
+        <div class="control-grid">
+          <form class="operator-form" action="/submissions/{submission_id}/actions/change-type" method="post">
+            <strong>更正材料类型</strong>
+            <label class="field"><span>材料</span><select name="material_id">{material_options}</select></label>
+            <label class="field"><span>类型</span><select name="material_type">
+              <option value="agreement">合作协议</option>
+              <option value="source_code">源代码</option>
+              <option value="info_form">信息采集表</option>
+              <option value="software_doc">软件说明文档</option>
+            </select></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="说明为什么要修改"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('wrench', 'icon icon-sm')}保存并刷新</button>
+          </form>
+          <form class="operator-form" action="/submissions/{submission_id}/actions/assign-case" method="post">
+            <strong>指派到项目</strong>
+            <label class="field"><span>材料</span><select name="material_id">{material_options}</select></label>
+            <label class="field"><span>目标项目</span><select name="case_id">{case_options}</select></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="记录这次归组原因"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}提交并刷新</button>
+          </form>
+        </div>
+      </details>
+
+      <details class="operator-group">
+        <summary>
+          <span class="operator-group-index">3</span>
+          <div>
+            <strong>项目编排</strong>
+            <small>创建新项目，或把拆散的项目重新合并。</small>
+          </div>
+        </summary>
+        <div class="control-grid">
+          <form class="operator-form" action="/submissions/{submission_id}/actions/create-case" method="post">
+            <strong>创建项目</strong>
+            <label class="field"><span>材料 ID</span><input type="text" name="material_ids" value="{escape_html(default_material_ids)}"></label>
+            <label class="field"><span>项目名称</span><input type="text" name="case_name" value="{escape_html(submission.get('filename', '新项目'))}"></label>
+            <label class="field"><span>版本号</span><input type="text" name="version"></label>
+            <label class="field"><span>公司名称</span><input type="text" name="company_name"></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="记录创建原因"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('lock', 'icon icon-sm')}创建并刷新</button>
+          </form>
+          <form class="operator-form" action="/submissions/{submission_id}/actions/merge-cases" method="post">
+            <strong>合并项目</strong>
+            <label class="field"><span>源项目</span><select name="source_case_id">{case_options}</select></label>
+            <label class="field"><span>目标项目</span><select name="target_case_id">{case_options}</select></label>
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="记录合并原因"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}合并并刷新</button>
+          </form>
+        </div>
+      </details>
+
+      <details class="operator-group" open>
+        <summary>
+          <span class="operator-group-index">4</span>
+          <div>
+            <strong>在线填报信息</strong>
+            <small>按项目录入在线系统字段，保存后会立即重跑审查。</small>
+          </div>
+        </summary>
+        {_render_online_filing_operator_forms(submission.get("id", ""), cases)}
+      </details>
+
+      <details class="operator-group" open>
+        <summary>
+          <span class="operator-group-index">5</span>
+          <div>
+            <strong>审查配置与重跑</strong>
+            <small>控制审查维度和 LLM 角度，然后按当前配置重新审查。</small>
+          </div>
+        </summary>
+        <div class="control-grid">
+          <div class="operator-form operator-form-static">
+            <strong>当前配置</strong>
+            {review_profile_digest}
+            {review_rule_links}
+          </div>
+          <form class="operator-form" action="/submissions/{submission_id}/actions/rerun-review" method="post">
+            <strong>重新审查项目</strong>
+            <label class="field"><span>项目</span><select name="case_id">{case_options}</select></label>
+            {review_profile_fields}
+            <label class="field"><span>备注</span><input type="text" name="note" placeholder="说明为什么重跑"></label>
+            <button class="button-secondary button-compact" type="submit">{icon('refresh', 'icon icon-sm')}保存配置并重跑</button>
+          </form>
+        </div>
+      </details>
+    </div>
+    """
+
+    content = f"""
+    <section class="dashboard-grid">
+      {panel('人工干预台', operator_body, kicker='纠偏操作', extra_class='span-12', icon_name='wrench', description='把人工修正、在线填报和重跑入口集中到这里。', panel_id='operator-console')}
+      {panel('更正审计', table(['操作类型', '对象', '备注', '时间'], data['correction_rows']) if data['correction_rows'] else empty_state('暂无操作记录', '当前还没有人工处理记录。'), kicker='留痕记录', extra_class='span-12', icon_name='clock', description='每一次人工动作都会留痕，方便回溯。', panel_id='correction-audit')}
+    </section>
+    """
+
+    return layout(
+        title=f"{submission.get('filename', '批次详情')} - 人工干预台",
+        active_nav="submissions",
+        header_tag="人工干预台",
+        header_title="人工干预台",
+        header_subtitle="把纠偏表单单独承载，避免在总览页堆叠长表单。",
+        header_meta=_submission_header_meta(submission, cases),
+        content=content,
+        header_note="先在产品浏览页确认问题，再回到这里执行必要的人工修正、录入在线填报或继续审查。",
+        page_links=[
+            (f"/submissions/{submission.get('id', '')}", "批次总览", "file"),
+            ("#operator-console", "人工干预台", "wrench"),
+            ("#correction-audit", "更正审计", "clock"),
         ],
     )
 

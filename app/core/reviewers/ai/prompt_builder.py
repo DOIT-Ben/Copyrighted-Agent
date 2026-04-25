@@ -22,10 +22,22 @@ def _issue_line(issue: dict) -> str:
 
 def _dimension_block(dimension_key: str, rule: dict) -> str:
     checkpoints = list(rule.get("checkpoints") or [])
+    rule_items = [
+        item
+        for item in list(rule.get("rules") or [])
+        if bool(item.get("enabled", True))
+    ]
     checkpoint_lines = "\n".join(
         f"  - {_safe_text(item, fallback='-', limit=160)}"
         for item in checkpoints[:8]
         if str(item or "").strip()
+    ) or "  - None"
+    rule_item_lines = "\n".join(
+        f"  - [{_safe_text(item.get('severity'), fallback='moderate', limit=20)}] "
+        f"{_safe_text(item.get('category'), fallback='general', limit=40)} / "
+        f"{_safe_text(item.get('title'), fallback='rule', limit=80)}: "
+        f"{_safe_text(item.get('prompt_hint'), fallback='-', limit=200)}"
+        for item in rule_items[:12]
     ) or "  - None"
     return "\n".join(
         [
@@ -33,6 +45,8 @@ def _dimension_block(dimension_key: str, rule: dict) -> str:
             f"Objective: {_safe_text(rule.get('objective'), fallback='-', limit=280)}",
             "Checkpoints:",
             checkpoint_lines,
+            "Structured rules:",
+            rule_item_lines,
             f"LLM focus: {_safe_text(rule.get('llm_focus'), fallback='-', limit=280)}",
         ]
     )
@@ -108,6 +122,17 @@ def build_ai_prompt_snapshot(
                 "title": _safe_text(active_rulebook.get(key, {}).get("title") or dimension_title(key), fallback=key, limit=80),
                 "objective": _safe_text(active_rulebook.get(key, {}).get("objective"), fallback="-", limit=280),
                 "checkpoints": list(active_rulebook.get(key, {}).get("checkpoints") or [])[:8],
+                "rules": [
+                    {
+                        "key": _safe_text(item.get("key"), fallback="", limit=60),
+                        "title": _safe_text(item.get("title"), fallback="-", limit=80),
+                        "category": _safe_text(item.get("category"), fallback="-", limit=40),
+                        "severity": _safe_text(item.get("severity"), fallback="moderate", limit=20),
+                        "prompt_hint": _safe_text(item.get("prompt_hint"), fallback="-", limit=240),
+                        "enabled": bool(item.get("enabled", True)),
+                    }
+                    for item in list(active_rulebook.get(key, {}).get("rules") or [])[:16]
+                ],
                 "llm_focus": _safe_text(active_rulebook.get(key, {}).get("llm_focus"), fallback="-", limit=280),
             }
             for key in enabled_dimensions

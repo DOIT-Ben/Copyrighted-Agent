@@ -18,10 +18,12 @@ from app.core.reviewers.rules.agreement import review_agreement_text
 from app.core.reviewers.rules.cross_material import review_case_consistency
 from app.core.reviewers.rules.document import review_document_text
 from app.core.reviewers.rules.info_form import review_info_form_text
+from app.core.reviewers.rules.online_filing import review_online_filing_payload
 from app.core.reviewers.rules.source_code import review_source_code_text
 from app.core.services.app_logging import log_event
 from app.core.services.input_intake import stage_directory_input
 from app.core.services.material_classifier import classify_material
+from app.core.services.online_filing import normalize_online_filing
 from app.core.services.review_dimensions import build_case_review_dimensions
 from app.core.services.review_profile import normalize_review_profile
 from app.core.services.sqlite_repository import save_submission_graph
@@ -118,10 +120,23 @@ def _build_case_ai_payload(case: Case, case_materials: list[Material]) -> dict:
         "software_name": case.software_name,
         "version": case.version,
         "company_name": case.company_name,
+        "online_filing": normalize_online_filing(getattr(case, "online_filing", {}) or {}),
         "material_count": len(case_materials),
         "material_type_counts": material_type_counts,
         "material_inventory": material_inventory,
     }
+
+
+def _collect_case_issues(materials: list[Material], consistency_issues: list[dict]) -> list[dict]:
+    combined: list[dict] = [dict(item) for item in list(consistency_issues or [])]
+    for material in materials:
+        for issue in list(material.issues or []):
+            payload = dict(issue or {})
+            payload.setdefault("material_id", material.id)
+            payload.setdefault("material_name", material.original_filename)
+            payload.setdefault("material_type", material.material_type)
+            combined.append(payload)
+    return combined
 
 
 def _select_classification(first_pass: dict, second_pass: dict | None, parse_quality: dict) -> dict:
@@ -340,9 +355,11 @@ def ingest_submission(
             parse_quality=parsed["quality"],
         )
         review = _review_by_material_type(classification["material_type"], parsed["clean_text"])
+        review_metadata = dict(review.get("metadata", {}) or {})
         triage = _build_triage(classification, parsed["quality"])
         material_metadata = {
             **parsed["metadata"],
+            **review_metadata,
             "classification": {
                 **classification,
                 "first_pass_result": first_pass_classification["material_type"],
@@ -436,6 +453,7 @@ def ingest_submission(
         source_code = next((item for item in materials if item.material_type == MaterialType.SOURCE_CODE.value), None)
         software_doc = next((item for item in materials if item.material_type == MaterialType.SOFTWARE_DOC.value), None)
         agreements = [item for item in materials if item.material_type == MaterialType.AGREEMENT.value]
+        agreement = agreements[0] if agreements else None
 
         case_name = (
             (info_form.detected_software_name if info_form else "")
@@ -493,8 +511,20 @@ def ingest_submission(
                 info_form.metadata if info_form else {},
                 source_code.metadata if source_code else {},
                 software_doc.metadata if software_doc else {},
+                agreement.metadata if agreement else {},
+                normalize_online_filing(getattr(case, "online_filing", {}) or {}),
             )
-            combined_issues = consistency.get("issues", [])
+            combined_issues = _collect_case_issues(materials, consistency.get("issues", []))
+            combined_issues.extend(
+                list(
+                    review_online_filing_payload(
+                        getattr(case, "online_filing", {}) or {},
+                        case_payload=case.to_dict(),
+                        info_form=info_form.metadata if info_form else {},
+                        agreement=agreement.metadata if agreement else {},
+                    ).get("issues", [])
+                )
+            )
             ai_provider = resolve_case_ai_provider()
             ai_case_payload = _build_case_ai_payload(case, materials)
             if ai_provider != "mock":

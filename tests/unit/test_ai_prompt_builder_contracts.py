@@ -62,3 +62,27 @@ def test_build_ai_prompt_snapshot_exposes_safe_material_inventory():
     assert '"material_count": 3' in snapshot["user_prompt"]
     assert '"source_code": 1' in snapshot["user_prompt"]
     assert '"material_type": "source_code"' in snapshot["user_prompt"]
+
+
+@pytest.mark.unit
+@pytest.mark.contract
+@pytest.mark.review
+@pytest.mark.ai
+def test_build_ai_prompt_snapshot_supports_online_filing_dimension():
+    build_ai_prompt_snapshot = require_symbol("app.core.reviewers.ai.prompt_builder", "build_ai_prompt_snapshot")
+
+    snapshot = build_ai_prompt_snapshot(
+        {"software_name": "Aurora Review Desk", "version": "V1.0", "company_name": "Aurora Medical", "llm_safe": True},
+        {"issues": []},
+        {
+            "enabled_dimensions": ["identity", "online_filing", "ai"],
+            "focus_mode": "balanced",
+            "strictness": "standard",
+            "llm_instruction": "If online filing data is missing, say that explicitly.",
+        },
+        requested_provider="external_http",
+    )
+
+    keys = [item["key"] for item in snapshot["active_dimensions"]]
+    assert "online_filing" in keys
+    assert "在线填报信息审查" in snapshot["user_prompt"]

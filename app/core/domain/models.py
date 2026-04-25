@@ -36,6 +36,7 @@ class Case:
     source_submission_id: str
     created_at: str
     material_ids: list[str] = field(default_factory=list)
+    online_filing: dict[str, Any] = field(default_factory=dict)
     review_stage: str = "review_completed"
     review_result_id: str = ""
     report_id: str = ""

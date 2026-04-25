@@ -20,6 +20,7 @@ from app.core.services.corrections import (
     merge_cases,
     rerun_case_review,
     reset_submission_review_dimension_rule,
+    update_case_online_filing,
     update_submission_review_dimension_rule,
     upload_desensitized_package,
 )
@@ -31,7 +32,9 @@ from app.core.services.provider_probe import (
     latest_successful_provider_probe_status,
     list_provider_probe_history,
 )
+from app.core.services.online_filing import parse_online_filing_form
 from app.core.services.review_profile import normalize_review_profile, parse_review_profile_form
+from app.core.services.review_rulebook import parse_dimension_rule_items_from_form
 from app.core.services.release_gate import evaluate_release_gate
 from app.core.services.runtime_store import store
 from app.core.services.sqlite_repository import load_all_into_store, save_submission_graph
@@ -506,6 +509,21 @@ def create_app(testing: bool = False):
             raise HTTPException(400, str(exc)) from exc
         return JSONResponse(result)
 
+    @app.post("/api/cases/{case_id}/online-filing")
+    def api_update_case_online_filing(request: Request, case_id: str):
+        note = request.form_data.get("note", "")
+        corrected_by = request.form_data.get("corrected_by", "local")
+        try:
+            result = update_case_online_filing(
+                case_id,
+                parse_online_filing_form(request.form_data),
+                corrected_by=corrected_by,
+                note=note,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return JSONResponse(result)
+
     @app.post("/api/cases/{case_id}/continue-review")
     def api_continue_case_review(request: Request, case_id: str):
         note = request.form_data.get("note", "")
@@ -636,6 +654,28 @@ def create_app(testing: bool = False):
             {"submission_id": submission_id, "case_id": case_id, "review_profile": review_profile, "by": corrected_by},
         )
         return RedirectResponse(_submission_notice_location(submission_id, "case_review_rerun", focus="export-center"), status_code=303)
+
+    @app.post("/submissions/{submission_id}/actions/update-online-filing")
+    def update_online_filing_page(request: Request, submission_id: str):
+        case_id = request.form_data.get("case_id", "")
+        note = request.form_data.get("note", "")
+        corrected_by = request.form_data.get("corrected_by", "operator_ui")
+        if not case_id:
+            raise HTTPException(422, "缂哄皯 case_id")
+        try:
+            update_case_online_filing(
+                case_id,
+                parse_online_filing_form(request.form_data),
+                corrected_by=corrected_by,
+                note=note,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        log_event(
+            "update_case_online_filing_html",
+            {"submission_id": submission_id, "case_id": case_id, "by": corrected_by},
+        )
+        return RedirectResponse(_submission_notice_location(submission_id, "case_review_rerun", focus="operator-console"), status_code=303)
 
     @app.post("/submissions/{submission_id}/actions/continue-review")
     def continue_review_page(request: Request, submission_id: str):
@@ -813,6 +853,7 @@ def create_app(testing: bool = False):
                     objective=str(request.form_data.get("objective", "") or "").strip(),
                     checkpoints=str(request.form_data.get("checkpoints", "") or "").strip(),
                     llm_focus=str(request.form_data.get("llm_focus", "") or "").strip(),
+                    rules=parse_dimension_rule_items_from_form(request.form_data, dimension_key),
                     corrected_by=corrected_by,
                     note=note,
                 )

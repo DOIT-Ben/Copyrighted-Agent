@@ -21,6 +21,54 @@ def _checkpoint_list(title: str, checkpoints: list[str]) -> str:
     return f'<div class="rule-checkpoint-list"><strong>{escape_html(title)}</strong><ul>{items}</ul></div>'
 
 
+def _rule_items_table(rule_entry: dict) -> str:
+    rows = [
+        [
+            pill("启用" if item.get("enabled", True) else "停用", "success" if item.get("enabled", True) else "warning"),
+            escape_html(str(item.get("category", "") or "-")),
+            escape_html(str(item.get("title", "") or "-")),
+            escape_html(str(item.get("severity", "") or "-")),
+            escape_html(str(item.get("prompt_hint", "") or "-")),
+        ]
+        for item in list(rule_entry.get("rules", []) or [])
+    ]
+    return table(["状态", "分类", "规则项", "级别", "检查说明"], rows) if rows else ""
+
+
+def _rule_item_editor(dimension_key: str, item: dict) -> str:
+    base = f"rule_{dimension_key}_item_{item.get('key', '')}"
+    checked = ' checked' if item.get("enabled", True) else ""
+    severity_options = "".join(
+        f'<option value="{escape_html(level)}"{" selected" if level == item.get("severity", "moderate") else ""}>{escape_html(level)}</option>'
+        for level in ["severe", "moderate", "minor"]
+    )
+    return f"""
+    <article class="rule-item-card">
+      <label class="dimension-choice-main">
+        <input type="checkbox" name="{escape_html(base)}_enabled" value="1"{checked}>
+        <span>
+          <strong>{escape_html(item.get("title", ""))}</strong>
+          <small>{escape_html(item.get("category", ""))}</small>
+        </span>
+      </label>
+      <div class="review-profile-grid compact-grid">
+        <label class="field">
+          <span>规则名</span>
+          <input type="text" name="{escape_html(base)}_title" value="{escape_html(item.get('title', ''))}">
+        </label>
+        <label class="field">
+          <span>级别</span>
+          <select name="{escape_html(base)}_severity">{severity_options}</select>
+        </label>
+      </div>
+      <label class="field">
+        <span>检查说明</span>
+        <textarea name="{escape_html(base)}_prompt_hint" rows="3">{escape_html(item.get('prompt_hint', ''))}</textarea>
+      </label>
+    </article>
+    """
+
+
 def render_review_rule_detail_page(
     submission: dict,
     cases: list[dict],
@@ -47,9 +95,9 @@ def render_review_rule_detail_page(
     checkpoints_text = format_rule_checkpoints(rule_entry.get("checkpoints", []))
     summary_tiles = "".join(
         [
-            _summary_tile("维度", rule_entry.get("title", dimension_title(dimension_key)), "当前可编辑的审查重点"),
+            _summary_tile("维度", rule_entry.get("title", dimension_title(dimension_key)), "当前正在编辑的审查维度"),
             _summary_tile("状态", "已启用" if is_enabled else "未启用", "是否参与当前批次审查"),
-            _summary_tile("检查点", str(len(rule_entry.get("checkpoints", []) or [])), "会拼入 LLM 提示词"),
+            _summary_tile("规则项", str(len(rule_entry.get("rules", []) or [])), "当前维度下的细分规则数量"),
         ]
     )
 
@@ -62,12 +110,10 @@ def render_review_rule_detail_page(
         ["规则名称", escape_html(default_rule.get("title", "")), escape_html(rule_entry.get("title", ""))],
         ["审查目标", escape_html(default_rule.get("objective", "")), escape_html(rule_entry.get("objective", ""))],
         ["LLM 关注点", escape_html(default_rule.get("llm_focus", "")), escape_html(rule_entry.get("llm_focus", ""))],
-        [
-            "检查点数量",
-            escape_html(str(len(default_rule.get("checkpoints", []) or []))),
-            escape_html(str(len(rule_entry.get("checkpoints", []) or []))),
-        ],
+        ["规则项数量", escape_html(str(len(default_rule.get("rules", []) or []))), escape_html(str(len(rule_entry.get("rules", []) or [])))],
     ]
+
+    rule_item_editors = "".join(_rule_item_editor(dimension_key, item) for item in list(rule_entry.get("rules", []) or []))
 
     editor_body = f"""
     <form class="operator-form rule-editor-form" action="/submissions/{escape_html(submission_id)}/review-rules/{escape_html(dimension_key)}" method="post">
@@ -79,10 +125,13 @@ def render_review_rule_detail_page(
         <span>审查目标</span>
         <textarea name="objective" rows="4" required>{escape_html(rule_entry.get('objective', ''))}</textarea>
       </label>
+      <div class="rule-item-stack">
+        {rule_item_editors}
+      </div>
       <label class="field">
-        <span>检查点</span>
+        <span>检查点摘要</span>
         <textarea name="checkpoints" rows="10" required>{escape_html(checkpoints_text)}</textarea>
-        <span class="field-hint">每行一条规则。保存后会同步到当前批次的提示词规则里。</span>
+        <span class="field-hint">默认可由上方规则项自动概括，这里也可以手动增删。</span>
       </label>
       <label class="field">
         <span>LLM 关注点</span>
@@ -100,7 +149,7 @@ def render_review_rule_detail_page(
         <button class="button-primary" type="submit" name="action" value="save">{icon("check", "icon icon-sm")}保存规则</button>
         <button class="button-secondary" type="submit" name="action" value="save_and_rerun">{icon("refresh", "icon icon-sm")}保存并重跑</button>
         <button class="button-secondary" type="submit" name="action" value="restore_default">{icon("refresh", "icon icon-sm")}恢复默认</button>
-        <a class="button-secondary" href="/submissions/{escape_html(submission_id)}/operator">{icon("wrench", "icon icon-sm")}人工干预台</a>
+        <a class="button-secondary" href="/submissions/{escape_html(submission_id)}/operator">{icon("wrench", "icon icon-sm")}返回人工台</a>
       </div>
     </form>
     """
@@ -108,8 +157,9 @@ def render_review_rule_detail_page(
     preview_body = (
         list_pairs(prompt_preview_pairs, css_class="dossier-list dossier-list-single")
         + _checkpoint_list("当前检查点", rule_entry.get("checkpoints", []))
+        + _rule_items_table(rule_entry)
     )
-    default_preview_body = _checkpoint_list("默认检查点", default_rule.get("checkpoints", []))
+    default_preview_body = _checkpoint_list("默认检查点", default_rule.get("checkpoints", [])) + _rule_items_table(default_rule)
 
     content = f"""
     <section class="dashboard-grid rule-layout">
@@ -125,7 +175,7 @@ def render_review_rule_detail_page(
         active_nav="submissions",
         header_tag="审查规则",
         header_title=rule_entry.get("title", dimension_title(dimension_key)),
-        header_subtitle="编辑这个维度的审查目标、检查点和 LLM 关注点。",
+        header_subtitle="编辑这个维度下的审查目标、细分规则和 LLM 关注点。",
         header_meta="".join(
             [
                 pill("已启用" if is_enabled else "未启用", "success" if is_enabled else "warning"),

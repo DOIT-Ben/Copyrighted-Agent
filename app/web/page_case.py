@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.core.services.online_filing import normalize_online_filing, online_filing_summary
 from app.core.services.review_dimensions import build_case_review_dimensions
 from app.core.services.review_profile import normalize_review_profile, review_profile_summary
 from app.core.utils.text import escape_html
@@ -90,6 +91,8 @@ def render_case_detail(case: dict, materials: list[dict], report: dict | None, r
         ]
         for item in materials
     ]
+    filing = normalize_online_filing(case.get("online_filing", {}) or {})
+    online_pairs = online_filing_summary(filing)
 
     overview_pairs = [
         ("软件名称", escape_html(str(case.get("software_name", "") or "-"))),
@@ -180,6 +183,7 @@ def render_case_detail(case: dict, materials: list[dict], report: dict | None, r
       {panel('AI 辅助研判', list_pairs(ai_pairs, css_class='dossier-list dossier-list-single'), kicker='AI 信号', extra_class='span-4', icon_name='spark', description='', panel_id='ai-supplement')}
       {panel('风险队列', table(['严重级别', '问题', '说明'], issue_rows) if issue_rows else empty_state('当前无跨材料问题', '没有发现需要优先处理的冲突。'), kicker='优先处理', extra_class='span-8', icon_name='alert', description='', panel_id='risk-queue')}
       {panel('审查维度', table(['维度', '结论', '摘要'], dimension_rows) if dimension_rows else empty_state('暂无审查维度', '当前没有可显示的维度结论。'), kicker='当前结论', extra_class='span-4 panel-soft', icon_name='shield', description='', panel_id='review-dimensions')}
+      {panel('在线填报', list_pairs(online_pairs, css_class='dossier-list dossier-list-single') if filing.get('has_data') else empty_state('尚未录入在线填报信息', '可在批次详情页的人工干预台录入在线填报字段后重新审查。'), kicker='录入状态', extra_class='span-12', icon_name='file', description='', panel_id='online-filing')}
       {panel('报告查看', report_body, kicker='结果出口', extra_class='span-12', icon_name='report', description='', panel_id='report-reader')}
       {panel('更多信息', advanced_groups, kicker='按需展开', extra_class='span-12', icon_name='search', description='', panel_id='dimension-details')}
     </section>
@@ -203,6 +207,7 @@ def render_case_detail(case: dict, materials: list[dict], report: dict | None, r
             ("#case-summary", "审查结果", "layers"),
             ("#risk-queue", "风险队列", "alert"),
             ("#review-dimensions", "审查维度", "shield"),
+            ("#online-filing", "在线填报", "file"),
             ("#report-reader", "报告查看", "report"),
             ("#dimension-details", "更多信息", "search"),
         ],

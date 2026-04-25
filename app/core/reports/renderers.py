@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.core.services.business_review import business_level
+
 
 def _render_issue_lines(issues: list[dict]) -> list[str]:
     if not issues:
@@ -9,8 +11,25 @@ def _render_issue_lines(issues: list[dict]) -> list[str]:
         severity = issue.get("severity", "minor")
         category = issue.get("category", "问题")
         desc = issue.get("desc", "")
-        lines.append(f"- [{severity}] {category}: {desc}")
+        level, _ = business_level(issue)
+        lines.append(f"- [{level} / {severity}] {category}: {desc}")
     return lines
+
+
+def _render_business_issue_lines(issues: list[dict], target: str) -> list[str]:
+    lines: list[str] = []
+    for issue in issues:
+        level, _ = business_level(issue)
+        if level != target:
+            continue
+        category = issue.get("category", "问题")
+        desc = issue.get("desc", "") or issue.get("message", "") or issue.get("detail", "")
+        material = issue.get("material_name", "")
+        if material:
+            lines.append(f"- {category}: {desc}（材料：{material}）")
+        else:
+            lines.append(f"- {category}: {desc}")
+    return lines or ["- 无"]
 
 
 def _render_dimension_lines(dimensions: list[dict]) -> list[str]:
@@ -82,6 +101,13 @@ def render_case_report_markdown(payload: dict) -> str:
         lines.append(f"- strictness: {review_profile.get('strictness', 'standard')}")
         lines.append(f"- enabled_dimensions: {', '.join(list(review_profile.get('enabled_dimensions', []) or []))}")
         lines.append(f"- llm_instruction: {review_profile.get('llm_instruction', '') or '未补充'}")
+    lines.extend(["", "## 问题级别归类", ""])
+    lines.extend(["", "### 退回级问题", ""])
+    lines.extend(_render_business_issue_lines(issues, "退回级问题"))
+    lines.extend(["", "### 弱智问题", ""])
+    lines.extend(_render_business_issue_lines(issues, "弱智问题"))
+    lines.extend(["", "### 警告项", ""])
+    lines.extend(_render_business_issue_lines(issues, "警告项"))
     lines.extend(["", "## 跨材料问题", ""])
     lines.extend(_render_issue_lines(issues))
     lines.extend(["", "## AI 补充说明", ""])

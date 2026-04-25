@@ -105,6 +105,43 @@ def extract_company_name(text: str) -> str:
     return ""
 
 
+def extract_date_candidates(text: str) -> list[str]:
+    patterns = [
+        r"\d{4}[-/年.]\d{1,2}[-/月.]\d{1,2}(?:日)?",
+    ]
+    dates: list[str] = []
+    for pattern in patterns:
+        for match in re.findall(pattern, text):
+            value = str(match).strip()
+            normalized = (
+                value.replace("年", "-")
+                .replace("月", "-")
+                .replace("日", "")
+                .replace("/", "-")
+                .replace(".", "-")
+            )
+            dates.append(normalized)
+    deduped: list[str] = []
+    for item in dates:
+        if item not in deduped:
+            deduped.append(item)
+    return deduped
+
+
+def extract_party_sequence(text: str) -> list[str]:
+    sequence: list[str] = []
+    patterns = [
+        r"(甲方|乙方|丙方|丁方)[：:\s]*([^\n，,；;]{2,40})",
+        r"(申请人(?:一|二|三|四)?|著作权人(?:一|二|三|四)?)[：:\s]*([^\n，,；;]{2,40})",
+    ]
+    for pattern in patterns:
+        for _, value in re.findall(pattern, text):
+            cleaned = str(value).strip().strip("：:，,；;。.")
+            if cleaned:
+                sequence.append(cleaned)
+    return sequence
+
+
 def calculate_garbled_ratio(text: str) -> float:
     if not text:
         return 0.0

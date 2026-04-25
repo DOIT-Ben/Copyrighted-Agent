@@ -11,10 +11,12 @@ from app.core.reviewers.ai.service import generate_case_ai_review, resolve_case_
 from app.core.reviewers.rules.cross_material import review_case_consistency
 from app.core.reviewers.rules.document import review_document_text
 from app.core.reviewers.rules.info_form import review_info_form_text
+from app.core.reviewers.rules.online_filing import review_online_filing_payload
 from app.core.reviewers.rules.source_code import review_source_code_text
 from app.core.reviewers.rules.agreement import review_agreement_text
 from app.core.services.app_config import load_app_config
 from app.core.services.app_logging import log_event
+from app.core.services.online_filing import normalize_online_filing
 from app.core.services.review_dimensions import build_case_review_dimensions
 from app.core.services.review_profile import normalize_review_profile
 from app.core.services.review_rulebook import reset_profile_dimension_rule, update_profile_dimension_rule
@@ -119,6 +121,18 @@ def _infer_case_identity(materials: list, fallback_name: str = "Manual Case") ->
 
     software_name = software_name or fallback_name
     return software_name, version, company_name
+
+
+def _collect_case_issues(materials: list, consistency_issues: list[dict]) -> list[dict]:
+    combined: list[dict] = [dict(item) for item in list(consistency_issues or [])]
+    for material in materials:
+        for issue in list(getattr(material, "issues", []) or []):
+            payload = dict(issue or {})
+            payload.setdefault("material_id", material.id)
+            payload.setdefault("material_name", material.original_filename)
+            payload.setdefault("material_type", material.material_type)
+            combined.append(payload)
+    return combined
 
 
 def _record_correction(
@@ -237,18 +251,30 @@ def _rebuild_case(case_id: str) -> dict:
     info_form = next((item for item in materials if item.material_type == MaterialType.INFO_FORM.value), None)
     source_code = next((item for item in materials if item.material_type == MaterialType.SOURCE_CODE.value), None)
     software_doc = next((item for item in materials if item.material_type == MaterialType.SOFTWARE_DOC.value), None)
+    agreement = next((item for item in materials if item.material_type == MaterialType.AGREEMENT.value), None)
+    online_filing = normalize_online_filing(getattr(case, "online_filing", {}) or {})
 
     consistency = review_case_consistency(
         info_form.metadata if info_form else {},
         source_code.metadata if source_code else {},
         software_doc.metadata if software_doc else {},
+        agreement.metadata if agreement else {},
+        online_filing,
     )
-    combined_issues = consistency.get("issues", [])
+    online_filing_review = review_online_filing_payload(
+        online_filing,
+        case_payload=case.to_dict(),
+        info_form=info_form.metadata if info_form else {},
+        agreement=agreement.metadata if agreement else {},
+    )
+    combined_issues = _collect_case_issues(materials, consistency.get("issues", []))
+    combined_issues.extend(list(online_filing_review.get("issues", [])))
     ai_provider = resolve_case_ai_provider()
     ai_payload = {
         "software_name": case.software_name,
         "version": case.version,
         "company_name": case.company_name,
+        "online_filing": online_filing if online_filing.get("has_data") else {},
     }
     if ai_provider != "mock":
         ai_payload = build_ai_safe_case_payload(ai_payload)
@@ -302,6 +328,41 @@ def _rebuild_case(case_id: str) -> dict:
     report = _write_case_report(case, report_path, report_content)
     case.status = "completed"
     return {"case": case.to_dict(), "review_result": review_result.to_dict(), "report": report.to_dict()}
+
+
+def update_case_online_filing(
+    case_id: str,
+    payload: dict | None,
+    *,
+    corrected_by: str = "local",
+    note: str = "",
+) -> dict:
+    case, submission = _submission_for_case(case_id)
+    original_value = normalize_online_filing(getattr(case, "online_filing", {}) or {})
+    normalized = normalize_online_filing(payload)
+    case.online_filing = normalized
+
+    correction = _record_correction(
+        submission.id,
+        "update_case_online_filing",
+        case_id=case.id,
+        original_value={"online_filing": original_value},
+        corrected_value={"online_filing": normalized},
+        note=note or "online_filing_updated",
+        corrected_by=corrected_by,
+    )
+    rebuilt = _rebuild_case(case.id)
+    save_submission_graph(submission.id)
+    log_event(
+        "update_case_online_filing",
+        {"submission_id": submission.id, "case_id": case.id, "has_data": normalized.get("has_data", False), "corrected_by": corrected_by},
+    )
+    return {
+        "correction": correction.to_dict(),
+        "case": rebuilt["case"],
+        "review_result": rebuilt["review_result"],
+        "report": rebuilt["report"],
+    }
 
 
 def _remove_case_if_empty(case_id: str) -> None:
@@ -543,6 +604,7 @@ def update_submission_review_dimension_rule(
     objective: str = "",
     checkpoints: str = "",
     llm_focus: str = "",
+    rules: list[dict] | None = None,
     corrected_by: str = "local",
     note: str = "",
 ) -> dict:
@@ -559,6 +621,7 @@ def update_submission_review_dimension_rule(
             "objective": objective,
             "checkpoints": checkpoints,
             "llm_focus": llm_focus,
+            "rules": list(rules or []),
         },
     )
     submission.review_profile = normalize_review_profile(updated_review_profile)

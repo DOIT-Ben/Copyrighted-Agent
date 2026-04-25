@@ -23,6 +23,7 @@ def test_home_page_renders_upload_controls(api_client):
     assert 'name="llm_instruction"' in response.text
     assert "导入前编辑规则" in response.text
     assert 'name="rule_source_code_checkpoints"' in response.text
+    assert 'name="rule_consistency_item_party_order_match_prompt_hint"' in response.text
     assert 'data-review-preset="source_code_strict"' in response.text
 
 
@@ -74,7 +75,14 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
     report_page = api_client.get(f"/reports/{submission_payload['report_ids'][0]}")
     assert report_page.status_code == 200
     assert "审查结果" in report_page.text
+    assert "先改这些地方" in report_page.text
+    assert "问题级别归类" in report_page.text
+    assert "按材料来源看问题" in report_page.text
+    assert "发现了什么不足" in report_page.text
+    assert "怎么判定出来的" in report_page.text
+    assert "用了哪些审查规则" in report_page.text
     assert "审查维度" in report_page.text
+    assert "在线填报信息审查" in report_page.text
     assert "更多信息" in report_page.text
     assert "保存为 PDF" in report_page.text
 
@@ -191,6 +199,8 @@ def test_upload_flow_persists_import_time_rule_edits(api_client, mode_a_zip_path
     assert source_rule["objective"] == "导入前就要求重点检查源码可读性。"
     assert source_rule["checkpoints"][:2] == ["源码必须可读", "入口函数需要明确"]
     assert source_rule["llm_focus"] == "优先提示源码不可审查风险。"
+    assert source_rule["rules"]
+    assert any(item["key"] == "code_desensitized" for item in source_rule["rules"])
 
 
 @pytest.mark.integration
@@ -219,6 +229,10 @@ def test_review_rule_page_can_save_rule_and_persist_to_submission(api_client, mo
             "objective": "重点检查源码可读性、命名一致性和版本信号。",
             "checkpoints": "- 源码需要可读\n- 名称和版本应一致\n- 技术描述不能明显冲突",
             "llm_focus": "优先总结源码相关高风险问题。",
+            "rule_source_code_item_code_desensitized_enabled": "1",
+            "rule_source_code_item_code_desensitized_title": "源码脱敏必须完成",
+            "rule_source_code_item_code_desensitized_severity": "severe",
+            "rule_source_code_item_code_desensitized_prompt_hint": "重点排查密码、token、手机号和邮箱是否已脱敏。",
             "case_id": case_id,
             "action": "save",
             "note": "更新源码规则",
@@ -232,6 +246,10 @@ def test_review_rule_page_can_save_rule_and_persist_to_submission(api_client, mo
     assert source_rule["objective"] == "重点检查源码可读性、命名一致性和版本信号。"
     assert source_rule["llm_focus"] == "优先总结源码相关高风险问题。"
     assert source_rule["checkpoints"][:2] == ["源码需要可读", "名称和版本应一致"]
+    desensitized_rule = next(item for item in source_rule["rules"] if item["key"] == "code_desensitized")
+    assert desensitized_rule["title"] == "源码脱敏必须完成"
+    assert desensitized_rule["severity"] == "severe"
+    assert desensitized_rule["prompt_hint"] == "重点排查密码、token、手机号和邮箱是否已脱敏。"
 
     restore_response = api_client.post(
         f"/submissions/{submission_id}/review-rules/source_code",
@@ -246,3 +264,58 @@ def test_review_rule_page_can_save_rule_and_persist_to_submission(api_client, mo
     restored_submission = api_client.get(f"/api/submissions/{submission_id}").json()
     restored_rule = restored_submission["review_profile"]["dimension_rulebook"]["source_code"]
     assert restored_rule["title"] != "源码校验规则"
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
+def test_submission_operator_can_save_online_filing_and_refresh_case_report(api_client, mode_a_zip_path):
+    with mode_a_zip_path.open("rb") as handle:
+        response = api_client.post(
+            "/upload",
+            files={"file": (mode_a_zip_path.name, handle, "application/zip")},
+            data={"mode": "single_case_package", "review_strategy": "auto_review"},
+        )
+
+    submission_id = response.headers.get("Location", "").rsplit("/", 1)[-1]
+    submission_payload = api_client.get(f"/api/submissions/{submission_id}").json()
+    case_id = submission_payload["case_ids"][0]
+
+    operator_page = api_client.get(f"/submissions/{submission_id}/operator")
+    assert operator_page.status_code == 200
+    assert "在线填报信息" in operator_page.text
+
+    save_response = api_client.post(
+        f"/submissions/{submission_id}/actions/update-online-filing",
+        data={
+            "case_id": case_id,
+            "online_software_name": "极光分析系统",
+            "online_version": "V1.0",
+            "online_software_category": "应用软件",
+            "online_development_mode": "原创 + 合作开发",
+            "online_subject_type": "企业法人",
+            "online_apply_date": "2026-04-26",
+            "online_completion_date": "2026-04-20",
+            "online_applicants": "甲公司\n乙公司",
+            "online_address": "北京市海淀区中关村大街 1 号",
+            "online_certificate_address": "北京市海淀区中关村大街 1 号",
+            "note": "录入在线填报字段",
+        },
+    )
+    assert save_response.status_code == 303
+
+    case_payload = api_client.get(f"/api/cases/{case_id}").json()
+    assert case_payload["online_filing"]["software_category"] == "应用软件"
+    assert case_payload["online_filing"]["subject_type"] == "企业法人"
+    assert case_payload["online_filing"]["applicants"] == ["甲公司", "乙公司"]
+
+    case_page = api_client.get(f"/cases/{case_id}")
+    assert case_page.status_code == 200
+    assert "在线填报" in case_page.text
+    assert "应用软件" in case_page.text
+
+    report_id = case_payload["report_id"]
+    report_page = api_client.get(f"/reports/{report_id}")
+    assert report_page.status_code == 200
+    assert "在线填报信息审查" in report_page.text
+    assert "企业法人" in report_page.text

@@ -13,8 +13,43 @@ from app.core.services.review_rulebook import dimension_rulebook_from_profile, f
 from app.core.utils.text import escape_html
 
 
+def _rule_item_editor(dimension_key: str, item: dict) -> str:
+    base = f"rule_{dimension_key}_item_{item.get('key', '')}"
+    checked = ' checked' if item.get("enabled", True) else ""
+    severity_options = "".join(
+        f'<option value="{escape_html(level)}"{" selected" if level == item.get("severity", "moderate") else ""}>{escape_html(level)}</option>'
+        for level in ["severe", "moderate", "minor"]
+    )
+    return f"""
+    <article class="rule-item-card">
+      <label class="dimension-choice-main">
+        <input type="checkbox" name="{escape_html(base)}_enabled" value="1"{checked}>
+        <span>
+          <strong>{escape_html(item.get("title", ""))}</strong>
+          <small>{escape_html(item.get("category", ""))}</small>
+        </span>
+      </label>
+      <div class="review-profile-grid compact-grid">
+        <label class="field">
+          <span>规则名</span>
+          <input type="text" name="{escape_html(base)}_title" value="{escape_html(item.get('title', ''))}">
+        </label>
+        <label class="field">
+          <span>级别</span>
+          <select name="{escape_html(base)}_severity">{severity_options}</select>
+        </label>
+      </div>
+      <label class="field">
+        <span>检查说明</span>
+        <textarea name="{escape_html(base)}_prompt_hint" rows="3">{escape_html(item.get('prompt_hint', ''))}</textarea>
+      </label>
+    </article>
+    """
+
+
 def _inline_rule_editor(key: str, rule: dict) -> str:
     checkpoints = format_rule_checkpoints(list(rule.get("checkpoints", []) or []))
+    rule_items = "".join(_rule_item_editor(key, item) for item in list(rule.get("rules", []) or []))
     return f"""
     <details class="dimension-rule-editor">
       <summary>导入前编辑规则</summary>
@@ -27,10 +62,13 @@ def _inline_rule_editor(key: str, rule: dict) -> str:
           <span>审查目标</span>
           <textarea name="rule_{escape_html(key)}_objective" rows="3">{escape_html(rule.get('objective', ''))}</textarea>
         </label>
+        <div class="rule-item-stack">
+          {rule_items}
+        </div>
         <label class="field">
-          <span>检查点</span>
+          <span>检查点摘要</span>
           <textarea name="rule_{escape_html(key)}_checkpoints" rows="5">{escape_html(checkpoints)}</textarea>
-          <span class="field-hint">每行一条。提交 ZIP 后会保存到本批次。</span>
+          <span class="field-hint">默认会根据启用的子规则自动生成，这里也可以手动补充。</span>
         </label>
         <label class="field">
           <span>LLM 关注点</span>
@@ -73,7 +111,7 @@ def render_review_profile_form_fields(
             + (
                 '<a class="dimension-rule-link" '
                 f'href="/submissions/{escape_html(submission_id)}/review-rules/{escape_html(item["key"])}{rule_suffix}">'
-                "编辑规则</a>"
+                "查看完整规则</a>"
                 if submission_id
                 else ""
             )
@@ -93,9 +131,9 @@ def render_review_profile_form_fields(
         for item in REVIEW_PROFILE_PRESETS
     )
     helper_copy = (
-        "这组配置会直接影响本次导入后的审查维度展示和 LLM 补充研判。"
+        "这组配置会直接影响本次材料的审查范围、细分规则和 LLM 研判口径。"
         if submit_context == "import"
-        else "修改后会保存为当前批次的审查配置，并用于下一次重新审查。"
+        else "修改后会保存到当前批次，并用于下一次重跑审查。"
     )
     return f"""
     <div class="review-profile-box">
@@ -120,8 +158,8 @@ def render_review_profile_form_fields(
       </div>
       <label class="field">
         <span>LLM 补充指令</span>
-        <textarea name="llm_instruction" rows="3" placeholder="例如：重点关注申请主体、软件名称和版本号在不同材料中的一致性。">{escape_html(normalized["llm_instruction"])}</textarea>
-        <span class="field-hint">用于补充审查重点。</span>
+        <textarea name="llm_instruction" rows="3" placeholder="例如：重点关注申请人排序一致性、协议日期逻辑和源码脱敏。">{escape_html(normalized["llm_instruction"])}</textarea>
+        <span class="field-hint">用于补充这次材料的个性化审查要求。</span>
       </label>
       <div class="dimension-choice-grid">
         {dimension_items}

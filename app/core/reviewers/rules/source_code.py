@@ -2,27 +2,142 @@ from __future__ import annotations
 
 import re
 
+from app.core.reviewers.rules.sensitive_terms import scan_sensitive_terms
 from app.core.utils.text import calculate_garbled_ratio
+
+
+SENSITIVE_PATTERNS = [
+    (r"(?i)(password|passwd|pwd)\s*[:=]\s*['\"][^'\"]{3,}['\"]", "疑似明文密码"),
+    (r"(?i)(token|api[_-]?key|secret|authorization)\s*[:=]\s*['\"][^'\"]{6,}['\"]", "疑似真实 token 或密钥"),
+    (r"\b(?:[1-9]\d{0,2}\.){3}[1-9]\d{0,2}\b", "疑似公网 IP"),
+    (r"1[3-9]\d{9}", "疑似手机号"),
+    (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "疑似邮箱地址"),
+]
+
+
+def _detect_page_markers(text: str) -> list[int]:
+    markers = re.findall(r"第\s*(\d+)\s*页", str(text or ""), flags=re.IGNORECASE)
+    return [int(item) for item in markers if str(item).isdigit()]
+
+
+def _extract_feature_terms(text: str) -> list[str]:
+    patterns = [
+        r"def\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+        r"function\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+        r"class\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+    ]
+    found: list[str] = []
+    for pattern in patterns:
+        for item in re.findall(pattern, str(text or "")):
+            token = str(item).strip().lower()
+            if not token or len(token) < 3:
+                continue
+            normalized = (
+                token.replace("_service", "")
+                .replace("_manager", "")
+                .replace("_controller", "")
+                .replace("_module", "")
+            )
+            if normalized not in found:
+                found.append(normalized)
+    for keyword in ["login", "query", "export", "report", "analysis", "audit", "collect", "monitor", "manage", "stat"]:
+        if keyword in str(text or "").lower() and keyword not in found:
+            found.append(keyword)
+    return found[:12]
 
 
 def review_source_code_text(text: str) -> dict:
     issues: list[dict] = []
+    metadata = {
+        "feature_terms": _extract_feature_terms(text),
+    }
     ratio = calculate_garbled_ratio(text)
     suspicious_runs = re.findall(r"[^\x00-\x7F\s]{4,}", text)
     if ratio > 0.05 or suspicious_runs:
         issues.append(
             {
-                "severity": "moderate",
-                "category": "代码乱码",
-                "desc": f"代码乱码比例为 {ratio:.1%}，并检测到异常字符片段，建议转为 txt / py 后再审查",
+                "severity": "severe",
+                "category": "源码可读性",
+                "rule_key": "code_readable",
+                "desc": f"源码乱码比例约为 {ratio:.1%}，并检测到异常字符片段，当前材料不适合直接审查。",
             }
         )
+
+    lines = text.splitlines()
+    indented_lines = sum(1 for line in lines if line.startswith(" "))
+    blank_runs = 0
+    for index in range(len(lines) - 1):
+        if not lines[index].strip() and not lines[index + 1].strip():
+            blank_runs += 1
+    numbered_lines = sum(1 for line in lines[:80] if re.match(r"^\s*\d+\s", line))
+    if indented_lines > 0 or blank_runs > 0 or numbered_lines == 0:
+        issues.append(
+            {
+                "severity": "moderate",
+                "category": "源码格式",
+                "rule_key": "code_format_clean",
+                "desc": "源码格式疑似不符合提交规范，请检查行首空格、连续空行以及行号是否完整。",
+            }
+        )
+
+    page_numbers = _detect_page_markers(text)
+    if page_numbers:
+        total_pages = max(page_numbers)
+        if total_pages > 60:
+            head_pages = {number for number in page_numbers if number <= 30}
+            tail_pages = {number for number in page_numbers if number > total_pages - 30}
+            if len(head_pages) < 10 or len(tail_pages) < 10:
+                issues.append(
+                    {
+                        "severity": "severe",
+                        "category": "页数策略",
+                        "rule_key": "code_page_strategy",
+                        "desc": f"源码页数疑似超过 60 页，但未识别到“前30页 + 后30页”的完整截取策略。当前页码范围最高到第 {total_pages} 页。",
+                        "suggest": "源码超过 60 页时，导出前 30 页和后 30 页，避免只截取前半段。",
+                    }
+                )
+
+    for pattern, label in SENSITIVE_PATTERNS:
+        if re.search(pattern, text):
+            issues.append(
+                {
+                    "severity": "severe",
+                    "category": "源码脱敏",
+                    "rule_key": "code_desensitized",
+                    "desc": f"源码中发现{label}信号，需先完成脱敏后再提交审查。",
+                }
+            )
+            break
+
     if "calculate_angle" not in text and "angle" not in text.lower():
         issues.append(
             {
                 "severity": "minor",
-                "category": "核心逻辑缺失",
-                "desc": "未检测到明显的角度计算相关逻辑，建议确认样本是否完整",
+                "category": "功能呼应",
+                "rule_key": "code_logic_supports_doc",
+                "desc": "未检测到明显的关键逻辑或代表性函数，当前源码展示可能不足以支撑文档中的功能描述。",
             }
         )
-    return {"issues": issues}
+
+    comment_lines = sum(1 for line in lines if line.strip().startswith(("#", "//", "/*", "*")))
+    code_lines = sum(1 for line in lines if line.strip() and not line.strip().startswith(("#", "//", "/*", "*")))
+    if comment_lines > max(code_lines, 1):
+        issues.append(
+            {
+                "severity": "minor",
+                "category": "注释质量",
+                "rule_key": "code_comment_ratio_reasonable",
+                "desc": "注释量高于代码量，存在注释过多或凑数风险，建议人工复核。",
+            }
+        )
+
+    issues.extend(
+        scan_sensitive_terms(
+            text,
+            rule_key="code_sensitive_terms",
+            category="敏感词排查",
+            severity="moderate",
+        )
+    )
+
+    return {"issues": issues, "metadata": metadata}

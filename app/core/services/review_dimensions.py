@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.core.domain.enums import MaterialType
+from app.core.services.online_filing import normalize_online_filing, online_filing_summary
 from app.core.services.review_profile import normalize_review_profile
 
 
@@ -77,7 +78,19 @@ def build_case_review_dimensions(
     consistency_issues = [
         str(item.get("desc", "") or item.get("message", "") or item.get("detail", "") or "").strip()
         for item in cross_material_issues
-        if str(item.get("desc", "") or item.get("message", "") or item.get("detail", "") or "").strip()
+        if str(item.get("rule_key", "") or "").strip() in {
+            "software_name_exact_match",
+            "version_exact_match",
+            "completion_date_match",
+            "party_order_match",
+            "cross_material_terms_match",
+            "code_logic_supports_doc",
+        }
+    ]
+    online_issues = [
+        str(item.get("desc", "") or item.get("message", "") or item.get("detail", "") or "").strip()
+        for item in cross_material_issues
+        if str(item.get("rule_key", "") or "").strip().startswith("online_")
     ]
 
     missing_identity_fields: list[str] = []
@@ -96,19 +109,19 @@ def build_case_review_dimensions(
     if not info_forms:
         identity_status = "缺少主索引"
         identity_tone = "danger"
-        identity_summary = "没有发现信息采集表，基础字段只能依赖其他材料推断，可信度会下降。"
+        identity_summary = "没有发现信息采集表，基础字段只能依赖其他材料推断。"
     elif missing_identity_fields or info_issues:
         identity_status = "需要复核"
         identity_tone = "warning"
         identity_summary = (
             f"基础字段已进入审查，但仍需补齐或核对：{'、'.join(missing_identity_fields)}。"
             if missing_identity_fields
-            else "基础字段已经抽取，但仍有字段完整性问题需要复核。"
+            else "基础字段已经抽取，但仍有完整性问题需要复核。"
         )
     else:
         identity_status = "已通过"
         identity_tone = "success"
-        identity_summary = "软件名称、版本号和申请主体已经形成可用主索引。"
+        identity_summary = "软件名称、版本号和申请主体已形成可用主索引。"
 
     required_missing: list[str] = []
     if not info_forms:
@@ -135,132 +148,96 @@ def build_case_review_dimensions(
     else:
         completeness_status = "已覆盖"
         completeness_tone = "success"
-        completeness_summary = "核心材料组合完整，可以支撑基础规则审查和跨材料核对。"
+        completeness_summary = "核心材料组合完整，可以支撑规则审查和跨材料核对。"
 
     if consistency_issues:
         consistency_status = "存在冲突"
         consistency_tone = "warning"
-        consistency_summary = "跨材料核对发现名称、版本或描述口径存在冲突，需要统一。"
+        consistency_summary = "跨材料核对发现名称、版本、日期或表述口径存在冲突。"
     else:
         consistency_status = "口径一致"
         consistency_tone = "success"
-        consistency_summary = "主要材料之间没有发现显著的名称或版本冲突。"
-    consistency_findings = consistency_issues or ["软件名称和版本描述在主要材料间未发现明显冲突。"]
+        consistency_summary = "主要材料之间未发现明显的名称、版本或申请顺序冲突。"
+    consistency_findings = consistency_issues or ["暂未发现明显的跨材料冲突。"]
 
     if not source_codes:
         source_status = "未覆盖"
         source_tone = "danger"
-        source_summary = "没有发现源代码材料，无法完成源码可读性与核心逻辑维度的审查。"
+        source_summary = "没有发现源代码材料，无法完成源码可审查性检查。"
     elif source_issues:
         source_status = "需要复核"
         source_tone = "warning"
-        source_summary = "源码维度已进入审查，但发现乱码、关键逻辑缺失等风险信号。"
+        source_summary = "源码维度发现可读性、格式或敏感信息风险。"
     else:
         source_status = "已通过"
         source_tone = "success"
-        source_summary = "源码文本可读，未看到明显的乱码或核心逻辑缺失信号。"
-    source_findings = source_issues or ["未识别到明显的源码乱码风险或核心逻辑缺失信号。"]
+        source_summary = "源码文本可读，未看到明显的格式或脱敏风险。"
+    source_findings = source_issues or ["暂未识别到明显的源码审查风险。"]
 
     if not software_docs:
         document_status = "未覆盖"
         document_tone = "danger"
-        document_summary = "没有发现说明文档，文档规范和版本描述维度无法完成审查。"
+        document_summary = "没有发现说明文档，文档规范维度无法完成审查。"
     elif document_issues:
         document_status = "需要复核"
         document_tone = "warning"
-        document_summary = "说明文档维度已进入审查，但文档内部存在版本或命名规范问题。"
+        document_summary = "说明文档存在页数、术语、章节或截图规范问题。"
     else:
         document_status = "已通过"
         document_tone = "success"
-        document_summary = "说明文档维度未发现明显的版本冲突或命名异常。"
-    document_findings = document_issues or ["未识别到明显的文档版本冲突或命名不规范信号。"]
+        document_summary = "说明文档维度未发现明显的规范问题。"
+    document_findings = document_issues or ["暂未识别到明显的说明文档风险。"]
 
     if not agreements:
         agreement_status = "未提供"
         agreement_tone = "neutral"
         agreement_summary = "当前没有协议或权属类材料，这个维度不参与主结论。"
+        agreement_findings = ["本批次未提供协议或权属类材料。"]
     elif agreement_issues:
         agreement_status = "需要复核"
         agreement_tone = "warning"
-        agreement_summary = "协议文本维度发现日期、用词或签署口径问题，建议人工复核。"
+        agreement_summary = "协议维度发现日期、用词或审批手续风险。"
+        agreement_findings = agreement_issues
     else:
         agreement_status = "已通过"
         agreement_tone = "success"
-        agreement_summary = "协议或权属类材料未发现明显的用词与日期异常。"
-    agreement_findings = agreement_issues or ["当前协议文本维度未识别到明显异常。"] if agreements else ["本批次未提供协议或权属类材料。"]
+        agreement_summary = "协议维度暂未发现明显异常。"
+        agreement_findings = ["暂未识别到明显的协议与权属风险。"]
+
+    filing = normalize_online_filing(case_data.get("online_filing", {}) or {})
+    online_findings = [f"{label}：{value}" for label, value in online_filing_summary(filing)]
+    online_findings.extend(online_issues)
+    if not filing.get("has_data"):
+        online_status = "未覆盖"
+        online_tone = "neutral"
+        online_summary = "当前还没有录入在线填报字段，尚未执行这一维度的实审。"
+        online_findings = ["可在批次详情页录入软件分类、开发方式、主体类型、日期、地址和申请人顺序。"]
+    elif online_issues:
+        online_status = "需要复核"
+        online_tone = "warning"
+        online_summary = "在线填报信息已接入，但分类、主体类型、日期或地址仍有不一致。"
+    else:
+        online_status = "已通过"
+        online_tone = "success"
+        online_summary = "在线填报信息已录入，当前未发现明显的口径冲突。"
 
     ai_status = "已补充" if ai_resolution and ai_resolution not in {"not_run", "explicit_mock"} else "规则为主"
     ai_tone = "success" if ai_status == "已补充" else "neutral"
     ai_summary = (
         "AI 已对规则结果做补充归纳，可作为人工复核的辅助参考。"
         if ai_status == "已补充"
-        else "当前主要依据规则引擎结果，AI 只提供有限补充或未实际介入。"
+        else "当前主要依据规则引擎结果，AI 仅提供有限补充或未实际介入。"
     )
 
     dimensions = [
-        _dimension(
-            "identity",
-            "基础信息完整性",
-            identity_status,
-            identity_tone,
-            _format_scope(info_forms, "信息采集表 / 基础字段"),
-            identity_summary,
-            identity_findings,
-        ),
-        _dimension(
-            "completeness",
-            "材料完整性",
-            completeness_status,
-            completeness_tone,
-            "材料组合覆盖",
-            completeness_summary,
-            completeness_findings,
-        ),
-        _dimension(
-            "consistency",
-            "跨材料一致性",
-            consistency_status,
-            consistency_tone,
-            "信息采集表 / 源代码 / 说明文档",
-            consistency_summary,
-            consistency_findings,
-        ),
-        _dimension(
-            "source_code",
-            "源码可审查性",
-            source_status,
-            source_tone,
-            _format_scope(source_codes, "源代码材料"),
-            source_summary,
-            source_findings,
-        ),
-        _dimension(
-            "software_doc",
-            "说明文档规范",
-            document_status,
-            document_tone,
-            _format_scope(software_docs, "说明文档材料"),
-            document_summary,
-            document_findings,
-        ),
-        _dimension(
-            "agreement",
-            "协议文本规范",
-            agreement_status,
-            agreement_tone,
-            _format_scope(agreements, "协议 / 权属材料"),
-            agreement_summary,
-            agreement_findings,
-        ),
-        _dimension(
-            "ai",
-            "AI 补充研判",
-            ai_status,
-            ai_tone,
-            "规则结论归纳",
-            ai_summary,
-            [f"AI 执行状态：{ai_resolution or 'not_run'}"],
-        ),
+        _dimension("identity", "基础信息完整性", identity_status, identity_tone, _format_scope(info_forms, "信息采集表 / 基础字段"), identity_summary, identity_findings),
+        _dimension("completeness", "材料完整性", completeness_status, completeness_tone, "材料组合覆盖", completeness_summary, completeness_findings),
+        _dimension("consistency", "跨材料一致性", consistency_status, consistency_tone, "信息采集表 / 源代码 / 说明文档 / 协议 / 在线填报", consistency_summary, consistency_findings),
+        _dimension("source_code", "源码可审查性", source_status, source_tone, _format_scope(source_codes, "源代码材料"), source_summary, source_findings),
+        _dimension("software_doc", "说明文档规范", document_status, document_tone, _format_scope(software_docs, "说明文档材料"), document_summary, document_findings),
+        _dimension("agreement", "协议与权属规范", agreement_status, agreement_tone, _format_scope(agreements, "协议 / 权属材料"), agreement_summary, agreement_findings),
+        _dimension("online_filing", "在线填报信息审查", online_status, online_tone, "在线填报 / 系统回填", online_summary, online_findings),
+        _dimension("ai", "AI 补充研判", ai_status, ai_tone, "规则结论归纳", ai_summary, [f"AI 执行状态：{ai_resolution or 'not_run'}"]),
     ]
     enabled_dimensions = set(normalize_review_profile(review_profile).get("enabled_dimensions", []))
     return [item for item in dimensions if item.get("key") in enabled_dimensions]
