@@ -41,6 +41,21 @@ def test_submission_detail_exposes_operator_console_and_export_sections(api_clie
 @pytest.mark.integration
 @pytest.mark.contract
 @pytest.mark.web
+def test_export_page_separates_handoff_assets_from_support_logs(api_client, mode_a_zip_path):
+    submission_id = _create_submission(api_client, mode_a_zip_path)
+
+    response = api_client.get(f"/submissions/{submission_id}/exports")
+
+    assert response.status_code == 200
+    assert "导出中心" in response.text
+    assert "下载批次包" in response.text
+    assert "排障附件" in response.text
+    assert "下载日志" in response.text
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
 def test_ops_page_exposes_self_check_and_support_artifacts(api_client):
     response = api_client.get("/ops")
 

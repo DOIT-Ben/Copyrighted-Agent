@@ -722,16 +722,15 @@ def render_submission_exports_page(
         for report_id in [str(report.get("id", "") or "")]
     )
 
-    export_body = (
+    handoff_body = (
         '<div class="summary-grid">'
-        + _summary_tile("报告数", str(len(reports)), "当前批次可下载的项目级报告数量")
-        + _summary_tile("批次包", "可直接下载", "适合整体交付或归档")
-        + _summary_tile("应用日志", "可直接下载", "需要追踪处理过程时再使用")
-        + _summary_tile("当前阶段", review_stage_label(submission.get("review_stage", "review_completed")), "导出前可快速确认当前是否已经完成正式审查")
+        + _summary_tile("报告数", str(len(reports)), "当前批次可带走的项目级报告数量")
+        + _summary_tile("批次包", "可直接下载", "适合整体交付、回传或归档")
+        + _summary_tile("当前阶段", review_stage_label(submission.get("review_stage", "review_completed")), "导出前可快速确认是否已经完成正式审查")
+        + _summary_tile("交付动作", "先下报告和批次包", "日志和排障信息放到下方按需查看")
         + "</div>"
         + '<div class="inline-actions">'
         + f'<a class="button-secondary" href="/downloads/submissions/{submission_id}/bundle">{icon("download", "icon icon-sm")}下载批次包</a>'
-        + f'<a class="button-secondary" href="/downloads/logs/app">{icon("terminal", "icon icon-sm")}下载日志</a>'
         + "</div>"
         + (
             f'<div class="report-card-grid">{report_cards}</div>'
@@ -740,9 +739,20 @@ def render_submission_exports_page(
         )
     )
 
+    support_body = (
+        '<div class="summary-grid">'
+        + _summary_tile("应用日志", "可直接下载", "只有在追踪处理过程或排查异常时才需要")
+        + _summary_tile("使用场景", "排障附件", "不建议把日志和交付结果混在一起发给业务侧")
+        + "</div>"
+        + '<div class="inline-actions">'
+        + f'<a class="button-secondary" href="/downloads/logs/app">{icon("terminal", "icon icon-sm")}下载日志</a>'
+        + "</div>"
+    )
+
     content = f"""
     <section class="dashboard-grid">
-      {panel('导出中心', export_body, kicker='产物交付', extra_class='span-12', icon_name='download', description='报告、批次包和日志统一集中到这里。', panel_id='export-center')}
+      {panel('导出中心', handoff_body, kicker='产物交付', extra_class='span-12', icon_name='download', description='先处理真正要交付的报告和批次包。', panel_id='export-center')}
+      {panel('排障附件', support_body, kicker='按需查看', extra_class='span-12', icon_name='terminal', description='日志单独放在这里，避免和交付动作混在一起。', panel_id='export-support')}
     </section>
     """
 
@@ -758,6 +768,7 @@ def render_submission_exports_page(
         page_links=[
             (f"/submissions/{submission.get('id', '')}", "批次总览", "file"),
             ("#export-center", "导出中心", "download"),
+            ("#export-support", "排障附件", "terminal"),
         ],
     )
 
