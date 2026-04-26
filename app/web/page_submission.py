@@ -346,7 +346,7 @@ def render_submissions_index() -> str:
     )
 
 
-def render_submission_detail(
+def render_submission_detail_legacy(
     submission: dict,
     materials: list[dict],
     cases: list[dict],

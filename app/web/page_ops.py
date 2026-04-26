@@ -144,7 +144,7 @@ def _ops_table(rows: list[list[str]], headers: list[str], empty_title: str, empt
     return table(headers, rows)
 
 
-def render_ops_page(config: dict, self_check: dict) -> str:
+def render_ops_page_legacy(config: dict, self_check: dict) -> str:
     provider_readiness = dict(self_check.get("provider_readiness", {}) or {})
     provider_probe_status = dict(self_check.get("provider_probe_status", {}) or {})
     provider_probe_history = list(self_check.get("provider_probe_history", []) or [])
