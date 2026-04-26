@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-04-26T11:14:23",
-  "status": "pass",
-  "summary": "Real-provider validation passed for probe, release gate, and sample smokes.",
-  "recommended_action": "",
+  "generated_at": "2026-04-26T11:04:01",
+  "status": "warning",
+  "summary": "Real-provider validation completed, but warnings remain.",
+  "recommended_action": "The provider returned an HTTP error. Check upstream logs and response body handling before retrying.",
   "config": {
     "host": "127.0.0.1",
     "port": 8000,
@@ -27,9 +27,9 @@
     "phase": "probe_passed"
   },
   "release_gate": {
-    "status": "pass",
-    "summary": "Release gate is satisfied for the current environment.",
-    "recommended_action": "",
+    "status": "warning",
+    "summary": "Release gate is not fully satisfied yet; warnings remain.",
+    "recommended_action": "The provider returned an HTTP error. Check upstream logs and response body handling before retrying.",
     "mode": "external_http"
   },
   "mode_a_smoke": {
@@ -37,7 +37,7 @@
     "attempted": true,
     "status": "pass",
     "path": "input\\软著材料\\2501_软著材料.zip",
-    "submission_id": "sub_de6e0eff41",
+    "submission_id": "sub_ede6005348",
     "submission_status": "completed",
     "review_provider": "external_http",
     "review_resolution": "minimax_bridge_success",
@@ -122,7 +122,7 @@
   "artifacts": {
     "latest_json_path": "docs\\dev\\real-provider-validation-latest.json",
     "latest_markdown_path": "docs\\dev\\real-provider-validation-latest.md",
-    "history_json_path": "docs\\dev\\history\\real_provider_validation_20260426_111423.json",
-    "history_markdown_path": "docs\\dev\\history\\real_provider_validation_20260426_111423.md"
+    "history_json_path": "docs\\dev\\history\\real_provider_validation_20260426_110401.json",
+    "history_markdown_path": "docs\\dev\\history\\real_provider_validation_20260426_110401.md"
   }
 }

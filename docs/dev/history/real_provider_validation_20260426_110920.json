@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-04-26T11:14:23",
-  "status": "pass",
-  "summary": "Real-provider validation passed for probe, release gate, and sample smokes.",
-  "recommended_action": "",
+  "generated_at": "2026-04-26T11:09:20",
+  "status": "blocked",
+  "summary": "Real-provider validation is blocked.",
+  "recommended_action": "Check AI config, provider reachability, and fallback behavior before rerunning.",
   "config": {
     "host": "127.0.0.1",
     "port": 8000,
@@ -35,12 +35,12 @@
   "mode_a_smoke": {
     "label": "mode_a_smoke",
     "attempted": true,
-    "status": "pass",
+    "status": "blocked",
     "path": "input\\软著材料\\2501_软著材料.zip",
-    "submission_id": "sub_de6e0eff41",
+    "submission_id": "sub_1b7b3b5bde",
     "submission_status": "completed",
-    "review_provider": "external_http",
-    "review_resolution": "minimax_bridge_success",
+    "review_provider": "mock",
+    "review_resolution": "provider_exception_fallback",
     "metrics": {
       "materials": 4,
       "cases": 1,
@@ -62,8 +62,8 @@
         "usable_text": 4
       }
     },
-    "summary": "Mode A smoke passed.",
-    "recommended_action": ""
+    "summary": "Mode A smoke used provider=mock instead of external_http.",
+    "recommended_action": "Check AI config, provider reachability, and fallback behavior before rerunning."
   },
   "mode_b_smoke": {
     "label": "mode_b_smoke",
@@ -122,7 +122,7 @@
   "artifacts": {
     "latest_json_path": "docs\\dev\\real-provider-validation-latest.json",
     "latest_markdown_path": "docs\\dev\\real-provider-validation-latest.md",
-    "history_json_path": "docs\\dev\\history\\real_provider_validation_20260426_111423.json",
-    "history_markdown_path": "docs\\dev\\history\\real_provider_validation_20260426_111423.md"
+    "history_json_path": "docs\\dev\\history\\real_provider_validation_20260426_110920.json",
+    "history_markdown_path": "docs\\dev\\history\\real_provider_validation_20260426_110920.md"
   }
 }

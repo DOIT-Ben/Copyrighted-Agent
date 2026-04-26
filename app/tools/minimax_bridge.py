@@ -125,6 +125,24 @@ def _extract_json_object(text: str) -> dict:
     raise RuntimeError("minimax_bridge_invalid_model_json")
 
 
+def _summary_from_model_payload(model_payload: dict, raw_content: str) -> str:
+    candidates = [
+        model_payload.get("summary"),
+        model_payload.get("ai_note"),
+        model_payload.get("message"),
+        model_payload.get("analysis"),
+        model_payload.get("result"),
+        model_payload.get("conclusion"),
+        model_payload.get("结论"),
+        model_payload.get("总结"),
+    ]
+    for candidate in candidates:
+        summary = str(candidate or "").strip()
+        if summary:
+            return summary
+    return str(raw_content or "").strip()
+
+
 def _coerce_message_content(value) -> str:
     if isinstance(value, str):
         return value
@@ -197,13 +215,19 @@ def request_minimax_chat_completion(payload_json: dict, settings: MiniMaxBridgeS
 
 def build_bridge_response_payload(payload_json: dict, upstream_response_json: dict, *, provider_request_id: str = "") -> dict:
     content = _extract_minimax_message_content(upstream_response_json)
-    model_payload = _extract_json_object(content)
-    summary = str(model_payload.get("summary") or "").strip()
+    resolution = "minimax_bridge_success"
+    try:
+        model_payload = _extract_json_object(content)
+    except RuntimeError:
+        model_payload = {}
+        resolution = "minimax_bridge_text_fallback"
+
+    summary = _summary_from_model_payload(model_payload, content)
     if not summary:
         raise RuntimeError("minimax_bridge_missing_summary")
 
     conclusion = str(model_payload.get("conclusion") or summary).strip() or summary
-    resolution = str(model_payload.get("resolution") or "minimax_bridge_success").strip() or "minimax_bridge_success"
+    resolution = str(model_payload.get("resolution") or resolution).strip() or resolution
     upstream_id = str(upstream_response_json.get("id") or provider_request_id or "").strip()
     return {
         "contract_version": EXTERNAL_HTTP_RESPONSE_VERSION,

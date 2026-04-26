@@ -2,9 +2,9 @@
 
 ## Summary
 
-- generated_at: `2026-04-26T11:14:23`
-- status: `pass`
-- summary: Real-provider validation passed for probe, release gate, and sample smokes.
+- generated_at: `2026-04-26T11:04:01`
+- status: `warning`
+- summary: Real-provider validation completed, but warnings remain.
 
 ## Config
 
@@ -22,8 +22,8 @@
 
 ## Release Gate
 
-- status: `pass`
-- summary: Release gate is satisfied for the current environment.
+- status: `warning`
+- summary: Release gate is not fully satisfied yet; warnings remain.
 
 ## Mode A Smoke
 
@@ -41,4 +41,4 @@
 
 ## Recommended Action
 
-- 
+- The provider returned an HTTP error. Check upstream logs and response body handling before retrying.

@@ -38,6 +38,11 @@ def _merge_gate_status(current: str, candidate: str) -> str:
     return candidate if GATE_STATUS_ORDER.get(candidate, 0) > GATE_STATUS_ORDER.get(current, 0) else current
 
 
+def _probe_marker(value: dict | None) -> str:
+    item = dict(value or {})
+    return str(item.get("generated_at", "") or item.get("file_name", "") or "")
+
+
 def evaluate_release_gate(
     config: AppConfig | None = None,
     *,
@@ -228,14 +233,21 @@ def evaluate_release_gate(
             )
         )
 
-    if latest_failure.get("exists") and latest_failure.get("probe_status") == "failed":
+    latest_success_marker = _probe_marker(latest_success)
+    latest_failure_marker = _probe_marker(latest_failure)
+    failure_is_current = bool(
+        latest_failure.get("exists")
+        and latest_failure.get("probe_status") == "failed"
+        and (not latest_success_marker or latest_failure_marker >= latest_success_marker)
+    )
+    if failure_is_current:
         checks.append(
             _gate_check(
                 "latest_failure_probe",
                 "Latest Failure",
                 "warning",
                 "A failed provider probe exists in history; keep the remediation visible until a newer success supersedes it.",
-                value=str(latest_failure.get("error_code", "") or latest_failure.get("generated_at", "")),
+                value=str(latest_failure.get("error_code", "") or latest_failure_marker),
                 recommended_action=str(latest_failure.get("recommended_action", "") or "Review the last failed provider smoke before release."),
             )
         )

@@ -171,3 +171,85 @@ def test_release_gate_can_pass_with_ready_provider_probe_and_healthy_baseline(tm
     assert check_map["provider_readiness"]["status"] == "pass"
     assert check_map["latest_probe"]["status"] == "pass"
     assert check_map["latest_baseline"]["status"] == "pass"
+
+
+@pytest.mark.unit
+@pytest.mark.contract
+def test_release_gate_ignores_older_failed_probe_when_newer_success_exists(tmp_path):
+    AppConfig = require_symbol("app.core.services.app_config", "AppConfig")
+    evaluate_release_gate = require_symbol("app.core.services.release_gate", "evaluate_release_gate")
+
+    dev_root = tmp_path / "docs" / "dev"
+    dev_root.mkdir(parents=True, exist_ok=True)
+    baseline_path = dev_root / "real-sample-baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "snapshot": {
+                    "generated_at": "2026-04-20T01:00:00",
+                    "targets": [
+                        {
+                            "label": "mode_a",
+                            "aggregate": {
+                                "materials": 24,
+                                "cases": 6,
+                                "reports": 6,
+                                "unknown": 0,
+                                "needs_review": 0,
+                                "low_quality": 0,
+                                "redactions": 252,
+                            },
+                        }
+                    ],
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    config = AppConfig(
+        data_root=str(tmp_path / "runtime"),
+        log_path=str(tmp_path / "runtime" / "logs" / "app.jsonl"),
+        ai_enabled=True,
+        ai_provider="external_http",
+        ai_endpoint="http://127.0.0.1:18010/review",
+        ai_model="sandbox-model",
+        ai_require_desensitized=True,
+    )
+
+    startup_report = {
+        "status": "ok",
+        "local_config": {"exists": True, "path": "config/local.json"},
+        "provider_readiness": {
+            "status": "ok",
+            "phase": "ready_for_probe",
+            "provider": "external_http",
+            "summary": "external_http configuration is ready for a safe probe.",
+            "recommended_action": "Run provider probe when ready.",
+        },
+        "provider_probe_status": {
+            "exists": True,
+            "probe_status": "ok",
+            "status": "ok",
+            "summary": "Latest safe provider probe completed successfully.",
+            "recommended_action": "Provider smoke passed.",
+        },
+        "provider_probe_last_success": {
+            "exists": True,
+            "probe_status": "ok",
+            "generated_at": "2026-04-20T01:05:00",
+        },
+        "provider_probe_last_failure": {
+            "exists": True,
+            "probe_status": "failed",
+            "generated_at": "2026-04-20T01:00:00",
+            "error_code": "external_http_http_error",
+        },
+    }
+
+    result = evaluate_release_gate(config, startup_report=startup_report, dev_root=dev_root)
+
+    assert result["status"] == "pass"
+    check_map = {item["name"]: item for item in result["checks"]}
+    assert check_map["latest_failure_probe"]["status"] == "pass"

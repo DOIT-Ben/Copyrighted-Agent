@@ -76,3 +76,54 @@ def test_minimax_bridge_extracts_json_from_fenced_content():
     )
 
     assert payload["summary"] == "ok"
+
+
+@pytest.mark.unit
+@pytest.mark.contract
+@pytest.mark.ai
+def test_minimax_bridge_response_can_fallback_to_plain_text_summary():
+    build_bridge_response_payload = require_symbol("app.tools.minimax_bridge", "build_bridge_response_payload")
+
+    response = build_bridge_response_payload(
+        {},
+        {
+            "id": "chatcmpl-demo",
+            "choices": [
+                {
+                    "message": {
+                        "content": "发现三个文档的软件名称不一致，建议先统一名称和版本号后再提交。"
+                    }
+                }
+            ],
+        },
+        provider_request_id="bridge-002",
+    )
+
+    assert response["status"] == "ok"
+    assert response["resolution"] == "minimax_bridge_text_fallback"
+    assert "软件名称不一致" in response["summary"]
+
+
+@pytest.mark.unit
+@pytest.mark.contract
+@pytest.mark.ai
+def test_minimax_bridge_response_uses_conclusion_when_summary_missing():
+    build_bridge_response_payload = require_symbol("app.tools.minimax_bridge", "build_bridge_response_payload")
+
+    response = build_bridge_response_payload(
+        {},
+        {
+            "id": "chatcmpl-demo",
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"conclusion":"存在合作协议顺序不一致问题","resolution":"minimax_bridge_success"}'
+                    }
+                }
+            ],
+        },
+        provider_request_id="bridge-003",
+    )
+
+    assert response["status"] == "ok"
+    assert response["summary"] == "存在合作协议顺序不一致问题"

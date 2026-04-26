@@ -2,9 +2,9 @@
 
 ## Summary
 
-- generated_at: `2026-04-26T11:14:23`
-- status: `pass`
-- summary: Real-provider validation passed for probe, release gate, and sample smokes.
+- generated_at: `2026-04-26T11:09:20`
+- status: `blocked`
+- summary: Real-provider validation is blocked.
 
 ## Config
 
@@ -27,11 +27,11 @@
 
 ## Mode A Smoke
 
-- status: `pass`
+- status: `blocked`
 - path: `input\软著材料\2501_软著材料.zip`
-- provider: `external_http`
-- resolution: `minimax_bridge_success`
-- summary: Mode A smoke passed.
+- provider: `mock`
+- resolution: `provider_exception_fallback`
+- summary: Mode A smoke used provider=mock instead of external_http.
 
 ## Mode B Smoke
 
@@ -41,4 +41,4 @@
 
 ## Recommended Action
 
-- 
+- Check AI config, provider reachability, and fallback behavior before rerunning.
