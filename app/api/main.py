@@ -661,7 +661,7 @@ def create_app(testing: bool = False):
         note = request.form_data.get("note", "")
         corrected_by = request.form_data.get("corrected_by", "operator_ui")
         if not case_id:
-            raise HTTPException(422, "缂哄皯 case_id")
+            raise HTTPException(422, "缺少 case_id")
         try:
             update_case_online_filing(
                 case_id,

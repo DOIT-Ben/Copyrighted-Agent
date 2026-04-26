@@ -138,6 +138,23 @@ def _details_block(index: str, title: str, body: str, *, open_by_default: bool =
     )
 
 
+def _ops_callout_text(status: object, summary: object, recommended_action: object, default_text: str) -> str:
+    summary_text = _localize_text(summary, "").strip()
+    action_text = _localize_text(recommended_action, "").strip()
+    normalized_status = str(status or "warning").strip().lower()
+    if normalized_status == "pass":
+        return summary_text or default_text
+    if action_text:
+        return action_text
+    return summary_text or default_text
+
+
+def _closeout_action_list(actions: list[object]) -> str:
+    if not actions:
+        return "<li>当前没有额外动作，可以继续交付、试运行或现场演示。</li>"
+    return "".join(f"<li>{escape_html(_localize_text(item, str(item or '')))}</li>" for item in actions[:4])
+
+
 def _ops_table(rows: list[list[str]], headers: list[str], empty_title: str, empty_note: str) -> str:
     if not rows:
         return empty_state(empty_title, empty_note)
@@ -249,9 +266,7 @@ def render_ops_page_legacy(config: dict, self_check: dict) -> str:
     )
 
     closeout_actions = list(delivery_closeout.get("operator_actions", []) or [])
-    closeout_action_list = "".join(
-        f"<li>{escape_html(_localize_text(item, item))}</li>" for item in closeout_actions[:4]
-    ) or "<li>当前没有额外动作。</li>"
+    closeout_action_list = _closeout_action_list(closeout_actions)
 
     kpis = "".join(
         [
@@ -321,7 +336,7 @@ def render_ops_page_legacy(config: dict, self_check: dict) -> str:
     release_body = (
         '<div class="ops-detail-stack">'
         '<div class="ops-detail-callout">'
-        f"<strong>发布结论</strong><p>{escape_html(_localize_text(release_gate.get('recommended_action', ''), '先清掉阻塞项，再继续真实联调。'))}</p>"
+        f"<strong>发布结论</strong><p>{escape_html(_ops_callout_text(release_gate.get('status', 'warning'), release_gate.get('summary', ''), release_gate.get('recommended_action', ''), '先清掉阻塞项，再继续真实联调。'))}</p>"
         "</div>"
         + '<div class="summary-grid ops-detail-summary">'
         + _summary_tile("状态", status_label(str(release_gate.get("status", "warning"))))
@@ -334,7 +349,7 @@ def render_ops_page_legacy(config: dict, self_check: dict) -> str:
     provider_body = (
         '<div class="ops-detail-stack">'
         '<div class="ops-detail-callout">'
-        f"<strong>通道结论</strong><p>{escape_html(_localize_text(provider_readiness.get('summary', ''), '先确认 provider、endpoint、API key 和脱敏边界。'))}</p>"
+        f"<strong>通道结论</strong><p>{escape_html(_ops_callout_text(provider_readiness.get('status', 'warning'), provider_readiness.get('summary', ''), provider_readiness.get('recommended_action', ''), '先确认 provider、endpoint、API key 和脱敏边界。'))}</p>"
         "</div>"
         + '<div class="summary-grid ops-detail-summary">'
         + _summary_tile("提供方", _display_value(provider_readiness.get("provider", config.get("ai_provider", "mock"))))
@@ -490,7 +505,7 @@ def render_ops_page(config: dict, self_check: dict) -> str:
     )
 
     closeout_actions = list(delivery_closeout.get("operator_actions", []) or [])
-    closeout_action_list = "".join(f"<li>{escape_html(_localize_text(item, item))}</li>" for item in closeout_actions[:4]) or "<li>当前没有额外动作。</li>"
+    closeout_action_list = _closeout_action_list(closeout_actions)
 
     kpis = "".join(
         [
@@ -551,7 +566,7 @@ def render_ops_page(config: dict, self_check: dict) -> str:
             "发布闸门",
             '<div class="ops-detail-stack">'
             + '<div class="ops-detail-callout">'
-            + f"<strong>发布结论</strong><p>{escape_html(_localize_text(release_gate.get('recommended_action', ''), '先清掉阻塞项，再继续真实联调。'))}</p>"
+            + f"<strong>发布结论</strong><p>{escape_html(_ops_callout_text(release_gate.get('status', 'warning'), release_gate.get('summary', ''), release_gate.get('recommended_action', ''), '先清掉阻塞项，再继续真实联调。'))}</p>"
             + "</div>"
             + '<div class="summary-grid ops-detail-summary">'
             + _summary_tile("状态", status_label(str(release_gate.get("status", "warning"))))
@@ -566,7 +581,7 @@ def render_ops_page(config: dict, self_check: dict) -> str:
             "模型通道就绪度",
             '<div class="ops-detail-stack">'
             + '<div class="ops-detail-callout">'
-            + f"<strong>通道结论</strong><p>{escape_html(_localize_text(provider_readiness.get('summary', ''), '先确认 provider、endpoint、API key 和脱敏边界。'))}</p>"
+            + f"<strong>通道结论</strong><p>{escape_html(_ops_callout_text(provider_readiness.get('status', 'warning'), provider_readiness.get('summary', ''), provider_readiness.get('recommended_action', ''), '先确认 provider、endpoint、API key 和脱敏边界。'))}</p>"
             + "</div>"
             + '<div class="summary-grid ops-detail-summary">'
             + _summary_tile("提供方", _display_value(provider_readiness.get("provider", config.get("ai_provider", "mock"))))
