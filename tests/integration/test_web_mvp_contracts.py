@@ -76,12 +76,15 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
     assert report_page.status_code == 200
     assert "审查结果" in report_page.text
     assert "先改这些地方" in report_page.text
+    assert "问题一眼看懂" in report_page.text
     assert "问题级别归类" in report_page.text
     assert "按材料来源看问题" in report_page.text
     assert "重点问题说明" in report_page.text
     assert "发现了什么不足" in report_page.text
     assert "怎么判定出来的" in report_page.text
     assert "用了哪些审查规则" in report_page.text
+    assert "哪里不对" in report_page.text
+    assert "对应规则" in report_page.text
     assert "审查维度" in report_page.text
     assert "在线填报信息审查" in report_page.text
     assert "更多信息" in report_page.text

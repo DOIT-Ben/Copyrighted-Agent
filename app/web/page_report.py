@@ -354,6 +354,40 @@ def _issue_explainer_board(issues: list[dict], review_dimensions: list[dict], pr
     return f'<div class="report-card-grid">{"".join(cards)}</div>'
 
 
+def _issue_snapshot_board(issues: list[dict], review_dimensions: list[dict], prompt_snapshot: dict) -> str:
+    if not issues:
+        return empty_state("当前没有重点问题", "这次审查没有识别出需要优先展开说明的问题。")
+
+    cards = []
+    for index, issue in enumerate(issues[:3], start=1):
+        title, action = _friendly_issue_summary(issue, [])
+        dimension_key = _issue_dimension_key(issue)
+        dimension_title = "-"
+        for item in review_dimensions:
+            if str(item.get("key", "") or "") == dimension_key:
+                dimension_title = str(item.get("title", "") or "-")
+                break
+        evidence_points = _issue_evidence_points(issue, review_dimensions)
+        first_evidence = evidence_points[0] if evidence_points else _issue_text(issue, "desc", "message", "detail", fallback="-")
+        _, tone = business_level(issue)
+        cards.append(
+            '<article class="report-card">'
+            '<div class="report-card-copy">'
+            f"<strong>{index}. {escape_html(title)}</strong>"
+            f"<span>{pill(severity_label(_issue_text(issue, 'severity', fallback='minor')), tone)}</span>"
+            "</div>"
+            '<div class="rule-checkpoint-list">'
+            f"<p><strong>哪里不对：</strong>{escape_html(_issue_text(issue, 'desc', 'message', 'detail', fallback='-'))}</p>"
+            f"<p><strong>怎么发现的：</strong>{escape_html(first_evidence)}</p>"
+            f"<p><strong>对应规则：</strong>{escape_html(_rule_title_for_issue(issue, review_dimensions, prompt_snapshot))}</p>"
+            f"<p><strong>建议动作：</strong>{escape_html(action)}</p>"
+            f"<p><strong>命中维度：</strong>{escape_html(dimension_title)}</p>"
+            "</div>"
+            "</article>"
+        )
+    return f'<div class="report-card-grid">{"".join(cards)}</div>'
+
+
 def _review_method_table(prompt_snapshot: dict) -> str:
     rows = [
         [
@@ -494,7 +528,6 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
     review_profile = normalize_review_profile(review_payload.get("review_profile_snapshot", {}))
     prompt_snapshot = dict(review_payload.get("prompt_snapshot_json", {}) or {})
     issues = list(review_payload.get("issues_json", []) or [])
-    severity_summary = dict(review_payload.get("severity_summary_json", {}) or {})
     business_summary = summarize_business_levels(issues)
     review_dimensions = build_case_review_dimensions(
         case_payload,
@@ -557,6 +590,7 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
 
     profile_pairs = review_profile_summary(review_profile)
     friendly_diagnosis = _friendly_diagnosis_panel(issues, review_dimensions, materials)
+    issue_snapshot = _issue_snapshot_board(issues, review_dimensions, prompt_snapshot)
     business_issue_board = _business_issue_board(issues)
     source_issue_board = _issue_source_board(issues)
     issue_explainer = _issue_explainer_board(issues, review_dimensions, prompt_snapshot)
@@ -604,6 +638,7 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
       <div class="report-section-stack">
         {panel('审查结果', conclusion_body, kicker='核心结论', extra_class='span-12', icon_name='report', description='', panel_id='report-overview')}
         {panel('先改这些地方', friendly_diagnosis, kicker='直观诊断', extra_class='span-12', icon_name='alert', description='直接告诉你哪里不对，以及应该先改什么。', panel_id='report-diagnosis')}
+        {panel('问题一眼看懂', issue_snapshot, kicker='3 个重点问题', extra_class='span-12', icon_name='search', description='把最关键的问题、证据、规则和建议动作压成一屏，先看这个再决定往下钻。', panel_id='report-snapshot')}
         {panel('问题级别归类', business_issue_board, kicker='业务分组', extra_class='span-12', icon_name='layers', description='按退回级问题、弱智问题、警告项整理本次结果。', panel_id='report-business-levels')}
         {panel('按材料来源看问题', source_issue_board, kicker='来源拆分', extra_class='span-12', icon_name='cluster', description='把问题按信息采集表、说明文档、源代码、协议或跨材料来源拆开查看。', panel_id='report-sources')}
         {panel('重点问题说明', issue_explainer, kicker='先看卡片', extra_class='span-12', icon_name='report', description='把重点问题直接翻译成人话，展示触发规则、判定依据和处理建议。', panel_id='report-explainer')}
@@ -739,6 +774,7 @@ def render_report_page(report: dict) -> str:
         page_links = [
             ("#report-reader", "审查结果", "report"),
             ("#report-diagnosis", "先改这些地方", "alert"),
+            ("#report-snapshot", "问题一眼看懂", "search"),
             ("#report-business-levels", "问题级别归类", "layers"),
             ("#report-sources", "按材料来源看问题", "cluster"),
             ("#report-explainer", "重点问题说明", "report"),
