@@ -445,7 +445,7 @@ def _dimension_rule_link(submission_id: str, case_id: str, item: dict) -> str:
     return f'<a href="/submissions/{escape_html(submission_id)}/review-rules/{escape_html(key)}?case_id={escape_html(case_id)}">{escape_html(title)}</a>'
 
 
-def _report_toolbar(report: dict) -> str:
+def _report_toolbar_legacy(report: dict) -> str:
     report_id = str(report.get("id", "") or "")
     return (
         '<div class="report-toolbar print-hidden">'
