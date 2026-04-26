@@ -87,6 +87,7 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
     assert "用了哪些审查规则" in report_page.text
     assert "哪里不对" in report_page.text
     assert "定位：" in report_page.text
+    assert "摘录：" in report_page.text
     assert "命中规则" in report_page.text
     assert "审查维度" in report_page.text
     assert "在线填报信息审查" in report_page.text

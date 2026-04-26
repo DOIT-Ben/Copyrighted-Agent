@@ -394,6 +394,12 @@ def _issue_precision_hints(issue: dict, prompt_snapshot: dict) -> list[str]:
         if value and value not in hints:
             hints.append(value)
     evidence_anchor = dict(issue.get("evidence_anchor", {}) or {})
+    page = evidence_anchor.get("page")
+    if str(page).strip():
+        hints.append(f"约第 {page} 页")
+    line = evidence_anchor.get("line")
+    if str(line).strip():
+        hints.append(f"第 {line} 行附近")
     for key in ("field", "section", "material_area", "hint"):
         value = str(evidence_anchor.get(key, "") or "").strip()
         if value and value not in hints:
@@ -446,6 +452,9 @@ def _issue_precision_hints(issue: dict, prompt_snapshot: dict) -> list[str]:
 
 def _issue_evidence_points(issue: dict, review_dimensions: list[dict], prompt_snapshot: dict) -> list[str]:
     points: list[str] = []
+    excerpt = str(issue.get("evidence_excerpt", "") or dict(issue.get("evidence_anchor", {}) or {}).get("excerpt", "") or "").strip()
+    if excerpt:
+        points.append(f"摘录：{excerpt}")
     detail = _issue_text(issue, "desc", "message", "detail", fallback="")
     if detail:
         normalized = detail.replace("；", ". ").replace(";", ". ").replace("\n", ". ")
@@ -615,6 +624,9 @@ def _issue_trace_table(
         precision_hints = _issue_precision_hints(issue, prompt_snapshot)
         if precision_hints:
             evidence += f'<br><span class="table-subtext">定位：{escape_html(precision_hints[0])}</span>'
+        excerpt = str(issue.get("evidence_excerpt", "") or dict(issue.get("evidence_anchor", {}) or {}).get("excerpt", "") or "").strip()
+        if excerpt:
+            evidence += f'<br><span class="table-subtext">摘录：{escape_html(excerpt)}</span>'
         evidence_targets = list(prompt_item.get("evidence_targets", []) or [])
         if evidence_targets:
             evidence += f'<br><span class="table-subtext">建议回查：{escape_html(evidence_targets[0])}</span>'

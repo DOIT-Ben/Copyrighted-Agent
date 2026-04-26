@@ -21,6 +21,7 @@ from app.core.reviewers.rules.info_form import review_info_form_text
 from app.core.reviewers.rules.online_filing import review_online_filing_payload
 from app.core.reviewers.rules.source_code import review_source_code_text
 from app.core.services.app_logging import log_event
+from app.core.services.evidence_anchors import attach_issue_evidence_anchors
 from app.core.services.input_intake import stage_directory_input
 from app.core.services.material_classifier import classify_material
 from app.core.services.online_filing import normalize_online_filing
@@ -355,6 +356,7 @@ def ingest_submission(
             parse_quality=parsed["quality"],
         )
         review = _review_by_material_type(classification["material_type"], parsed["clean_text"])
+        review["issues"] = attach_issue_evidence_anchors(review.get("issues", []), parsed["desensitized_text"])
         review_metadata = dict(review.get("metadata", {}) or {})
         triage = _build_triage(classification, parsed["quality"])
         material_metadata = {
