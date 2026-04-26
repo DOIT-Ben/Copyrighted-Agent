@@ -53,6 +53,41 @@ def get_report_download(report_id: str) -> dict:
     return {"payload": payload, "filename": filename, "media_type": media_type}
 
 
+def get_report_json_download(report_id: str) -> dict:
+    report = store.report_artifacts.get(report_id)
+    if not report:
+        raise ValueError(f"Report not found: {report_id}")
+
+    payload: dict = {
+        "report": report.to_dict(),
+    }
+    if report.scope_type == "case":
+        case = store.cases.get(report.scope_id)
+        if case:
+            payload["case"] = case.to_dict()
+            materials = [store.materials[item_id].to_dict() for item_id in case.material_ids if item_id in store.materials]
+            payload["materials"] = materials
+            if case.review_result_id and case.review_result_id in store.review_results:
+                payload["review_result"] = store.review_results[case.review_result_id].to_dict()
+    elif report.scope_type == "material":
+        material = store.materials.get(report.scope_id)
+        if material:
+            payload["material"] = material.to_dict()
+            if material.id in store.parse_results:
+                payload["parse_result"] = store.parse_results[material.id].to_dict()
+    elif report.scope_type == "submission":
+        submission = store.submissions.get(report.scope_id)
+        if submission:
+            payload["submission"] = submission.to_dict()
+
+    json_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    return {
+        "payload": json_bytes,
+        "filename": f"{report.scope_type}_{report.scope_id}_{report.report_type}.json",
+        "media_type": "application/json; charset=utf-8",
+    }
+
+
 def build_submission_export_bundle(submission_id: str) -> dict:
     submission = store.submissions.get(submission_id)
     if not submission:

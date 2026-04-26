@@ -84,7 +84,12 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
     assert "审查维度" in report_page.text
     assert "在线填报信息审查" in report_page.text
     assert "更多信息" in report_page.text
-    assert "保存为 PDF" in report_page.text
+    assert "保存为 JSON" in report_page.text
+    assert "PDF" in report_page.text
+
+    report_json_download = api_client.get(f"/downloads/reports/{submission_payload['report_ids'][0]}/json")
+    assert report_json_download.status_code == 200
+    assert str(getattr(report_json_download, "media_type", "") or "").startswith("application/json")
 
     index_page = api_client.get("/submissions")
     assert index_page.status_code == 200

@@ -638,6 +638,20 @@ def _render_batch_report(report: dict, report_content: str) -> tuple[str, str]:
     return metrics, body
 
 
+def _report_toolbar(report: dict) -> str:
+    report_id = str(report.get("id", "") or "")
+    chips = ""
+    if report_id:
+        chips += download_chip(f"/downloads/reports/{report_id}", "保存为 MD")
+        chips += download_chip(f"/downloads/reports/{report_id}/json", "保存为 JSON")
+    return (
+        '<div class="report-toolbar print-hidden">'
+        f"{chips}"
+        '<button class="button-secondary button-compact" type="button" onclick="window.print()">打印 / 另存 PDF</button>'
+        "</div>"
+    )
+
+
 def render_report_page(report: dict) -> str:
     report_content = report.get("content", "") or read_text_file(report.get("storage_path", ""))
     report_id = str(report.get("id", "") or "")

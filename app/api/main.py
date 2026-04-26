@@ -25,7 +25,7 @@ from app.core.services.corrections import (
     upload_desensitized_package,
 )
 from app.core.services.delivery_closeout import get_delivery_closeout_artifact_download, latest_delivery_closeout_status
-from app.core.services.exports import build_submission_export_bundle, get_material_artifact, get_report_download
+from app.core.services.exports import build_submission_export_bundle, get_material_artifact, get_report_download, get_report_json_download
 from app.core.services.provider_probe import (
     get_provider_probe_artifact_download,
     latest_failed_provider_probe_status,
@@ -719,6 +719,16 @@ def create_app(testing: bool = False):
         except ValueError as exc:
             raise HTTPException(404, str(exc)) from exc
         log_event("download_report", {"report_id": report_id})
+        return _download_response(artifact["payload"], artifact["filename"], artifact["media_type"])
+
+    @app.get("/downloads/reports/{report_id}/json")
+    def download_report_json(request: Request, report_id: str):
+        del request
+        try:
+            artifact = get_report_json_download(report_id)
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        log_event("download_report_json", {"report_id": report_id})
         return _download_response(artifact["payload"], artifact["filename"], artifact["media_type"])
 
     @app.get("/downloads/materials/{material_id}/{artifact_kind}")
