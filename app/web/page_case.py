@@ -48,6 +48,53 @@ def _fold_group(index: int, title: str, note: str, body: str, *, open_by_default
     )
 
 
+def _top_issue_actions(case: dict, issues: list[dict], review_dimensions: list[dict]) -> str:
+    submission_id = str(case.get("source_submission_id", "") or "")
+    case_id = str(case.get("id", "") or "")
+    if not issues:
+        actions = []
+        if submission_id:
+            actions.append(f'<a class="button-secondary button-compact" href="/submissions/{escape_html(submission_id)}/materials">查看材料</a>')
+        if submission_id and case_id:
+            actions.append(f'<a class="button-secondary button-compact" href="/submissions/{escape_html(submission_id)}/operator">人工处理台</a>')
+        return (
+            '<div class="rule-checkpoint-list">'
+            "<p>当前没有需要优先处理的问题，可以直接去看完整报告或继续导出。</p>"
+            f'<div class="inline-actions">{"".join(actions)}</div>'
+            "</div>"
+        )
+
+    lines = []
+    for issue in issues[:3]:
+        lines.append(
+            "<li>"
+            f"<strong>{escape_html(issue.get('title', '') or issue.get('rule', '') or issue.get('category', '') or '问题')}</strong>"
+            f"<span class=\"table-subtext\">{escape_html(issue.get('message', '') or issue.get('detail', '') or issue.get('desc', '') or '-')}</span>"
+            "</li>"
+        )
+
+    actions = []
+    if submission_id:
+        actions.append(f'<a class="button-secondary button-compact" href="/submissions/{escape_html(submission_id)}/materials">查看材料</a>')
+    if submission_id and case_id and review_dimensions:
+        first_dimension = str(review_dimensions[0].get("key", "") or "")
+        if first_dimension:
+            actions.append(
+                f'<a class="button-secondary button-compact" href="/submissions/{escape_html(submission_id)}/review-rules/{escape_html(first_dimension)}?case_id={escape_html(case_id)}">调整规则</a>'
+            )
+    if case_id:
+        report_id = str(case.get("report_id", "") or "")
+        if report_id:
+            actions.append(f'<a class="button-secondary button-compact" href="/reports/{escape_html(report_id)}">打开报告</a>')
+
+    return (
+        '<div class="rule-checkpoint-list">'
+        f"<ul>{''.join(lines)}</ul>"
+        f'<div class="inline-actions">{"".join(actions)}</div>'
+        "</div>"
+    )
+
+
 def render_case_detail(case: dict, materials: list[dict], report: dict | None, review_result: dict | None) -> str:
     review_payload = review_result or {}
     issues = list(review_payload.get("issues_json", []) or [])
@@ -111,6 +158,7 @@ def render_case_detail(case: dict, materials: list[dict], report: dict | None, r
         ("AI 补充摘要", escape_html(str(review_payload.get("ai_summary", "") or "当前没有可用的 AI 补充意见。"))),
     ]
     profile_pairs = review_profile_summary(review_profile)
+    top_issue_body = _top_issue_actions(case, issues, review_dimensions)
     rule_links = (
         '<div class="inline-actions">'
         + "".join(
@@ -197,8 +245,9 @@ def render_case_detail(case: dict, materials: list[dict], report: dict | None, r
     <section class="dashboard-grid">
       {panel('审查结果', list_pairs(overview_pairs, css_class='dossier-list dossier-list-single'), kicker='概览', extra_class='span-8', icon_name='layers', description='', panel_id='case-summary')}
       {panel('报告查看', report_body, kicker='结果出口', extra_class='span-4 panel-soft', icon_name='report', description='', panel_id='report-reader')}
+      {panel('修复入口', top_issue_body, kicker='先做这几件事', extra_class='span-4 panel-soft', icon_name='alert', description='', panel_id='fix-entry')}
       {panel('风险队列', table(['严重级别', '问题', '说明'], issue_rows) if issue_rows else empty_state('当前无跨材料问题', '没有发现需要优先处理的冲突。'), kicker='优先处理', extra_class='span-8', icon_name='alert', description='', panel_id='risk-queue')}
-      {panel('审查维度', table(['维度', '结论', '摘要'], dimension_rows) if dimension_rows else empty_state('暂无审查维度', '当前没有可显示的维度结论。'), kicker='当前结论', extra_class='span-4 panel-soft', icon_name='shield', description='', panel_id='review-dimensions')}
+      {panel('审查维度', table(['维度', '结论', '摘要'], dimension_rows) if dimension_rows else empty_state('暂无审查维度', '当前没有可显示的维度结论。'), kicker='当前结论', extra_class='span-8 panel-soft', icon_name='shield', description='', panel_id='review-dimensions')}
       {panel('更多信息', advanced_groups, kicker='按需展开', extra_class='span-12', icon_name='search', description='', panel_id='dimension-details')}
     </section>
     """
@@ -219,6 +268,7 @@ def render_case_detail(case: dict, materials: list[dict], report: dict | None, r
         header_note="默认只保留核心结果，配置和提示词放到折叠区。",
         page_links=[
             ("#case-summary", "审查结果", "layers"),
+            ("#fix-entry", "修复入口", "alert"),
             ("#risk-queue", "风险队列", "alert"),
             ("#review-dimensions", "审查维度", "shield"),
             ("#report-reader", "报告查看", "report"),

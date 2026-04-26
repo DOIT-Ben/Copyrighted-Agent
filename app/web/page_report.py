@@ -240,6 +240,64 @@ def _issue_source_board(issues: list[dict]) -> str:
     return f'<div class="report-card-grid">{"".join(cards)}</div>'
 
 
+def _issue_fix_summary(issue: dict, materials: list[dict]) -> tuple[str, str, str]:
+    title, action = _friendly_issue_summary(issue, materials)
+    material_label = _issue_material_label(issue)
+    return material_label, title, action
+
+
+def _material_fix_plan_board(
+    issues: list[dict],
+    materials: list[dict],
+    submission_id: str,
+    case_id: str,
+) -> str:
+    if not issues:
+        return empty_state("暂无修复清单", "当前没有需要按材料拆分处理的问题。")
+
+    grouped: dict[str, list[tuple[str, str, dict]]] = {}
+    for issue in issues:
+        material_label, title, action = _issue_fix_summary(issue, materials)
+        grouped.setdefault(material_label, []).append((title, action, issue))
+
+    cards = []
+    for material_label, items in sorted(grouped.items(), key=lambda pair: len(pair[1]), reverse=True):
+        lines = []
+        seen: set[tuple[str, str]] = set()
+        for title, action, issue in items:
+            key = (title, action)
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(
+                "<li>"
+                f"<strong>{escape_html(title)}</strong>"
+                f"<span class=\"table-subtext\">{escape_html(action)}</span>"
+                "</li>"
+            )
+            if len(lines) >= 4:
+                break
+        actions = ['<a class="button-secondary button-compact" href="/submissions/' + escape_html(submission_id) + '/materials">查看材料</a>'] if submission_id else []
+        if submission_id and case_id:
+            first_issue = items[0][2]
+            dimension_key = _issue_dimension_key(first_issue)
+            if dimension_key:
+                actions.append(
+                    f'<a class="button-secondary button-compact" href="/submissions/{escape_html(submission_id)}/review-rules/{escape_html(dimension_key)}?case_id={escape_html(case_id)}">调整规则</a>'
+                )
+        cards.append(
+            '<article class="report-card">'
+            '<div class="report-card-copy">'
+            f"<strong>{escape_html(material_label)}</strong>"
+            f"<span>{pill(str(len(items)), 'warning' if len(items) > 1 else 'info')}</span>"
+            "</div>"
+            f'<div class="rule-checkpoint-list"><ul>{"".join(lines) or "<li>-</li>"}</ul></div>'
+            f'<div class="inline-actions">{"".join(actions)}</div>'
+            "</article>"
+        )
+    return f'<div class="report-card-grid">{"".join(cards)}</div>'
+
+
 def _friendly_diagnosis_panel(issues: list[dict], review_dimensions: list[dict], materials: list[dict]) -> str:
     diagnoses: list[tuple[str, str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -663,6 +721,7 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
     issue_snapshot = _issue_snapshot_board(issues, review_dimensions, prompt_snapshot, source_submission_id, case_id)
     business_issue_board = _business_issue_board(issues)
     source_issue_board = _issue_source_board(issues)
+    material_fix_plan = _material_fix_plan_board(issues, materials, source_submission_id, case_id)
     issue_explainer = _issue_explainer_board(issues, review_dimensions, prompt_snapshot, source_submission_id, case_id)
     issue_trace = _issue_trace_table(issues, review_dimensions, prompt_snapshot, source_submission_id, case_id)
     evidence_board = _dimension_evidence_board(review_dimensions, prompt_snapshot, source_submission_id, case_id)
@@ -764,6 +823,7 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
         {panel('审查结果', conclusion_body, kicker='核心结论', extra_class='span-12', icon_name='report', description='', panel_id='report-overview')}
         {panel('先改这些地方', friendly_diagnosis, kicker='直观诊断', extra_class='span-12', icon_name='alert', description='直接告诉你哪里不对，以及应该先改什么。', panel_id='report-diagnosis')}
         {panel('问题一眼看懂', issue_snapshot, kicker='3 个重点问题', extra_class='span-12', icon_name='search', description='把最关键的问题、证据、规则和建议动作压成一屏，先看这个再决定往下钻。', panel_id='report-snapshot')}
+        {panel('按材料怎么改', material_fix_plan, kicker='修复清单', extra_class='span-12', icon_name='layers', description='把问题按材料归组，方便你一份一份改。', panel_id='report-fix-plan')}
         {panel('重点问题说明', issue_explainer, kicker='先看卡片', extra_class='span-12', icon_name='report', description='把重点问题直接翻译成人话，展示触发规则、判定依据和处理建议。', panel_id='report-explainer')}
         {panel('发现了什么不足', issue_trace, kicker='问题追踪', extra_class='span-12', icon_name='alert', description='直接展示问题、命中维度、规则依据和建议动作。', panel_id='report-trace')}
         {panel('更多信息', advanced_groups, kicker='按需展开', extra_class='span-12', icon_name='search', description='', panel_id='report-profile')}
@@ -893,6 +953,7 @@ def render_report_page(report: dict) -> str:
             ("#report-reader", "审查结果", "report"),
             ("#report-diagnosis", "先改这些地方", "alert"),
             ("#report-snapshot", "问题一眼看懂", "search"),
+            ("#report-fix-plan", "按材料怎么改", "layers"),
             ("#report-explainer", "重点问题说明", "report"),
             ("#report-trace", "发现了什么不足", "alert"),
             ("#report-profile", "更多信息", "search"),

@@ -67,6 +67,7 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
 
     case_page = api_client.get(f"/cases/{submission_payload['case_ids'][0]}")
     assert case_page.status_code == 200
+    assert "修复入口" in case_page.text
     assert "风险队列" in case_page.text
     assert "AI 辅助研判" in case_page.text
     assert "审查维度" in case_page.text
@@ -77,6 +78,7 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
     assert "审查结果" in report_page.text
     assert "先改这些地方" in report_page.text
     assert "问题一眼看懂" in report_page.text
+    assert "按材料怎么改" in report_page.text
     assert "问题级别归类" in report_page.text
     assert "按材料来源看问题" in report_page.text
     assert "重点问题说明" in report_page.text
