@@ -30,7 +30,7 @@ DIMENSION_RULE_DEFAULTS = {
             _rule_item("software_name_present", "软件名称可识别", category="基础字段", severity="severe", prompt_hint="检查软件名称是否为空、占位或无法提取。"),
             _rule_item("version_present", "版本号明确", category="基础字段", severity="moderate", prompt_hint="检查版本号是否存在且格式清晰。"),
             _rule_item("company_present", "申请主体明确", category="主体字段", severity="severe", prompt_hint="检查申请主体/单位名称是否可识别。"),
-            _rule_item("missing_fields_listed", "缺失字段要点名", category="输出要求", severity="minor", prompt_hint="如果有缺失字段，结论里必须明确指出缺的是哪一项。"),
+            _rule_item("missing_fields_listed", "缺失字段要点化", category="输出要求", severity="minor", prompt_hint="如果有缺失字段，结论里必须明确指出缺的是哪一项。"),
             _rule_item("info_sensitive_terms", "信息采集表敏感词已替换", category="敏感词排查", severity="moderate", prompt_hint="排查破解、刷机、爬虫、抓取、仿微信等敏感表述。"),
         ],
         "llm_focus": "优先检查名称、版本、主体是否齐全且表达一致。",
@@ -61,12 +61,12 @@ DIMENSION_RULE_DEFAULTS = {
     },
     "source_code": {
         "title": "源码可审查性",
-        "objective": "检查源码材料是否可读、格式是否达标、是否完成脱敏，并能支撑功能真实性判断。",
+        "objective": "检查源代码材料是否可读、格式是否达标、是否完成脱敏，并能支撑功能真实性判断。",
         "rules": [
             _rule_item("code_readable", "源码内容可读", category="可读性", severity="severe", prompt_hint="检查源码是否存在乱码、异常字符或无法阅读的内容。"),
             _rule_item("code_format_clean", "源码格式符合提交规范", category="格式规范", severity="moderate", prompt_hint="检查行首空格、连续空行、行号等格式问题。"),
             _rule_item("code_page_strategy", "页数截取方式合理", category="页数策略", severity="severe", prompt_hint="如果总页数超过 60 页，检查是否为前 30 页加后 30 页。"),
-            _rule_item("code_desensitized", "敏感信息已脱敏", category="脱敏规范", severity="severe", prompt_hint="重点排查密码、IP、token、手机号、邮箱等敏感信息。"),
+            _rule_item("code_desensitized", "敏感信息已脱敏", category="脱敏规范", severity="severe", prompt_hint="重点排查密码、IP、Token、手机号、邮箱等敏感信息。"),
             _rule_item("code_sensitive_terms", "敏感词已替换", category="敏感词排查", severity="moderate", prompt_hint="排查破解、外挂、爬虫、抓取等高风险敏感词。"),
             _rule_item("code_logic_supports_doc", "代码与文档功能呼应", category="功能呼应", severity="moderate", prompt_hint="检查文档声称的功能在代码中是否有实现支撑。"),
             _rule_item("code_comment_ratio_reasonable", "注释比例合理", category="注释质量", severity="minor", prompt_hint="避免注释过多、重复注释或恶意凑数。"),
@@ -129,14 +129,79 @@ DIMENSION_RULE_DEFAULTS = {
 }
 
 
+DIMENSION_GUIDANCE_DEFAULTS = {
+    "identity": {
+        "evidence_targets": ["信息采集表首页", "设计文档封面或页眉", "源代码页眉", "合作协议标题与主体落款", "在线填报截图或导出字段"],
+        "common_failures": ["软件全称少字、多字或别名混用", "版本号大小写不一致，如 V1.0 与 v1.0", "申请主体名称缺简称/全称不一致", "缺字段但结论未点名缺的是什么"],
+        "operator_notes": ["先统一软件全称和版本号，再处理其他维度。", "如果基础字段提取不稳，不要直接重跑，先人工修正识别结果。"],
+    },
+    "completeness": {
+        "evidence_targets": ["批次材料清单", "信息采集表", "源代码材料", "设计文档或用户手册", "合作协议及审批表"],
+        "common_failures": ["缺少信息采集表或源代码", "材料已上传但类型识别错误", "只有协议没有正文支撑，导致无法形成完整结论", "未知材料未提示人工确认"],
+        "operator_notes": ["先补齐材料，再做高成本分析。", "材料类型不确定时，优先人工归类，避免错判进入后续链路。"],
+    },
+    "consistency": {
+        "evidence_targets": ["四份材料中的软件全称", "版本号写法", "开发完成日期", "申请人排序", "关键术语与功能名称"],
+        "common_failures": ["三个文档名称一致，但协议名称不一致", "版本号前后混用大小写", "协议顺序与信息采集表顺序不一致", "术语前文写系统，后文写平台或 APP"],
+        "operator_notes": ["这类问题通常最影响提交，建议优先修。", "如果存在多处冲突，结果页应按同一口径统一回改，不要逐个零碎修。"],
+    },
+    "source_code": {
+        "evidence_targets": ["导出的源代码 PDF", "页眉与行号", "敏感变量和值", "核心功能实现片段", "前 30 页与后 30 页截取策略"],
+        "common_failures": ["密码、Token、IP 未脱敏", "只有零散代码片段，没有关键逻辑", "页数超过 60 页但只提交前半段", "注释凑数、空行过多或排版异常"],
+        "operator_notes": ["先拿脱敏件审查，再决定是否进入综合分析。", "代码问题既要看格式，也要看是否能支撑文档宣称功能。"],
+    },
+    "software_doc": {
+        "evidence_targets": ["封面与目录", "运行环境章节", "安装说明章节", "页眉页脚", "UI 截图区域"],
+        "common_failures": ["缺少运行环境或安装说明", "页数明显不足或过长", "系统/平台/APP 混用", "截图带状态栏、电池、运营商等无关元素"],
+        "operator_notes": ["说明文档更适合先看结构，再看术语和截图。", "如果文档功能描述很多，记得回查代码是否真有对应实现。"],
+    },
+    "agreement": {
+        "evidence_targets": ["协议首页主体信息", "甲乙方排序", "签署日期", "签章与手写签名", "审批表或合同类型勾选"],
+        "common_failures": ["协议代称混用", "签订时间离申请时间过近", "缺鲜章或只用了电子章", "存在签定等错别字，或顺序与信息采集表冲突"],
+        "operator_notes": ["协议问题往往既是文字问题，也是权属问题。", "先确认顺序和日期，再看签章、人员和术语。"],
+    },
+    "online_filing": {
+        "evidence_targets": ["在线填报截图", "分类与开发方式字段", "主体类型字段", "完成日期与申请日期", "地址和证书邮寄地址"],
+        "common_failures": ["应用软件误选成工具软件", "主体类型与学校/公司性质不匹配", "完成日期与材料不一致", "地址只写到省或市，精度不够"],
+        "operator_notes": ["如果当前批次没有在线填报数据，要明确标记未覆盖。", "一旦有在线填报信息，优先核对与信息采集表的一致性。"],
+    },
+    "ai": {
+        "evidence_targets": ["规则引擎问题清单", "跨材料冲突项", "各维度摘要", "材料覆盖情况", "模型补充判断"],
+        "common_failures": ["只给结论，不说问题在哪", "没有按退回级/弱智问题/警告项分类", "建议不可执行，用户不知道怎么改", "信息不足时没有说明边界"],
+        "operator_notes": ["这个维度不是替代规则，而是把规则结果翻译成更可执行的结论。", "如果前置证据不足，AI 输出必须保守。"],
+    },
+}
+
+
+GUIDANCE_FIELDS = ("evidence_targets", "common_failures", "operator_notes")
+
+
 def _default_rule_items(key: str) -> list[dict[str, Any]]:
     return [dict(item) for item in list(DIMENSION_RULE_DEFAULTS.get(key, {}).get("rules", []) or [])]
 
 
+def _default_guidance_list(key: str, field: str) -> list[str]:
+    return [str(item).strip() for item in list(DIMENSION_GUIDANCE_DEFAULTS.get(key, {}).get(field, []) or []) if str(item).strip()]
+
+
+def _normalize_guidance_list(key: str, payload: dict[str, Any], field: str) -> list[str]:
+    raw_value = payload.get(field)
+    if isinstance(raw_value, str):
+        items = [line.strip(" -\t") for line in raw_value.splitlines() if line.strip(" -\t")]
+    elif raw_value is None:
+        items = _default_guidance_list(key, field)
+    else:
+        items = [str(item).strip() for item in list(raw_value or []) if str(item).strip()]
+    return items[:8] if items else _default_guidance_list(key, field)[:8]
+
+
 def _normalize_rule_items(key: str, raw_rules: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     default_items = _default_rule_items(key)
-    default_map = {str(item.get("key", "") or ""): dict(item) for item in default_items}
-    raw_map = {str(item.get("key", "") or ""): dict(item) for item in list(raw_rules or []) if str(item.get("key", "") or "").strip()}
+    raw_map = {
+        str(item.get("key", "") or ""): dict(item)
+        for item in list(raw_rules or [])
+        if str(item.get("key", "") or "").strip()
+    }
     normalized: list[dict[str, Any]] = []
     for default_item in default_items:
         item_key = str(default_item.get("key", "") or "")
@@ -184,7 +249,7 @@ def _normalize_rule_entry(key: str, raw: dict[str, Any] | None) -> dict[str, Any
     if not checkpoints:
         checkpoints = _build_checkpoints_from_items(rules)
 
-    return {
+    normalized = {
         "key": key,
         "title": str(payload.get("title", default.get("title", key)) or default.get("title", key)).strip()[:40],
         "objective": str(payload.get("objective", default.get("objective", "")) or default.get("objective", "")).strip()[:300],
@@ -192,6 +257,9 @@ def _normalize_rule_entry(key: str, raw: dict[str, Any] | None) -> dict[str, Any
         "llm_focus": str(payload.get("llm_focus", default.get("llm_focus", "")) or default.get("llm_focus", "")).strip()[:300],
         "rules": rules,
     }
+    for field in GUIDANCE_FIELDS:
+        normalized[field] = _normalize_guidance_list(key, payload, field)
+    return normalized
 
 
 def default_dimension_rulebook() -> dict[str, dict[str, Any]]:
@@ -241,6 +309,10 @@ def format_rule_checkpoints(checkpoints: list[str]) -> str:
     return "\n".join(f"- {item}" for item in checkpoints if str(item).strip())
 
 
+def format_rule_guidance_lines(items: list[str]) -> str:
+    return "\n".join(f"- {item}" for item in items if str(item).strip())
+
+
 def parse_dimension_rule_items_from_form(form_data, dimension_key: str) -> list[dict[str, Any]]:
     default_items = _default_rule_items(dimension_key)
     parsed: list[dict[str, Any]] = []
@@ -265,11 +337,14 @@ def parse_dimension_rule_items_from_form(form_data, dimension_key: str) -> list[
 
 
 __all__ = [
+    "DIMENSION_GUIDANCE_DEFAULTS",
     "DIMENSION_RULE_DEFAULTS",
+    "GUIDANCE_FIELDS",
     "default_dimension_rule",
     "default_dimension_rulebook",
     "dimension_rulebook_from_profile",
     "format_rule_checkpoints",
+    "format_rule_guidance_lines",
     "normalize_dimension_rulebook",
     "parse_dimension_rule_items_from_form",
     "reset_profile_dimension_rule",

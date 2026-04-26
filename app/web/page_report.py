@@ -294,27 +294,67 @@ def _rule_title_for_issue(issue: dict, review_dimensions: list[dict], prompt_sna
     return str(issue.get("category", "") or issue.get("title", "") or "规则引擎")
 
 
-def _issue_evidence_points(issue: dict, review_dimensions: list[dict]) -> list[str]:
+def _prompt_dimension_item(prompt_snapshot: dict, dimension_key: str) -> dict:
+    for item in list(prompt_snapshot.get("active_dimensions", []) or []):
+        if str(item.get("key", "") or "") == dimension_key:
+            return dict(item or {})
+    return {}
+
+
+def _issue_material_label(issue: dict) -> str:
+    material_name = str(issue.get("material_name", "") or "").strip()
+    if material_name:
+        return material_name
+    material_type = str(issue.get("material_type", "") or "").strip()
+    if material_type:
+        return type_label(material_type)
+    dimension_key = _issue_dimension_key(issue)
+    if dimension_key == "consistency":
+        return "跨材料比对"
+    if dimension_key == "online_filing":
+        return "在线填报"
+    return "规则归纳"
+
+
+def _issue_fix_actions(submission_id: str, case_id: str, dimension_key: str, issue: dict) -> str:
+    actions: list[str] = []
+    if submission_id:
+        actions.append(
+            f'<a class="button-secondary button-compact" href="/submissions/{escape_html(submission_id)}/materials">查看材料</a>'
+        )
+    if submission_id and case_id and dimension_key:
+        actions.append(
+            f'<a class="button-secondary button-compact" href="/submissions/{escape_html(submission_id)}/review-rules/{escape_html(dimension_key)}?case_id={escape_html(case_id)}">编辑规则</a>'
+        )
+    return f'<div class="inline-actions">{"".join(actions)}</div>' if actions else ""
+
+
+def _issue_evidence_points(issue: dict, review_dimensions: list[dict], prompt_snapshot: dict) -> list[str]:
     points: list[str] = []
     detail = _issue_text(issue, "desc", "message", "detail", fallback="")
     if detail:
-        normalized = (
-            detail.replace("；", "。")
-            .replace(";", "。")
-            .replace("，", "，")
-        )
-        for chunk in normalized.split("。"):
-            text = str(chunk).strip(" ，")
+        normalized = detail.replace("；", ". ").replace(";", ". ").replace("\n", ". ")
+        for chunk in normalized.split("."):
+            text = str(chunk).strip(" ：:")
             if text and text not in points:
                 points.append(text)
             if len(points) >= 3:
                 break
 
-    material_name = str(issue.get("material_name", "") or "").strip()
-    if material_name:
-        points.append(f"命中材料：{material_name}")
+    material_label = _issue_material_label(issue)
+    if material_label:
+        points.append(f"命中材料：{material_label}")
 
     dimension_key = _issue_dimension_key(issue)
+    prompt_item = _prompt_dimension_item(prompt_snapshot, dimension_key)
+    for target in list(prompt_item.get("evidence_targets", []) or []):
+        target_text = str(target).strip()
+        marker = f"重点回查：{target_text}"
+        if target_text and marker not in points:
+            points.append(marker)
+        if len(points) >= 5:
+            return points[:5]
+
     for item in review_dimensions:
         if str(item.get("key", "") or "") != dimension_key:
             continue
@@ -323,12 +363,18 @@ def _issue_evidence_points(issue: dict, review_dimensions: list[dict]) -> list[s
             if finding_text and finding_text not in points:
                 points.append(finding_text)
             if len(points) >= 5:
-                return points
+                return points[:5]
         break
     return points[:5]
 
 
-def _issue_explainer_board(issues: list[dict], review_dimensions: list[dict], prompt_snapshot: dict) -> str:
+def _issue_explainer_board(
+    issues: list[dict],
+    review_dimensions: list[dict],
+    prompt_snapshot: dict,
+    submission_id: str,
+    case_id: str,
+) -> str:
     if not issues:
         return empty_state("暂无重点问题", "当前没有需要优先解释的问题。")
 
@@ -336,8 +382,12 @@ def _issue_explainer_board(issues: list[dict], review_dimensions: list[dict], pr
     for index, issue in enumerate(issues[:8], start=1):
         title, action = _friendly_issue_summary(issue, [])
         _, tone = business_level(issue)
-        evidence_points = _issue_evidence_points(issue, review_dimensions)
+        dimension_key = _issue_dimension_key(issue)
+        prompt_item = _prompt_dimension_item(prompt_snapshot, dimension_key)
+        evidence_points = _issue_evidence_points(issue, review_dimensions, prompt_snapshot)
         evidence_html = "".join(f"<li>{escape_html(text)}</li>" for text in evidence_points) or "<li>-</li>"
+        rule_hint = str(prompt_item.get("llm_focus", "") or "").strip()
+        fix_actions = _issue_fix_actions(submission_id, case_id, dimension_key, issue)
         cards.append(
             '<article class="report-card">'
             '<div class="report-card-copy">'
@@ -346,15 +396,24 @@ def _issue_explainer_board(issues: list[dict], review_dimensions: list[dict], pr
             "</div>"
             '<div class="rule-checkpoint-list">'
             f"<p><strong>问题说明：</strong>{escape_html(_issue_text(issue, 'desc', 'message', 'detail', fallback='-'))}</p>"
+            f"<p><strong>命中材料：</strong>{escape_html(_issue_material_label(issue))}</p>"
             f"<p><strong>建议动作：</strong>{escape_html(action)}</p>"
+            f"<p><strong>规则关注点：</strong>{escape_html(rule_hint or '-')}</p>"
             f"<ul>{evidence_html}</ul>"
+            f"{fix_actions}"
             "</div>"
             "</article>"
         )
     return f'<div class="report-card-grid">{"".join(cards)}</div>'
 
 
-def _issue_snapshot_board(issues: list[dict], review_dimensions: list[dict], prompt_snapshot: dict) -> str:
+def _issue_snapshot_board(
+    issues: list[dict],
+    review_dimensions: list[dict],
+    prompt_snapshot: dict,
+    submission_id: str,
+    case_id: str,
+) -> str:
     if not issues:
         return empty_state("当前没有重点问题", "这次审查没有识别出需要优先展开说明的问题。")
 
@@ -362,14 +421,15 @@ def _issue_snapshot_board(issues: list[dict], review_dimensions: list[dict], pro
     for index, issue in enumerate(issues[:3], start=1):
         title, action = _friendly_issue_summary(issue, [])
         dimension_key = _issue_dimension_key(issue)
-        dimension_title = "-"
+        dimension_title_text = "-"
         for item in review_dimensions:
             if str(item.get("key", "") or "") == dimension_key:
-                dimension_title = str(item.get("title", "") or "-")
+                dimension_title_text = str(item.get("title", "") or "-")
                 break
-        evidence_points = _issue_evidence_points(issue, review_dimensions)
+        evidence_points = _issue_evidence_points(issue, review_dimensions, prompt_snapshot)
         first_evidence = evidence_points[0] if evidence_points else _issue_text(issue, "desc", "message", "detail", fallback="-")
         _, tone = business_level(issue)
+        fix_actions = _issue_fix_actions(submission_id, case_id, dimension_key, issue)
         cards.append(
             '<article class="report-card">'
             '<div class="report-card-copy">'
@@ -379,9 +439,11 @@ def _issue_snapshot_board(issues: list[dict], review_dimensions: list[dict], pro
             '<div class="rule-checkpoint-list">'
             f"<p><strong>哪里不对：</strong>{escape_html(_issue_text(issue, 'desc', 'message', 'detail', fallback='-'))}</p>"
             f"<p><strong>怎么发现的：</strong>{escape_html(first_evidence)}</p>"
-            f"<p><strong>对应规则：</strong>{escape_html(_rule_title_for_issue(issue, review_dimensions, prompt_snapshot))}</p>"
+            f"<p><strong>命中规则：</strong>{escape_html(_rule_title_for_issue(issue, review_dimensions, prompt_snapshot))}</p>"
             f"<p><strong>建议动作：</strong>{escape_html(action)}</p>"
-            f"<p><strong>命中维度：</strong>{escape_html(dimension_title)}</p>"
+            f"<p><strong>命中维度：</strong>{escape_html(dimension_title_text)}</p>"
+            f"<p><strong>回查位置：</strong>{escape_html(_issue_material_label(issue))}</p>"
+            f"{fix_actions}"
             "</div>"
             "</article>"
         )
@@ -393,13 +455,14 @@ def _review_method_table(prompt_snapshot: dict) -> str:
         [
             escape_html(str(item.get("title", "") or item.get("key", "-"))),
             escape_html(str(item.get("objective", "") or "-")),
+            escape_html("?".join(str(text).strip() for text in list(item.get("evidence_targets", []) or [])[:2]) or "-"),
             escape_html(str(item.get("llm_focus", "") or "-")),
         ]
         for item in list(prompt_snapshot.get("active_dimensions", []) or [])
     ]
     if not rows:
-        return empty_state("暂无审查规则", "当前结果没有保存审查规则快照。")
-    return table(["审查维度", "规则目标", "LLM 关注点"], rows)
+        return empty_state("??????", "???????????????")
+    return table(["????", "????", "????", "LLM ???"], rows)
 
 
 def _issue_trace_table(
@@ -410,7 +473,7 @@ def _issue_trace_table(
     case_id: str,
 ) -> str:
     if not issues:
-        return empty_state("当前未发现不足", "这次审查没有识别出需要优先展示的问题。")
+        return empty_state("???????", "???????????????????")
     dimension_map = {str(item.get("key", "") or ""): dict(item or {}) for item in review_dimensions}
     prompt_map = {
         str(item.get("key", "") or ""): dict(item or {})
@@ -426,25 +489,28 @@ def _issue_trace_table(
         findings = list(dimension_item.get("findings", []) or [])
         evidence = escape_html(_issue_text(issue, "desc", "message", "detail"))
         if findings:
-            evidence += f'<br><span class="table-subtext">依据：{escape_html(findings[0])}</span>'
-        if issue.get("material_name"):
-            evidence += f'<br><span class="table-subtext">材料：{escape_html(str(issue.get("material_name", "")))}</span>'
+            evidence += f'<br><span class="table-subtext">???{escape_html(findings[0])}</span>'
+        evidence += f'<br><span class="table-subtext">???{escape_html(_issue_material_label(issue))}</span>'
+        evidence_targets = list(prompt_item.get("evidence_targets", []) or [])
+        if evidence_targets:
+            evidence += f'<br><span class="table-subtext">?????{escape_html(evidence_targets[0])}</span>'
+        actions = _issue_fix_actions(submission_id, case_id, dimension_key, issue)
         rows.append(
             [
                 pill(severity_label(_issue_text(issue, "severity", fallback="minor")), status_tone(_issue_text(issue, "severity", fallback="minor"))),
                 escape_html(_issue_text(issue, "category", "title", "rule")),
                 _dimension_rule_link(submission_id, case_id, dimension_item) if dimension_item else "-",
-                escape_html(str(rule_item.get("title", "") or prompt_item.get("title", "") or dimension_item.get("title", "") or "规则引擎")),
+                escape_html(str(rule_item.get("title", "") or prompt_item.get("title", "") or dimension_item.get("title", "") or "????")),
                 evidence,
-                escape_html(_issue_text(issue, "suggest", fallback=str(prompt_item.get("llm_focus", "") or "建议结合原文复核并修正。"))),
+                escape_html(_issue_text(issue, "suggest", fallback=str(prompt_item.get("llm_focus", "") or "????????????"))) + (f"<br>{actions}" if actions else ""),
             ]
         )
-    return table(["级别", "发现的不足", "命中维度", "命中规则", "怎么发现的", "建议动作"], rows)
+    return table(["??", "?????", "????", "????", "?????", "????"], rows)
 
 
 def _dimension_evidence_board(review_dimensions: list[dict], prompt_snapshot: dict, submission_id: str, case_id: str) -> str:
     if not review_dimensions:
-        return empty_state("暂无证据链", "当前没有可展示的审查证据。")
+        return empty_state("?????", "?????????????")
     prompt_map = {
         str(item.get("key", "") or ""): dict(item or {})
         for item in list(prompt_snapshot.get("active_dimensions", []) or [])
@@ -454,6 +520,8 @@ def _dimension_evidence_board(review_dimensions: list[dict], prompt_snapshot: di
         prompt_item = prompt_map.get(str(item.get("key", "") or ""), {})
         findings = list(item.get("findings", []) or [])
         finding_list = "".join(f"<li>{escape_html(text)}</li>" for text in findings[:4]) or "<li>-</li>"
+        target_list = "".join(f"<li>{escape_html(text)}</li>" for text in list(prompt_item.get("evidence_targets", []) or [])[:3]) or "<li>-</li>"
+        failure_list = "".join(f"<li>{escape_html(text)}</li>" for text in list(prompt_item.get("common_failures", []) or [])[:3]) or "<li>-</li>"
         cards.append(
             '<article class="report-card">'
             '<div class="report-card-copy">'
@@ -462,9 +530,11 @@ def _dimension_evidence_board(review_dimensions: list[dict], prompt_snapshot: di
             "</div>"
             '<div class="rule-checkpoint-list">'
             f"<p>{escape_html(str(item.get('summary', '') or '-'))}</p>"
+            f"<p><strong>????</strong></p><ul>{target_list}</ul>"
             f"<ul>{finding_list}</ul>"
-            f"<p><strong>规则目标：</strong>{escape_html(str(prompt_item.get('objective', '') or '-'))}</p>"
-            f"<p><strong>LLM 关注点：</strong>{escape_html(str(prompt_item.get('llm_focus', '') or '-'))}</p>"
+            f"<p><strong>??????</strong></p><ul>{failure_list}</ul>"
+            f"<p><strong>?????</strong>{escape_html(str(prompt_item.get('objective', '') or '-'))}</p>"
+            f"<p><strong>LLM ????</strong>{escape_html(str(prompt_item.get('llm_focus', '') or '-'))}</p>"
             "</div>"
             "</article>"
         )
@@ -590,10 +660,10 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
 
     profile_pairs = review_profile_summary(review_profile)
     friendly_diagnosis = _friendly_diagnosis_panel(issues, review_dimensions, materials)
-    issue_snapshot = _issue_snapshot_board(issues, review_dimensions, prompt_snapshot)
+    issue_snapshot = _issue_snapshot_board(issues, review_dimensions, prompt_snapshot, source_submission_id, case_id)
     business_issue_board = _business_issue_board(issues)
     source_issue_board = _issue_source_board(issues)
-    issue_explainer = _issue_explainer_board(issues, review_dimensions, prompt_snapshot)
+    issue_explainer = _issue_explainer_board(issues, review_dimensions, prompt_snapshot, source_submission_id, case_id)
     issue_trace = _issue_trace_table(issues, review_dimensions, prompt_snapshot, source_submission_id, case_id)
     evidence_board = _dimension_evidence_board(review_dimensions, prompt_snapshot, source_submission_id, case_id)
     method_table = _review_method_table(prompt_snapshot)

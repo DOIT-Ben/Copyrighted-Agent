@@ -84,9 +84,11 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
     assert "怎么判定出来的" in report_page.text
     assert "用了哪些审查规则" in report_page.text
     assert "哪里不对" in report_page.text
-    assert "对应规则" in report_page.text
+    assert "命中规则" in report_page.text
     assert "审查维度" in report_page.text
     assert "在线填报信息审查" in report_page.text
+    assert "查看材料" in report_page.text
+    assert "编辑规则" in report_page.text
     assert "更多信息" in report_page.text
     assert "保存为 JSON" in report_page.text
     assert "PDF" in report_page.text
@@ -237,6 +239,9 @@ def test_review_rule_page_can_save_rule_and_persist_to_submission(api_client, mo
             "title": "源码校验规则",
             "objective": "重点检查源码可读性、命名一致性和版本信号。",
             "checkpoints": "- 源码需要可读\n- 名称和版本应一致\n- 技术描述不能明显冲突",
+            "evidence_targets": "- 源代码 PDF 页眉\n- 前 30 页与后 30 页截取",
+            "common_failures": "- 密码和 token 未脱敏\n- 页数截取不完整",
+            "operator_notes": "- 先修脱敏\n- 再补关键逻辑片段",
             "llm_focus": "优先总结源码相关高风险问题。",
             "rule_source_code_item_code_desensitized_enabled": "1",
             "rule_source_code_item_code_desensitized_title": "源码脱敏必须完成",
@@ -255,6 +260,9 @@ def test_review_rule_page_can_save_rule_and_persist_to_submission(api_client, mo
     assert source_rule["objective"] == "重点检查源码可读性、命名一致性和版本信号。"
     assert source_rule["llm_focus"] == "优先总结源码相关高风险问题。"
     assert source_rule["checkpoints"][:2] == ["源码需要可读", "名称和版本应一致"]
+    assert source_rule["evidence_targets"][:2] == ["源代码 PDF 页眉", "前 30 页与后 30 页截取"]
+    assert source_rule["common_failures"][:2] == ["密码和 token 未脱敏", "页数截取不完整"]
+    assert source_rule["operator_notes"][:2] == ["先修脱敏", "再补关键逻辑片段"]
     desensitized_rule = next(item for item in source_rule["rules"] if item["key"] == "code_desensitized")
     assert desensitized_rule["title"] == "源码脱敏必须完成"
     assert desensitized_rule["severity"] == "severe"

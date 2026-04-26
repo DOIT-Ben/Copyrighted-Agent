@@ -153,9 +153,12 @@ def parse_review_profile_form(form_data, *, fallback: dict[str, Any] | None = No
         title = str(form_data.get(f"rule_{key}_title", "") or "").strip()
         objective = str(form_data.get(f"rule_{key}_objective", "") or "").strip()
         checkpoints_raw = str(form_data.get(f"rule_{key}_checkpoints", "") or "").strip()
+        evidence_targets_raw = str(form_data.get(f"rule_{key}_evidence_targets", "") or "").strip()
+        common_failures_raw = str(form_data.get(f"rule_{key}_common_failures", "") or "").strip()
+        operator_notes_raw = str(form_data.get(f"rule_{key}_operator_notes", "") or "").strip()
         llm_focus = str(form_data.get(f"rule_{key}_llm_focus", "") or "").strip()
         rule_items = parse_dimension_rule_items_from_form(form_data, key)
-        if not any([title, objective, checkpoints_raw, llm_focus]):
+        if not any([title, objective, checkpoints_raw, evidence_targets_raw, common_failures_raw, operator_notes_raw, llm_focus]):
             current = dict(rulebook.get(key, {}) or {})
             current["rules"] = rule_items
             rulebook[key] = current
@@ -172,6 +175,12 @@ def parse_review_profile_form(form_data, *, fallback: dict[str, Any] | None = No
             current["objective"] = objective
         if checkpoints:
             current["checkpoints"] = checkpoints
+        if evidence_targets_raw:
+            current["evidence_targets"] = [line.strip(" -\t") for line in evidence_targets_raw.splitlines() if line.strip(" -\t")]
+        if common_failures_raw:
+            current["common_failures"] = [line.strip(" -\t") for line in common_failures_raw.splitlines() if line.strip(" -\t")]
+        if operator_notes_raw:
+            current["operator_notes"] = [line.strip(" -\t") for line in operator_notes_raw.splitlines() if line.strip(" -\t")]
         if llm_focus:
             current["llm_focus"] = llm_focus
         current["rules"] = rule_items

@@ -13,6 +13,13 @@ def _safe_text(value, *, fallback: str = "-", limit: int = 800) -> str:
     return text[:limit]
 
 
+def _safe_lines(values, *, fallback: str = "  - None", limit: int = 6, item_limit: int = 180) -> str:
+    items = [str(value).strip() for value in list(values or []) if str(value).strip()]
+    if not items:
+        return fallback
+    return "\n".join(f"  - {_safe_text(item, fallback='-', limit=item_limit)}" for item in items[:limit])
+
+
 def _issue_line(issue: dict) -> str:
     severity = _safe_text(issue.get("severity"), fallback="minor", limit=24)
     title = _safe_text(issue.get("title") or issue.get("rule") or issue.get("category"), fallback="issue", limit=80)
@@ -22,16 +29,8 @@ def _issue_line(issue: dict) -> str:
 
 def _dimension_block(dimension_key: str, rule: dict) -> str:
     checkpoints = list(rule.get("checkpoints") or [])
-    rule_items = [
-        item
-        for item in list(rule.get("rules") or [])
-        if bool(item.get("enabled", True))
-    ]
-    checkpoint_lines = "\n".join(
-        f"  - {_safe_text(item, fallback='-', limit=160)}"
-        for item in checkpoints[:8]
-        if str(item or "").strip()
-    ) or "  - None"
+    rule_items = [item for item in list(rule.get("rules") or []) if bool(item.get("enabled", True))]
+    checkpoint_lines = _safe_lines(checkpoints, fallback="  - None", limit=8, item_limit=160)
     rule_item_lines = "\n".join(
         f"  - [{_safe_text(item.get('severity'), fallback='moderate', limit=20)}] "
         f"{_safe_text(item.get('category'), fallback='general', limit=40)} / "
@@ -39,6 +38,9 @@ def _dimension_block(dimension_key: str, rule: dict) -> str:
         f"{_safe_text(item.get('prompt_hint'), fallback='-', limit=200)}"
         for item in rule_items[:12]
     ) or "  - None"
+    evidence_lines = _safe_lines(rule.get("evidence_targets"), limit=6)
+    failure_lines = _safe_lines(rule.get("common_failures"), limit=6)
+    operator_lines = _safe_lines(rule.get("operator_notes"), limit=4)
     return "\n".join(
         [
             f"[{dimension_key}] {_safe_text(rule.get('title') or dimension_title(dimension_key), fallback=dimension_key, limit=80)}",
@@ -47,6 +49,12 @@ def _dimension_block(dimension_key: str, rule: dict) -> str:
             checkpoint_lines,
             "Structured rules:",
             rule_item_lines,
+            "Evidence targets:",
+            evidence_lines,
+            "Common failure patterns:",
+            failure_lines,
+            "Operator notes:",
+            operator_lines,
             f"LLM focus: {_safe_text(rule.get('llm_focus'), fallback='-', limit=280)}",
         ]
     )
@@ -71,6 +79,7 @@ def build_ai_prompt_snapshot(
             "The material has already been desensitized and is safe for LLM processing.",
             "You must stay grounded in the provided payload and rule findings.",
             "Respect the active review profile, especially enabled dimensions, focus mode, strictness, custom instruction, and dimension rulebook.",
+            "When you explain a problem, say which material to inspect, which rule pattern was triggered, and what the operator should fix first.",
             'Return exactly one JSON object and nothing else.',
             'Required JSON keys: "summary", "conclusion", "resolution".',
             'Set "resolution" to "minimax_bridge_success".',
@@ -133,6 +142,9 @@ def build_ai_prompt_snapshot(
                     }
                     for item in list(active_rulebook.get(key, {}).get("rules") or [])[:16]
                 ],
+                "evidence_targets": list(active_rulebook.get(key, {}).get("evidence_targets") or [])[:8],
+                "common_failures": list(active_rulebook.get(key, {}).get("common_failures") or [])[:8],
+                "operator_notes": list(active_rulebook.get(key, {}).get("operator_notes") or [])[:6],
                 "llm_focus": _safe_text(active_rulebook.get(key, {}).get("llm_focus"), fallback="-", limit=280),
             }
             for key in enabled_dimensions

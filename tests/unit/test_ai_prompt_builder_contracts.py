@@ -30,10 +30,16 @@ def test_build_ai_prompt_snapshot_includes_profile_dimensions_and_output_contrac
     assert "Dimension rulebook:" in snapshot["user_prompt"]
     assert "Desensitized case payload JSON:" in snapshot["user_prompt"]
     assert "Rule engine findings:" in snapshot["user_prompt"]
+    assert "Evidence targets:" in snapshot["user_prompt"]
+    assert "Common failure patterns:" in snapshot["user_prompt"]
     assert snapshot["review_profile_summary"]["focus_mode"] == "source_code_first"
     assert snapshot["review_profile_summary"]["strictness"] == "strict"
     assert snapshot["review_profile_summary"]["enabled_dimensions"] == ["identity", "source_code", "ai"]
     assert len(snapshot["active_dimensions"]) == 3
+    source_dimension = next(item for item in snapshot["active_dimensions"] if item["key"] == "source_code")
+    assert source_dimension["evidence_targets"]
+    assert source_dimension["common_failures"]
+    assert source_dimension["operator_notes"]
 
 
 @pytest.mark.unit
@@ -86,3 +92,27 @@ def test_build_ai_prompt_snapshot_supports_online_filing_dimension():
     keys = [item["key"] for item in snapshot["active_dimensions"]]
     assert "online_filing" in keys
     assert "在线填报信息审查" in snapshot["user_prompt"]
+
+
+@pytest.mark.unit
+@pytest.mark.contract
+@pytest.mark.review
+def test_dimension_rulebook_normalizes_guidance_lists():
+    dimension_rulebook_from_profile = require_symbol("app.core.services.review_rulebook", "dimension_rulebook_from_profile")
+
+    rulebook = dimension_rulebook_from_profile(
+        {
+            "dimension_rulebook": {
+                "consistency": {
+                    "evidence_targets": "- 信息采集表软件名称\n- 协议主体排序",
+                    "common_failures": ["名称不一致", "顺序不一致"],
+                    "operator_notes": "- 先统一名称\n- 再统一顺序",
+                }
+            }
+        }
+    )
+
+    entry = rulebook["consistency"]
+    assert entry["evidence_targets"][:2] == ["信息采集表软件名称", "协议主体排序"]
+    assert entry["common_failures"][:2] == ["名称不一致", "顺序不一致"]
+    assert entry["operator_notes"][:2] == ["先统一名称", "再统一顺序"]
