@@ -57,8 +57,12 @@ def test_change_material_type_creates_correction_record(api_client, mode_a_zip_p
 
     submission_page = api_client.get(f"/submissions/{submission_id}")
     assert submission_page.status_code == 200
-    assert "更正审计" in submission_page.text
-    assert "更正材料类型" in submission_page.text
+    assert "更多信息" in submission_page.text
+
+    operator_page = api_client.get(f"/submissions/{submission_id}/operator")
+    assert operator_page.status_code == 200
+    assert "更正审计" in operator_page.text
+    assert "更正材料类型" in operator_page.text
 
 
 @pytest.mark.integration

@@ -328,3 +328,43 @@ def test_submission_operator_can_save_online_filing_and_refresh_case_report(api_
     assert report_page.status_code == 200
     assert "在线填报信息审查" in report_page.text
     assert "企业法人" in report_page.text
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
+def test_batch_upload_flow_exposes_batch_report_and_registry_pages(api_client, mode_b_zip_path):
+    with mode_b_zip_path.open("rb") as handle:
+        response = api_client.post(
+            "/upload",
+            files={"file": (mode_b_zip_path.name, handle, "application/zip")},
+            data={"mode": "batch_same_material", "review_strategy": "auto_review"},
+        )
+
+    assert response.status_code == 302
+    location = response.headers.get("Location", "")
+    assert location.startswith("/submissions/")
+
+    submission_page = api_client.get(location)
+    assert submission_page.status_code == 200
+    assert "导入摘要" in submission_page.text
+    assert "结果去向" in submission_page.text
+    assert "产物浏览" in submission_page.text
+    assert "导出中心" in submission_page.text
+
+    submission_id = location.rsplit("/", 1)[-1]
+    submission_payload = api_client.get(f"/api/submissions/{submission_id}").json()
+    assert submission_payload["mode"] == "batch_same_material"
+    assert submission_payload["report_ids"]
+    assert len(submission_payload["material_ids"]) == 3
+
+    exports_page = api_client.get(f"/submissions/{submission_id}/exports")
+    assert exports_page.status_code == 200
+    assert "导出中心" in exports_page.text
+    assert "下载批次包" in exports_page.text
+
+    report_page = api_client.get(f"/reports/{submission_payload['report_ids'][0]}")
+    assert report_page.status_code == 200
+    assert "审查结果" in report_page.text
+    assert "文件结果" in report_page.text
+    assert "报告上下文" in report_page.text
