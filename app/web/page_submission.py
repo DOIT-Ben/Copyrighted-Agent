@@ -1010,19 +1010,17 @@ def render_submission_detail(
     import_digest = "".join(
         [
             _summary_tile("导入文件", str(submission.get("filename", "") or "-"), "当前导入的 ZIP 包"),
-            _summary_tile("导入模式", mode_label(str(submission.get("mode", ""))), "当前批次的整理方式"),
+            _summary_tile("导入模式", mode_label(str(submission.get("mode", ""))), "这次材料按什么方式整理"),
             _summary_tile("审查策略", review_strategy_label(str(submission.get("review_strategy", "auto_review"))), "决定直接审查还是先脱敏后继续"),
-            _summary_tile("当前阶段", review_stage_label(str(submission.get("review_stage", "review_completed"))), "当前批次所处的业务阶段"),
-            _summary_tile("材料数", str(len(materials)), "当前批次识别出的材料数量"),
-            _summary_tile("项目数", str(len(cases)), "当前形成的项目分组"),
+            _summary_tile("当前阶段", review_stage_label(str(submission.get("review_stage", "review_completed"))), "先看这里，就知道当前卡在哪一步"),
         ]
     )
 
-    workflow_body = (
+    destination_body = (
         '<div class="summary-grid">'
-        + _summary_tile("当前状态", status_label(submission.get("status", "unknown")), "先看批次是否已完成或仍待处理")
-        + _summary_tile("待继续审查", str(len(pending_cases)), "仅先脱敏后继续模式下会出现")
-        + _summary_tile("下一步", "查看产物或导出", "主页面不再堆叠长表和长表单")
+        + _summary_tile("当前状态", status_label(submission.get("status", "unknown")), "先确认批次是否已完成、处理中，或仍待人工推进")
+        + _summary_tile("待继续审查", str(len(pending_cases)), "只有先脱敏后继续模式下才会出现")
+        + _summary_tile("结果去向", "三个子页面", "材料、人工处理、导出入口都放到独立页面")
         + "</div>"
         + '<div class="inline-actions">'
         + f'<a class="button-secondary" href="/submissions/{submission_id}/materials">{icon("cluster", "icon icon-sm")}产物浏览</a>'
@@ -1039,16 +1037,25 @@ def render_submission_detail(
         else empty_state("当前没有优先复核材料", "如需查看全部材料和脱敏件，请进入产物浏览页。")
     )
 
-    audit_body = (
-        table(["操作类型", "对象", "备注", "时间"], data["correction_rows"])
-        if data["correction_rows"]
-        else empty_state("暂无更正记录", "人工纠偏和继续审查发生后，这里会保留完整留痕。")
-    )
     review_profile_body = list_pairs(review_profile_summary(review_profile), css_class="dossier-list dossier-list-single")
     review_rule_links = _review_rule_links(str(submission.get("id", "")), review_profile)
+    compact_notes = []
+    if pending_cases:
+        compact_notes.append(f"有 {len(pending_cases)} 个项目还在等待继续审查。")
+    if data["needs_review_items"]:
+        compact_notes.append(f"有 {len(data['needs_review_items'])} 份材料建议优先人工复核。")
+    if data["correction_rows"]:
+        compact_notes.append(f"当前批次已有 {len(data['correction_rows'])} 条人工处理留痕。")
+    compact_note_body = (
+        '<div class="rule-checkpoint-list"><ul>'
+        + "".join(f"<li>{escape_html(item)}</li>" for item in compact_notes[:4])
+        + "</ul></div>"
+        if compact_notes
+        else empty_state("当前没有额外提醒", "这个批次已经具备继续查看结果或导出的基本条件。")
+    )
     advanced_groups = '<div class="operator-group-grid">'
     advanced_groups += _fold_group(1, "审查配置", "查看当前维度和规则入口。", review_profile_body + review_rule_links, open_by_default=False)
-    advanced_groups += _fold_group(2, "更正审计", "人工修正和重跑都会在这里留痕。", audit_body, open_by_default=False)
+    advanced_groups += _fold_group(2, "批次提醒", "只保留当前还值得你注意的补充说明。", compact_note_body, open_by_default=False)
     advanced_groups += "</div>"
 
     content = f"""
@@ -1060,9 +1067,9 @@ def render_submission_detail(
     </section>
     <section class="dashboard-grid">
       {panel('导入摘要', f'<div class="summary-grid">{import_digest}</div>', kicker='批次摘要', extra_class='span-12 panel-soft', icon_name='file', description='主页面只保留这个批次的关键概览。', panel_id='import-digest')}
-      {panel('业务流程', workflow_body, kicker='下一步', extra_class='span-12', icon_name='spark', description='首屏只保留当前阶段和去往子页面的动作入口。', panel_id='review-workflow')}
+      {panel('结果去向', destination_body, kicker='下一步', extra_class='span-12', icon_name='spark', description='首页只保留去往材料、人工处理和导出的入口，不再堆太多解释。', panel_id='review-workflow')}
       {panel('待复核队列', needs_review_body, kicker='优先处理', extra_class='span-12', icon_name='alert', description='优先确认这些材料，再决定是否进入人工处理或继续审查。', panel_id='needs-review')}
-      {panel('更多信息', advanced_groups, kicker='按需展开', extra_class='span-12', icon_name='search', description='审查配置和操作留痕都放到这里。', panel_id='submission-more')}
+      {panel('更多信息', advanced_groups, kicker='按需展开', extra_class='span-12', icon_name='search', description='这里只保留少量补充信息，不再展示冗长列表。', panel_id='submission-more')}
     </section>
     """
 
