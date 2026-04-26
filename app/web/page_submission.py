@@ -87,6 +87,22 @@ def _quality_bucket_label(value: str) -> str:
     return QUALITY_BUCKET_LABELS.get(str(value or "").strip(), value or "待判断")
 
 
+def _fold_group(index: int, title: str, note: str, body: str, *, open_by_default: bool = False) -> str:
+    open_attr = " open" if open_by_default else ""
+    return (
+        f'<details class="operator-group"{open_attr}>'
+        "<summary>"
+        f'<span class="operator-group-index">{index}</span>'
+        "<div>"
+        f"<strong>{escape_html(title)}</strong>"
+        f"<small>{escape_html(note)}</small>"
+        "</div>"
+        "</summary>"
+        f'<div class="control-grid">{body}</div>'
+        "</details>"
+    )
+
+
 def _build_parse_lookup(parse_results: list[dict]) -> dict[str, dict]:
     lookup: dict[str, dict] = {}
     for item in parse_results:
@@ -965,6 +981,110 @@ def render_submission_operator_page(
             ("#operator-console", "人工干预台", "wrench"),
             ("#correction-audit", "更正审计", "clock"),
         ],
+    )
+
+
+def render_submission_detail(
+    submission: dict,
+    materials: list[dict],
+    cases: list[dict],
+    reports: list[dict],
+    parse_results: list[dict],
+    notice: dict | None = None,
+) -> str:
+    data = _submission_view_data(submission, materials, cases, reports, parse_results)
+    submission_id = escape_html(submission.get("id", ""))
+    pending_cases = _pending_manual_cases(cases)
+    review_profile = normalize_review_profile(submission.get("review_profile", {}))
+
+    workspace_notice = ""
+    if notice:
+        workspace_notice = notice_banner(
+            notice.get("title", "已更新"),
+            notice.get("message", "当前批次页面已刷新。"),
+            tone=notice.get("tone", "info"),
+            icon_name=notice.get("icon_name", "check"),
+            meta=notice.get("meta"),
+        )
+
+    import_digest = "".join(
+        [
+            _summary_tile("导入文件", str(submission.get("filename", "") or "-"), "当前导入的 ZIP 包"),
+            _summary_tile("导入模式", mode_label(str(submission.get("mode", ""))), "当前批次的整理方式"),
+            _summary_tile("审查策略", review_strategy_label(str(submission.get("review_strategy", "auto_review"))), "决定直接审查还是先脱敏后继续"),
+            _summary_tile("当前阶段", review_stage_label(str(submission.get("review_stage", "review_completed"))), "当前批次所处的业务阶段"),
+            _summary_tile("材料数", str(len(materials)), "当前批次识别出的材料数量"),
+            _summary_tile("项目数", str(len(cases)), "当前形成的项目分组"),
+        ]
+    )
+
+    workflow_body = (
+        '<div class="summary-grid">'
+        + _summary_tile("当前状态", status_label(submission.get("status", "unknown")), "先看批次是否已完成或仍待处理")
+        + _summary_tile("待继续审查", str(len(pending_cases)), "仅先脱敏后继续模式下会出现")
+        + _summary_tile("下一步", "查看产物或导出", "主页面不再堆叠长表和长表单")
+        + "</div>"
+        + '<div class="inline-actions">'
+        + f'<a class="button-secondary" href="/submissions/{submission_id}/materials">{icon("cluster", "icon icon-sm")}产物浏览</a>'
+        + f'<a class="button-secondary" href="/submissions/{submission_id}/operator">{icon("wrench", "icon icon-sm")}人工干预台</a>'
+        + f'<a class="button-secondary" href="/submissions/{submission_id}/exports">{icon("download", "icon icon-sm")}导出中心</a>'
+        + "</div>"
+    )
+
+    needs_review_body = (
+        '<div class="summary-grid">'
+        + "".join(_summary_tile(name, "待复核", note) for name, note in data["needs_review_items"][:4])
+        + "</div>"
+        if data["needs_review_items"]
+        else empty_state("当前没有优先复核材料", "如需查看全部材料和脱敏件，请进入产物浏览页。")
+    )
+
+    audit_body = (
+        table(["操作类型", "对象", "备注", "时间"], data["correction_rows"])
+        if data["correction_rows"]
+        else empty_state("暂无更正记录", "人工纠偏和继续审查发生后，这里会保留完整留痕。")
+    )
+    review_profile_body = list_pairs(review_profile_summary(review_profile), css_class="dossier-list dossier-list-single")
+    review_rule_links = _review_rule_links(str(submission.get("id", "")), review_profile)
+    advanced_groups = '<div class="operator-group-grid">'
+    advanced_groups += _fold_group(1, "审查配置", "查看当前维度和规则入口。", review_profile_body + review_rule_links, open_by_default=False)
+    advanced_groups += _fold_group(2, "更正审计", "人工修正和重跑都会在这里留痕。", audit_body, open_by_default=False)
+    advanced_groups += "</div>"
+
+    content = f"""
+    <section class="kpi-grid">
+      {metric_card('材料数', str(len(materials)), '当前批次识别出的材料数量', 'info', icon_name='file')}
+      {metric_card('项目数', str(len(cases)), '当前批次形成的项目数量', 'success', icon_name='lock')}
+      {metric_card('报告数', str(len(reports)), '当前可查看的项目级报告数量', 'neutral', icon_name='report')}
+      {metric_card('待复核队列', str(len(data['needs_review_items'])), '需要优先人工确认的材料数量', 'warning' if data['needs_review_items'] else 'success', icon_name='alert')}
+    </section>
+    <section class="dashboard-grid">
+      {panel('导入摘要', f'<div class="summary-grid">{import_digest}</div>', kicker='批次摘要', extra_class='span-12 panel-soft', icon_name='file', description='主页面只保留这个批次的关键概览。', panel_id='import-digest')}
+      {panel('业务流程', workflow_body, kicker='下一步', extra_class='span-12', icon_name='spark', description='首屏只保留当前阶段和去往子页面的动作入口。', panel_id='review-workflow')}
+      {panel('待复核队列', needs_review_body, kicker='优先处理', extra_class='span-12', icon_name='alert', description='优先确认这些材料，再决定是否进入人工处理或继续审查。', panel_id='needs-review')}
+      {panel('更多信息', advanced_groups, kicker='按需展开', extra_class='span-12', icon_name='search', description='审查配置和操作留痕都放到这里。', panel_id='submission-more')}
+    </section>
+    """
+
+    return layout(
+        title=submission.get("filename", "批次详情"),
+        active_nav="submissions",
+        header_tag="批次详情",
+        header_title=submission.get("filename", "批次详情"),
+        header_subtitle="首页只保留概览、阶段和入口，细项信息按需展开。",
+        header_meta=_submission_header_meta(submission, cases),
+        content=content,
+        header_note="如果当前是“先脱敏后继续审查”模式，请先去产物浏览页下载脱敏件，再到人工干预台回传脱敏包或继续审查。",
+        page_links=[
+            ("#import-digest", "导入摘要", "file"),
+            ("#review-workflow", "业务流程", "spark"),
+            ("#needs-review", "待复核队列", "alert"),
+            ("#submission-more", "更多信息", "search"),
+            (f"/submissions/{submission.get('id', '')}/materials", "产物浏览", "cluster"),
+            (f"/submissions/{submission.get('id', '')}/operator", "人工干预台", "wrench"),
+            (f"/submissions/{submission.get('id', '')}/exports", "导出中心", "download"),
+        ],
+        workspace_notice=workspace_notice,
     )
 
 
