@@ -387,6 +387,51 @@ def _issue_fix_actions(submission_id: str, case_id: str, dimension_key: str, iss
     return f'<div class="inline-actions">{"".join(actions)}</div>' if actions else ""
 
 
+def _issue_precision_hints(issue: dict, prompt_snapshot: dict) -> list[str]:
+    rule_key = str(issue.get("rule_key", "") or "").strip().lower()
+    prompt_item = _prompt_dimension_item(prompt_snapshot, _issue_dimension_key(issue))
+    hint_map = {
+        "software_name_present": ["信息采集表的软件名称字段", "设计文档封面或页眉", "源代码页眉"],
+        "version_present": ["信息采集表版本号字段", "设计文档页眉版本号", "源代码页眉版本号"],
+        "company_present": ["信息采集表申请主体字段", "合作协议主体名称", "在线填报主体字段"],
+        "missing_fields_listed": ["信息采集表首页基础字段", "软件名称/版本号/申请主体字段"],
+        "software_name_exact_match": ["信息采集表的软件名称字段", "设计文档封面或页眉", "源代码页眉", "合作协议标题或首页主体"],
+        "version_exact_match": ["信息采集表版本号字段", "设计文档页眉版本号", "源代码页眉版本号", "合作协议中的版本号"],
+        "completion_date_match": ["信息采集表开发完成日期", "合作协议日期字段", "在线填报完成日期"],
+        "party_order_match": ["合作协议甲乙方顺序", "信息采集表申请人顺序", "在线填报申请人顺序"],
+        "cross_material_terms_match": ["设计文档功能章节", "协议与信息采集表中的术语写法", "源代码中的核心命名"],
+        "doc_page_count": ["说明文档目录与正文总页数", "说明文档页码区间"],
+        "doc_required_sections": ["说明文档“运行环境”章节", "说明文档“安装说明/初始化步骤”章节"],
+        "doc_terms_consistent": ["说明文档中的系统/平台/APP术语", "标题、目录和正文中的名称写法"],
+        "doc_header_footer_valid": ["说明文档页眉", "说明文档页脚连续页码"],
+        "doc_ui_screenshots_valid": ["说明文档截图区域", "截图顶部状态栏和底部导航条"],
+        "doc_text_quality": ["说明文档正文段落", "术语、错别字和描述完整度"],
+        "code_desensitized": ["源代码中的配置常量", "数据库连接信息", "Token/手机号/邮箱等敏感值"],
+        "code_format_clean": ["源代码 PDF 行号区域", "行首缩进和连续空行"],
+        "code_page_strategy": ["源代码 PDF 页码标记", "前30页与后30页截取范围"],
+        "code_logic_supports_doc": ["说明文档功能章节", "对应核心函数或入口逻辑"],
+        "code_comment_ratio_reasonable": ["源代码注释段落", "核心代码与注释比例"],
+        "agreement_alias_consistent": ["合作协议甲乙方代称", "全文主体称谓"],
+        "agreement_party_order": ["合作协议甲乙方顺序", "信息采集表申请人顺序"],
+        "agreement_key_people": ["合作协议项目成员段落", "指导老师/负责人信息"],
+        "agreement_dates_valid": ["合作协议签署日期", "开发完成日期与申请日期"],
+        "agreement_stamp_signature": ["合作协议签章页", "手写签名位置"],
+        "agreement_approval_sheet": ["合作协议附件审批表", "合同类型勾选项"],
+        "agreement_typo_terms": ["合作协议正文术语", "签订/签定等高频词"],
+        "online_category_valid": ["在线填报软件分类字段"],
+        "online_development_mode_valid": ["在线填报开发方式字段"],
+        "online_subject_type_valid": ["在线填报主体类型字段"],
+        "online_address_precise": ["在线填报地址字段", "电子证书地址字段"],
+        "online_dates_consistent": ["在线填报完成日期", "在线填报申请日期", "信息采集表日期字段"],
+    }
+    hints = list(hint_map.get(rule_key, []))
+    for target in list(prompt_item.get("evidence_targets", []) or []):
+        target_text = str(target).strip()
+        if target_text and target_text not in hints:
+            hints.append(target_text)
+    return hints[:4]
+
+
 def _issue_evidence_points(issue: dict, review_dimensions: list[dict], prompt_snapshot: dict) -> list[str]:
     points: list[str] = []
     detail = _issue_text(issue, "desc", "message", "detail", fallback="")
@@ -405,6 +450,12 @@ def _issue_evidence_points(issue: dict, review_dimensions: list[dict], prompt_sn
 
     dimension_key = _issue_dimension_key(issue)
     prompt_item = _prompt_dimension_item(prompt_snapshot, dimension_key)
+    for hint in _issue_precision_hints(issue, prompt_snapshot):
+        marker = f"定位：{hint}"
+        if marker not in points:
+            points.append(marker)
+        if len(points) >= 5:
+            return points[:5]
     for target in list(prompt_item.get("evidence_targets", []) or []):
         target_text = str(target).strip()
         marker = f"重点回查：{target_text}"
@@ -531,7 +582,7 @@ def _issue_trace_table(
     case_id: str,
 ) -> str:
     if not issues:
-        return empty_state("???????", "???????????????????")
+        return empty_state("当前未发现不足", "这次审查没有识别出需要优先展示的问题。")
     dimension_map = {str(item.get("key", "") or ""): dict(item or {}) for item in review_dimensions}
     prompt_map = {
         str(item.get("key", "") or ""): dict(item or {})
@@ -547,23 +598,26 @@ def _issue_trace_table(
         findings = list(dimension_item.get("findings", []) or [])
         evidence = escape_html(_issue_text(issue, "desc", "message", "detail"))
         if findings:
-            evidence += f'<br><span class="table-subtext">???{escape_html(findings[0])}</span>'
-        evidence += f'<br><span class="table-subtext">???{escape_html(_issue_material_label(issue))}</span>'
+            evidence += f'<br><span class="table-subtext">依据：{escape_html(findings[0])}</span>'
+        evidence += f'<br><span class="table-subtext">材料：{escape_html(_issue_material_label(issue))}</span>'
+        precision_hints = _issue_precision_hints(issue, prompt_snapshot)
+        if precision_hints:
+            evidence += f'<br><span class="table-subtext">定位：{escape_html(precision_hints[0])}</span>'
         evidence_targets = list(prompt_item.get("evidence_targets", []) or [])
         if evidence_targets:
-            evidence += f'<br><span class="table-subtext">?????{escape_html(evidence_targets[0])}</span>'
+            evidence += f'<br><span class="table-subtext">建议回查：{escape_html(evidence_targets[0])}</span>'
         actions = _issue_fix_actions(submission_id, case_id, dimension_key, issue)
         rows.append(
             [
                 pill(severity_label(_issue_text(issue, "severity", fallback="minor")), status_tone(_issue_text(issue, "severity", fallback="minor"))),
                 escape_html(_issue_text(issue, "category", "title", "rule")),
                 _dimension_rule_link(submission_id, case_id, dimension_item) if dimension_item else "-",
-                escape_html(str(rule_item.get("title", "") or prompt_item.get("title", "") or dimension_item.get("title", "") or "????")),
+                escape_html(str(rule_item.get("title", "") or prompt_item.get("title", "") or dimension_item.get("title", "") or "规则引擎")),
                 evidence,
-                escape_html(_issue_text(issue, "suggest", fallback=str(prompt_item.get("llm_focus", "") or "????????????"))) + (f"<br>{actions}" if actions else ""),
+                escape_html(_issue_text(issue, "suggest", fallback=str(prompt_item.get("llm_focus", "") or "建议结合原文复核并修正。"))) + (f"<br>{actions}" if actions else ""),
             ]
         )
-    return table(["??", "?????", "????", "????", "?????", "????"], rows)
+    return table(["级别", "发现的问题", "命中维度", "命中规则", "怎么发现的", "建议动作"], rows)
 
 
 def _dimension_evidence_board(review_dimensions: list[dict], prompt_snapshot: dict, submission_id: str, case_id: str) -> str:
