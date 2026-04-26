@@ -49,10 +49,14 @@ def _rule_item_editor(dimension_key: str, item: dict) -> str:
 
 def _inline_rule_editor(key: str, rule: dict) -> str:
     checkpoints = format_rule_checkpoints(list(rule.get("checkpoints", []) or []))
+    enabled_rule_count = sum(1 for item in list(rule.get("rules", []) or []) if item.get("enabled", True))
     rule_items = "".join(_rule_item_editor(key, item) for item in list(rule.get("rules", []) or []))
     return f"""
     <details class="dimension-rule-editor">
-      <summary>导入前编辑规则</summary>
+      <summary>
+        <span>导入前编辑规则</span>
+        <small>已启用 {enabled_rule_count} 项检查点</small>
+      </summary>
       <div class="dimension-rule-editor-body">
         <label class="field">
           <span>规则名称</span>
@@ -131,7 +135,7 @@ def render_review_profile_form_fields(
         for item in REVIEW_PROFILE_PRESETS
     )
     helper_copy = (
-        "这组配置会直接影响本次材料的审查范围、细分规则和 LLM 研判口径。"
+        "只保留本次审查需要关注的重点，详细规则按需展开即可。"
         if submit_context == "import"
         else "修改后会保存到当前批次，并用于下一次重跑审查。"
     )
@@ -146,23 +150,34 @@ def render_review_profile_form_fields(
       </div>
       <input type="hidden" name="review_profile_preset" value="{escape_html(normalized['preset_key'])}">
       <input type="hidden" name="review_dimensions_present" value="1">
-      <div class="review-profile-grid">
-        <label class="field">
-          <span>审查侧重</span>
-          <select name="focus_mode">{focus_options}</select>
-        </label>
-        <label class="field">
-          <span>严格程度</span>
-          <select name="strictness">{strictness_options}</select>
-        </label>
-      </div>
-      <label class="field">
-        <span>LLM 补充指令</span>
-        <textarea name="llm_instruction" rows="3" placeholder="例如：重点关注申请人排序一致性、协议日期逻辑和源码脱敏。">{escape_html(normalized["llm_instruction"])}</textarea>
-        <span class="field-hint">用于补充这次材料的个性化审查要求。</span>
-      </label>
-      <div class="dimension-choice-grid">
-        {dimension_items}
+      <details class="review-profile-fold" open>
+        <summary>
+          <span>调整本次审查要求</span>
+          <small>可切换预设、勾选维度和补充 LLM 指令</small>
+        </summary>
+        <div class="review-profile-fold-body">
+          <div class="review-profile-grid">
+            <label class="field">
+              <span>审查侧重</span>
+              <select name="focus_mode">{focus_options}</select>
+            </label>
+            <label class="field">
+              <span>严格程度</span>
+              <select name="strictness">{strictness_options}</select>
+            </label>
+          </div>
+          <label class="field">
+            <span>LLM 补充指令</span>
+            <textarea name="llm_instruction" rows="3" placeholder="例如：重点关注申请人排序一致性、协议日期逻辑和源码脱敏。">{escape_html(normalized["llm_instruction"])}</textarea>
+            <span class="field-hint">用于补充这次材料的个性化审查要求。</span>
+          </label>
+          <div class="dimension-choice-grid">
+            {dimension_items}
+          </div>
+        </div>
+      </details>
+      <div class="review-profile-footnote">
+        <span>详细规则只会影响当前这次导入或重跑。</span>
       </div>
     </div>
     """

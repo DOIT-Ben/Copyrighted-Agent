@@ -1069,7 +1069,7 @@ input[type="file"]::file-selector-button:hover {
 
 .import-console-grid {
   display: grid;
-  grid-template-columns: minmax(600px, 1.55fr) minmax(300px, 0.7fr);
+  grid-template-columns: minmax(0, 1.75fr) minmax(320px, 0.85fr);
   gap: 1rem;
   align-items: stretch;
 }
@@ -1101,12 +1101,17 @@ input[type="file"]::file-selector-button:hover {
 }
 
 .import-console-grid-wide {
-  grid-template-columns: minmax(620px, 1.6fr) minmax(300px, 0.68fr);
+  grid-template-columns: minmax(0, 1.8fr) minmax(320px, 0.82fr);
 }
 
 .import-console-copy {
   gap: 0.45rem;
   max-width: 44rem;
+}
+
+.import-console-topline {
+  display: grid;
+  gap: 0.7rem;
 }
 
 .import-console-copy-compact {
@@ -1168,6 +1173,35 @@ input[type="file"]::file-selector-button:hover {
 .import-console-side-compact .import-summary-grid {
   grid-template-columns: 1fr;
   margin-bottom: 0;
+}
+
+.import-console-setup-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.import-route-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.import-route-item {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel-strong);
+}
+
+.import-route-item strong {
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+}
+
+.import-route-item span {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .helper-chip-row-tight {
@@ -1525,6 +1559,47 @@ input[type="file"]::file-selector-button:hover {
   line-height: 1.45;
 }
 
+.review-profile-fold,
+.dimension-rule-editor {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.review-profile-fold summary,
+.dimension-rule-editor summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+  padding: 0.78rem 0.9rem;
+  list-style: none;
+}
+
+.review-profile-fold summary::-webkit-details-marker,
+.dimension-rule-editor summary::-webkit-details-marker {
+  display: none;
+}
+
+.review-profile-fold summary span,
+.dimension-rule-editor summary span {
+  font-weight: 700;
+}
+
+.review-profile-fold summary small,
+.dimension-rule-editor summary small {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 0.76rem;
+}
+
+.review-profile-fold-body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 0.85rem 0.85rem;
+}
+
 .review-profile-preset-row {
   display: flex;
   flex-wrap: wrap;
@@ -1545,7 +1620,7 @@ input[type="file"]::file-selector-button:hover {
 
 .dimension-choice-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 0.6rem;
 }
 
@@ -1612,21 +1687,14 @@ input[type="file"]::file-selector-button:hover {
 }
 
 .dimension-rule-editor {
-  border-top: 1px solid var(--line-soft);
-  padding-top: 0.58rem;
-}
-
-.dimension-rule-editor summary {
-  cursor: pointer;
-  color: var(--primary-strong);
-  font-size: 0.75rem;
-  font-weight: 800;
+  padding-top: 0;
 }
 
 .dimension-rule-editor-body {
   display: grid;
   gap: 0.52rem;
-  margin-top: 0.55rem;
+  margin-top: 0;
+  padding: 0 0.85rem 0.85rem;
 }
 
 .rule-item-stack {
@@ -1649,6 +1717,11 @@ input[type="file"]::file-selector-button:hover {
 
 .dimension-rule-editor .field span {
   font-size: 0.68rem;
+}
+
+.review-profile-footnote span {
+  color: var(--ink-muted);
+  font-size: 0.76rem;
 }
 
 .dimension-rule-editor input[type="text"],
@@ -2004,6 +2077,10 @@ input[type="file"]::file-selector-button:hover {
 .panel-import-console .operator-note span,
 .panel-import-console .helper-chip {
   color: var(--ink-soft);
+}
+
+.panel-import-console .helper-chip-row {
+  display: flex;
 }
 
 .panel-import-console .panel-kicker {

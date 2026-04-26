@@ -47,24 +47,33 @@ def _import_form() -> str:
         data-pending-steps="文件已提交|正在解析材料|正在执行脱敏与审查|正在整理结果页"
         onsubmit="this.classList.add('is-submitting'); var note=this.querySelector('[data-inline-pending]'); if(note) note.hidden=false; var step=this.querySelector('[data-inline-step]'); if(step) step.textContent='文件已提交 -> 正在解析材料 -> 正在执行脱敏与审查'; var btn=this.querySelector('button[type=submit]'); if(btn && !btn.disabled){{ btn.disabled=true; btn.classList.add('is-loading'); btn.innerHTML='<span class=&quot;button-spinner&quot; aria-hidden=&quot;true&quot;></span><span>分析中，请稍候</span>'; }} return true;"
       >
-        <div class="import-console-copy">
-          <strong>浏览器端导入说明</strong>
-          <p>提交后自动进入当前批次。</p>
+        <div class="import-console-topline">
+          <div class="import-console-copy">
+            <strong>上传一个 ZIP，直接进入处理流程</strong>
+            <p>浏览器端导入说明已经收纳到这一张卡片里。首页只保留导入入口，材料、脱敏件、审查结果和导出入口统一放到批次详情页继续处理。</p>
+          </div>
+          <div class="helper-chip-row">
+            <span class="helper-chip">支持单项目整包</span>
+            <span class="helper-chip">支持先脱敏后继续审查</span>
+            <span class="helper-chip">提交后自动跳转批次详情</span>
+          </div>
         </div>
-        <label class="field">
-          <span>导入模式</span>
-          <select name="mode">
-            <option value="single_case_package">模式 A：单项目整包</option>
-            <option value="batch_same_material">模式 B：同类材料批量归档</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>审查策略</span>
-          <select name="review_strategy">
-            <option value="auto_review">直接审查：导入后立即生成审查结果</option>
-            <option value="manual_desensitized_review">先脱敏后继续审查：先下载脱敏件，再手动继续</option>
-          </select>
-        </label>
+        <div class="review-profile-grid import-console-setup-grid">
+          <label class="field">
+            <span>导入模式</span>
+            <select name="mode">
+              <option value="single_case_package">模式 A：单项目整包</option>
+              <option value="batch_same_material">模式 B：同类材料批量归档</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>审查策略</span>
+            <select name="review_strategy">
+              <option value="auto_review">直接审查：导入后立即生成审查结果</option>
+              <option value="manual_desensitized_review">先脱敏后继续审查：先下载脱敏件，再手动继续</option>
+            </select>
+          </label>
+        </div>
         <label class="field">
           <span>ZIP 文件</span>
           <input type="file" name="file" accept=".zip" required>
@@ -82,23 +91,37 @@ def _import_form() -> str:
       <aside class="import-console-side import-console-side-compact">
         <div class="import-console-copy">
           <strong>结果去向</strong>
-          <p>材料、脱敏件、审查结果都在批次页继续处理。</p>
+          <p>上传后只做三件事：进入批次、看结果、决定是否继续处理。</p>
         </div>
         <div class="summary-grid import-summary-grid">
           <div class="summary-tile">
-            <span>模式一</span>
-            <strong>直接审查</strong>
-            <small>上传后直接生成结果。</small>
+            <span>直接审查</span>
+            <strong>上传后出结果</strong>
+            <small>适合材料已经整理好的软著包。</small>
           </div>
           <div class="summary-tile">
-            <span>模式二</span>
-            <strong>先脱敏后继续</strong>
-            <small>先看脱敏件，再决定继续审查。</small>
+            <span>先脱敏后继续</span>
+            <strong>先下载再审查</strong>
+            <small>适合先确认脱敏件是否可直接提交。</small>
           </div>
           <div class="summary-tile">
-            <span>结果页</span>
-            <strong>自动进入批次详情</strong>
-            <small>无需回头再找入口。</small>
+            <span>批次详情</span>
+            <strong>继续材料与报告处理</strong>
+            <small>材料、脱敏件、规则、报告都在下一页完成。</small>
+          </div>
+        </div>
+        <div class="import-route-list">
+          <div class="import-route-item">
+            <strong>1. 上传 ZIP</strong>
+            <span>系统识别材料并创建批次。</span>
+          </div>
+          <div class="import-route-item">
+            <strong>2. 查看批次</strong>
+            <span>在批次详情里看材料、脱敏件和阶段状态。</span>
+          </div>
+          <div class="import-route-item">
+            <strong>3. 进入报告</strong>
+            <span>在项目页和报告页看问题、规则和导出结果。</span>
           </div>
         </div>
       </aside>

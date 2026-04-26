@@ -611,20 +611,75 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
     advanced_groups = '<div class="operator-group-grid">'
     advanced_groups += _fold_group(
         1,
+        "问题级别归类",
+        "按退回级、弱智问题和警告项查看全量分组。",
+        business_issue_board,
+        open_by_default=False,
+    )
+    advanced_groups += _fold_group(
+        2,
+        "按材料来源看问题",
+        "按说明文档、源代码、协议、信息采集表或跨材料来源拆开查看。",
+        source_issue_board,
+        open_by_default=False,
+    )
+    advanced_groups += _fold_group(
+        3,
+        "怎么判定出来的",
+        "按维度查看证据链、摘要和模型关注点。",
+        evidence_board,
+        open_by_default=False,
+    )
+    advanced_groups += _fold_group(
+        4,
+        "用了哪些审查规则",
+        "查看本次分析实际启用的规则和 LLM 关注点。",
+        method_table,
+        open_by_default=False,
+    )
+    advanced_groups += _fold_group(
+        5,
+        "审查维度",
+        "查看每个审查维度当前的状态和摘要。",
+        table(["审查维度", "当前状态", "摘要"], dimension_rows)
+        if dimension_rows
+        else empty_state("暂无审查维度", "当前没有可展示的维度结果。"),
+        open_by_default=False,
+    )
+    advanced_groups += _fold_group(
+        6,
+        "发现的问题",
+        "保留完整的问题表，便于逐条复核。",
+        table(["严重级别", "问题", "说明"], issue_rows)
+        if issue_rows
+        else empty_state("当前未发现跨材料问题", "本次项目没有发现明显冲突。"),
+        open_by_default=False,
+    )
+    advanced_groups += _fold_group(
+        7,
+        "审查材料",
+        "查看参与审查的材料清单和来源。",
+        table(["文件名", "材料类型", "软件名称"], material_rows)
+        if material_rows
+        else empty_state("暂无材料", "当前项目下没有可展示的材料。"),
+        open_by_default=False,
+    )
+    advanced_groups += _fold_group(
+        8,
         "审查配置",
         "查看本次报告对应的规则和模式。",
         list_pairs(profile_pairs, css_class="dossier-list dossier-list-single") + rule_links,
         open_by_default=False,
     )
     advanced_groups += _fold_group(
-        2,
+        9,
         "LLM 审查提示词",
         "需要追查模型判断时再展开。",
         render_prompt_snapshot(prompt_snapshot) if prompt_snapshot else empty_state("暂无提示词快照", "当前报告没有保存提示词快照。"),
         open_by_default=False,
     )
     advanced_groups += _fold_group(
-        3,
+        10,
         "原始 Markdown",
         "如需核对原始导出内容再展开。",
         _raw_markdown_panel(report_content),
@@ -639,15 +694,8 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
         {panel('审查结果', conclusion_body, kicker='核心结论', extra_class='span-12', icon_name='report', description='', panel_id='report-overview')}
         {panel('先改这些地方', friendly_diagnosis, kicker='直观诊断', extra_class='span-12', icon_name='alert', description='直接告诉你哪里不对，以及应该先改什么。', panel_id='report-diagnosis')}
         {panel('问题一眼看懂', issue_snapshot, kicker='3 个重点问题', extra_class='span-12', icon_name='search', description='把最关键的问题、证据、规则和建议动作压成一屏，先看这个再决定往下钻。', panel_id='report-snapshot')}
-        {panel('问题级别归类', business_issue_board, kicker='业务分组', extra_class='span-12', icon_name='layers', description='按退回级问题、弱智问题、警告项整理本次结果。', panel_id='report-business-levels')}
-        {panel('按材料来源看问题', source_issue_board, kicker='来源拆分', extra_class='span-12', icon_name='cluster', description='把问题按信息采集表、说明文档、源代码、协议或跨材料来源拆开查看。', panel_id='report-sources')}
         {panel('重点问题说明', issue_explainer, kicker='先看卡片', extra_class='span-12', icon_name='report', description='把重点问题直接翻译成人话，展示触发规则、判定依据和处理建议。', panel_id='report-explainer')}
         {panel('发现了什么不足', issue_trace, kicker='问题追踪', extra_class='span-12', icon_name='alert', description='直接展示问题、命中维度、规则依据和建议动作。', panel_id='report-trace')}
-        {panel('怎么判定出来的', evidence_board, kicker='证据链', extra_class='span-12', icon_name='search', description='按审查维度查看摘要、证据、规则目标和模型关注点。', panel_id='report-evidence')}
-        {panel('用了哪些审查规则', method_table, kicker='规则清单', extra_class='span-12', icon_name='shield', description='展示本次分析实际启用的审查规则和 LLM 关注点。', panel_id='report-method')}
-        {panel('审查维度', table(['审查维度', '当前状态', '摘要'], dimension_rows) if dimension_rows else empty_state('暂无审查维度', '当前没有可展示的维度结果。'), kicker='当前结论', extra_class='span-6', icon_name='shield', description='', panel_id='report-dimensions')}
-        {panel('发现的问题', table(['严重级别', '问题', '说明'], issue_rows) if issue_rows else empty_state('当前未发现跨材料问题', '本次项目没有发现明显冲突。'), kicker='优先处理', extra_class='span-6', icon_name='alert', description='', panel_id='report-issues')}
-        {panel('审查材料', table(['文件名', '材料类型', '软件名称'], material_rows) if material_rows else empty_state('暂无材料', '当前项目下没有可展示的材料。'), kicker='证据来源', extra_class='span-12', icon_name='cluster', description='', panel_id='report-materials')}
         {panel('更多信息', advanced_groups, kicker='按需展开', extra_class='span-12', icon_name='search', description='', panel_id='report-profile')}
       </div>
     </div>
@@ -775,13 +823,8 @@ def render_report_page(report: dict) -> str:
             ("#report-reader", "审查结果", "report"),
             ("#report-diagnosis", "先改这些地方", "alert"),
             ("#report-snapshot", "问题一眼看懂", "search"),
-            ("#report-business-levels", "问题级别归类", "layers"),
-            ("#report-sources", "按材料来源看问题", "cluster"),
             ("#report-explainer", "重点问题说明", "report"),
             ("#report-trace", "发现了什么不足", "alert"),
-            ("#report-evidence", "怎么判定出来的", "search"),
-            ("#report-method", "用了哪些审查规则", "shield"),
-            ("#report-dimensions", "审查维度", "shield"),
             ("#report-profile", "更多信息", "search"),
             ("#report-context", "报告上下文", "layers"),
         ]
