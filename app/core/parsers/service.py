@@ -6,6 +6,7 @@ from app.core.domain.enums import MaterialType
 from app.core.parsers.code_material import CodeMaterialParser
 from app.core.parsers.doc_binary import DocBinaryParser
 from app.core.parsers.docx_parser import DocxParser
+from app.core.parsers.page_segments import build_page_segments
 from app.core.parsers.pdf_parser import PdfParser
 from app.core.parsers.quality import assess_parse_quality
 from app.core.privacy.desensitization import desensitize_text
@@ -49,6 +50,7 @@ def parse_material(file_path: str | Path, material_type: str) -> dict:
         "version": extract_version(cleaned_text),
         "company_name": extract_company_name(cleaned_text),
         "line_count": len(cleaned_text.splitlines()) if cleaned_text else 0,
+        "page_segments": build_page_segments(cleaned_text),
         "parser_name": parser_name,
         "parse_quality": quality,
         "garbled_ratio": quality["garbled_ratio"],

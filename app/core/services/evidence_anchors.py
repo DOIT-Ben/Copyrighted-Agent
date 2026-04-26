@@ -93,13 +93,44 @@ def _excerpt(lines: list[str], line_number: int) -> str:
     return ""
 
 
-def attach_issue_evidence_anchors(issues: list[dict], text: str) -> list[dict]:
+def _segment_match(issue: dict, page_segments: list[dict]) -> dict | None:
+    keywords = _keyword_candidates(issue)
+    if not keywords:
+        return None
+    for keyword in keywords:
+        for segment in list(page_segments or []):
+            body = str(segment.get("text", "") or "")
+            if keyword and keyword in body:
+                return dict(segment)
+    return None
+
+
+def attach_issue_evidence_anchors(issues: list[dict], text: str, *, page_segments: list[dict] | None = None) -> list[dict]:
     lines = _normalized_lines(text)
     markers = _page_markers(lines)
     enriched: list[dict] = []
     for raw_issue in list(issues or []):
         issue = dict(raw_issue or {})
         if issue.get("evidence_anchor", {}).get("page"):
+            enriched.append(issue)
+            continue
+        segment_match = _segment_match(issue, list(page_segments or []))
+        if segment_match:
+            anchor = dict(issue.get("evidence_anchor", {}) or {})
+            if segment_match.get("page") is not None:
+                anchor.setdefault("page", segment_match.get("page"))
+            if segment_match.get("line_start") is not None:
+                anchor.setdefault("line", segment_match.get("line_start"))
+            if segment_match.get("excerpt"):
+                anchor.setdefault("excerpt", str(segment_match.get("excerpt", ""))[:120])
+            headings = list(segment_match.get("headings", []) or [])
+            if headings:
+                anchor.setdefault("matched_text", str(headings[0])[:80])
+            issue["evidence_anchor"] = anchor
+            if anchor.get("excerpt") and not issue.get("evidence_excerpt"):
+                issue["evidence_excerpt"] = anchor.get("excerpt")
+            if anchor.get("page") is not None and not issue.get("evidence_page"):
+                issue["evidence_page"] = anchor.get("page")
             enriched.append(issue)
             continue
         match_line: int | None = None

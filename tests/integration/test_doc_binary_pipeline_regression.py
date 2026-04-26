@@ -42,3 +42,4 @@ def test_legacy_doc_can_be_classified_from_extracted_utf16le_content(tmp_path: P
     assert materials[0]["material_type"] == "agreement"
     assert parse_results[0]["metadata_json"]["parse_quality"]["quality_level"] in {"high", "medium"}
     assert parse_results[0]["metadata_json"]["triage"]["needs_manual_review"] is False
+    assert isinstance(parse_results[0]["metadata_json"].get("page_segments", []), list)

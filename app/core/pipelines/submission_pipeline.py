@@ -356,7 +356,11 @@ def ingest_submission(
             parse_quality=parsed["quality"],
         )
         review = _review_by_material_type(classification["material_type"], parsed["clean_text"])
-        review["issues"] = attach_issue_evidence_anchors(review.get("issues", []), parsed["desensitized_text"])
+        review["issues"] = attach_issue_evidence_anchors(
+            review.get("issues", []),
+            parsed["desensitized_text"],
+            page_segments=list(parsed["metadata"].get("page_segments", []) or []),
+        )
         review_metadata = dict(review.get("metadata", {}) or {})
         triage = _build_triage(classification, parsed["quality"])
         material_metadata = {
