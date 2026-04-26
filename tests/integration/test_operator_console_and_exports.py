@@ -211,6 +211,7 @@ def test_html_manual_desensitized_flow_exposes_continue_review_entry(api_client,
     assert operator_page.status_code == 200
     assert "脱敏后继续审查" in operator_page.text
     assert "继续审查项目" in operator_page.text
+    assert "材料与项目整理" in operator_page.text
 
     continue_response = api_client.post(
         f"/submissions/{submission_id}/actions/continue-review",

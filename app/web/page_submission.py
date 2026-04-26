@@ -825,9 +825,9 @@ def render_submission_operator_page(
 
     operator_intro = (
         '<div class="summary-grid">'
-        + _summary_tile("当前阶段", review_stage_label(submission.get("review_stage", "review_completed")), "显示当前是否已完成脱敏、已回传脱敏包或正在正式审查")
-        + _summary_tile("建议顺序", "先整理再重跑", "优先纠偏材料和在线填报，再按最新规则重新审查")
-        + _summary_tile("留痕", "自动记录", "所有人工动作都会写入更正审计")
+        + _summary_tile("当前阶段", review_stage_label(submission.get("review_stage", "review_completed")), "先判断是不是还卡在脱敏或待继续审查")
+        + _summary_tile("操作顺序", "继续审查 -> 整理材料 -> 重跑", "把常见动作压成一条顺手路径")
+        + _summary_tile("留痕方式", "自动记录", "所有人工动作都会写入更正审计")
         + "</div>"
     )
 
@@ -868,8 +868,8 @@ def render_submission_operator_page(
         <summary>
           <span class="operator-group-index">2</span>
           <div>
-            <strong>材料纠偏</strong>
-            <small>先修正识别错误的材料类型和归属。</small>
+            <strong>材料与项目整理</strong>
+            <small>先修正材料类型、归属，再决定是否新建或合并项目。</small>
           </div>
         </summary>
         <div class="control-grid">
@@ -892,18 +892,6 @@ def render_submission_operator_page(
             <label class="field"><span>备注</span><input type="text" name="note" placeholder="记录这次归组原因"></label>
             <button class="button-secondary button-compact" type="submit">{icon('merge', 'icon icon-sm')}提交并刷新</button>
           </form>
-        </div>
-      </details>
-
-      <details class="operator-group">
-        <summary>
-          <span class="operator-group-index">3</span>
-          <div>
-            <strong>项目编排</strong>
-            <small>创建新项目，或把拆散的项目重新合并。</small>
-          </div>
-        </summary>
-        <div class="control-grid">
           <form class="operator-form" action="/submissions/{submission_id}/actions/create-case" method="post">
             <strong>创建项目</strong>
             <label class="field"><span>材料 ID</span><input type="text" name="material_ids" value="{escape_html(default_material_ids)}"></label>
@@ -925,7 +913,7 @@ def render_submission_operator_page(
 
       <details class="operator-group" open>
         <summary>
-          <span class="operator-group-index">4</span>
+          <span class="operator-group-index">3</span>
           <div>
             <strong>在线填报信息</strong>
             <small>按项目录入在线系统字段，保存后会立即重跑审查。</small>
@@ -936,7 +924,7 @@ def render_submission_operator_page(
 
       <details class="operator-group" open>
         <summary>
-          <span class="operator-group-index">5</span>
+          <span class="operator-group-index">4</span>
           <div>
             <strong>审查配置与重跑</strong>
             <small>控制审查维度和 LLM 角度，然后按当前配置重新审查。</small>
