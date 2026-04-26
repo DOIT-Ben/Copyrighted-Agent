@@ -6,6 +6,22 @@ from app.core.reviewers.rules.sensitive_terms import scan_sensitive_terms
 from app.core.utils.text import calculate_garbled_ratio
 
 
+def _anchor(*, field: str = "", section: str = "", hint: str = "", material_area: str = "") -> dict:
+    data = {
+        "field_label": field,
+        "section_label": section,
+        "anchor_hint": hint,
+    }
+    if material_area:
+        data["evidence_anchor"] = {
+            "field": field,
+            "section": section,
+            "material_area": material_area,
+            "hint": hint,
+        }
+    return data
+
+
 SENSITIVE_PATTERNS = [
     (r"(?i)(password|passwd|pwd)\s*[:=]\s*['\"][^'\"]{3,}['\"]", "疑似明文密码"),
     (r"(?i)(token|api[_-]?key|secret|authorization)\s*[:=]\s*['\"][^'\"]{6,}['\"]", "疑似真实 token 或密钥"),
@@ -60,6 +76,7 @@ def review_source_code_text(text: str) -> dict:
                 "category": "源码可读性",
                 "rule_key": "code_readable",
                 "desc": f"源码乱码比例约为 {ratio:.1%}，并检测到异常字符片段，当前材料不适合直接审查。",
+                **_anchor(field="源码可读性", section="源码正文", hint="检查源码 PDF 中是否存在乱码或异常字符片段", material_area="源码 PDF 正文"),
             }
         )
 
@@ -77,6 +94,7 @@ def review_source_code_text(text: str) -> dict:
                 "category": "源码格式",
                 "rule_key": "code_format_clean",
                 "desc": "源码格式疑似不符合提交规范，请检查行首空格、连续空行以及行号是否完整。",
+                **_anchor(field="源码格式", section="源码正文", hint="检查行首空格、连续空行和行号是否符合提交规范", material_area="源码 PDF 正文"),
             }
         )
 
@@ -94,6 +112,7 @@ def review_source_code_text(text: str) -> dict:
                         "rule_key": "code_page_strategy",
                         "desc": f"源码页数疑似超过 60 页，但未识别到“前30页 + 后30页”的完整截取策略。当前页码范围最高到第 {total_pages} 页。",
                         "suggest": "源码超过 60 页时，导出前 30 页和后 30 页，避免只截取前半段。",
+                        **_anchor(field="页码截取", section="页码策略", hint="检查源码 PDF 是否按前30页加后30页方式导出", material_area="源码 PDF 页码"),
                     }
                 )
 
@@ -105,6 +124,7 @@ def review_source_code_text(text: str) -> dict:
                     "category": "源码脱敏",
                     "rule_key": "code_desensitized",
                     "desc": f"源码中发现{label}信号，需先完成脱敏后再提交审查。",
+                    **_anchor(field="敏感信息", section="源码脱敏", hint="检查源码中的密码、Token、手机号、邮箱和公网 IP 是否已脱敏", material_area="源码 PDF 正文"),
                 }
             )
             break
@@ -116,6 +136,7 @@ def review_source_code_text(text: str) -> dict:
                 "category": "功能呼应",
                 "rule_key": "code_logic_supports_doc",
                 "desc": "未检测到明显的关键逻辑或代表性函数，当前源码展示可能不足以支撑文档中的功能描述。",
+                **_anchor(field="核心逻辑", section="源码正文", hint="检查源码中是否展示了与说明文档对应的关键函数或核心流程", material_area="源码 PDF 正文"),
             }
         )
 
@@ -128,6 +149,7 @@ def review_source_code_text(text: str) -> dict:
                 "category": "注释质量",
                 "rule_key": "code_comment_ratio_reasonable",
                 "desc": "注释量高于代码量，存在注释过多或凑数风险，建议人工复核。",
+                **_anchor(field="注释比例", section="源码正文", hint="检查源码中注释量是否明显高于代码量", material_area="源码 PDF 正文"),
             }
         )
 

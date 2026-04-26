@@ -84,6 +84,22 @@ def _feature_overlap(source_code: dict, software_doc: dict) -> tuple[list[str], 
     return doc_terms, matched
 
 
+def _anchor(*, field: str = "", section: str = "", hint: str = "", material_area: str = "") -> dict:
+    data = {
+        "field_label": field,
+        "section_label": section,
+        "anchor_hint": hint,
+    }
+    if material_area:
+        data["evidence_anchor"] = {
+            "field": field,
+            "section": section,
+            "material_area": material_area,
+            "hint": hint,
+        }
+    return data
+
+
 def review_case_consistency(
     info_form: dict,
     source_code: dict,
@@ -108,6 +124,7 @@ def review_case_consistency(
                 "rule_key": "software_name_exact_match",
                 "desc": f"不同材料中的软件名称不一致。当前识别到：{detail}。",
                 "suggest": "统一信息采集表、源代码、说明文档、合作协议和在线填报中的软件全称，确保逐字一致。",
+                **_anchor(field="软件全称", section="跨材料一致性", hint="逐项比对信息采集表、说明文档、源代码、合作协议和在线填报中的软件全称", material_area="跨材料比对"),
             }
         )
     if len(versions) > 1:
@@ -119,6 +136,7 @@ def review_case_consistency(
                 "rule_key": "version_exact_match",
                 "desc": f"不同材料中的版本号不一致。当前识别到：{detail}。",
                 "suggest": "统一所有材料中的版本号写法和大小写格式。",
+                **_anchor(field="版本号", section="跨材料一致性", hint="逐项比对各份材料中的版本号写法", material_area="跨材料比对"),
             }
         )
 
@@ -132,6 +150,7 @@ def review_case_consistency(
                 "rule_key": "cross_material_terms_match",
                 "desc": f"不同材料中对软件形态的称呼不统一，检测到：{'、'.join(sorted(families))}。",
                 "suggest": "统一使用一种对外口径，例如统一写为“系统”或“平台”，避免混用。",
+                **_anchor(field="术语口径", section="跨材料一致性", hint="检查各份材料中的系统、平台、APP、小程序等称谓是否统一", material_area="跨材料比对"),
             }
         )
 
@@ -146,6 +165,7 @@ def review_case_consistency(
                 "rule_key": "completion_date_match",
                 "desc": f"信息采集表中的开发完成日期与合作协议中的日期信号不一致。信息采集表={info_date}；合作协议={agreement_date}。",
                 "suggest": "统一开发完成日期、协议日期和填报日期口径。",
+                **_anchor(field="开发完成日期", section="跨材料一致性", hint="比对信息采集表与合作协议中的开发完成日期", material_area="跨材料日期比对"),
             }
         )
     if info_date and online_date and info_date != online_date:
@@ -156,6 +176,7 @@ def review_case_consistency(
                 "rule_key": "completion_date_match",
                 "desc": f"信息采集表与在线填报的开发完成日期不一致。信息采集表={info_date}；在线填报={online_date}。",
                 "suggest": "统一信息采集表、合作协议和在线填报中的开发完成日期口径。",
+                **_anchor(field="开发完成日期", section="跨材料一致性", hint="比对信息采集表与在线填报中的开发完成日期", material_area="跨材料日期比对"),
             }
         )
 
@@ -172,6 +193,7 @@ def review_case_consistency(
                     "rule_key": "party_order_match",
                     "desc": f"合作协议中的各方排序与信息采集表中的主体顺序不一致。信息采集表={'、'.join(info_party_sequence)}；合作协议={'、'.join(agreement_party_sequence)}。",
                     "suggest": "统一合作协议、信息采集表和系统填报中的申请人顺序。",
+                    **_anchor(field="申请人排序", section="跨材料一致性", hint="比对信息采集表与合作协议中的申请人或甲乙方排序", material_area="跨材料主体比对"),
                 }
             )
     if info_party_sequence and online_party_sequence:
@@ -184,6 +206,7 @@ def review_case_consistency(
                     "rule_key": "party_order_match",
                     "desc": f"在线填报中的申请人顺序与信息采集表不一致。信息采集表={'、'.join(info_party_sequence)}；在线填报={'、'.join(online_party_sequence)}。",
                     "suggest": "统一信息采集表、合作协议和在线填报中的申请人顺序。",
+                    **_anchor(field="申请人排序", section="跨材料一致性", hint="比对信息采集表与在线填报中的申请人排序", material_area="跨材料主体比对"),
                 }
             )
 
@@ -196,6 +219,7 @@ def review_case_consistency(
                 "rule_key": "code_logic_supports_doc",
                 "desc": f"说明文档提到的功能点与源代码信号呼应不足。文档功能词：{'、'.join(doc_terms[:6])}；源码命中：{'、'.join(matched_terms[:6]) or '未识别'}。",
                 "suggest": "补充与文档功能对应的核心代码、函数名或关键流程片段。",
+                **_anchor(field="功能呼应", section="跨材料一致性", hint="比对说明文档中的功能点与源码中的关键函数或模块信号", material_area="说明文档与源码对照"),
             }
         )
 

@@ -7,6 +7,22 @@ from app.core.reviewers.rules.sensitive_terms import scan_sensitive_terms
 from app.core.utils.text import extract_company_name, extract_date_candidates, extract_party_sequence, extract_software_name, extract_version
 
 
+def _anchor(*, field: str = "", section: str = "", hint: str = "", material_area: str = "") -> dict:
+    data = {
+        "field_label": field,
+        "section_label": section,
+        "anchor_hint": hint,
+    }
+    if material_area:
+        data["evidence_anchor"] = {
+            "field": field,
+            "section": section,
+            "material_area": material_area,
+            "hint": hint,
+        }
+    return data
+
+
 def _parse_cn_date(raw: str) -> date | None:
     text = str(raw or "").strip()
     if not text:
@@ -50,6 +66,7 @@ def review_agreement_text(text: str) -> dict:
                 "rule_key": "agreement_typo_terms",
                 "desc": '发现“签定”写法，应统一修正为“签订”。',
                 "suggest": "将协议中的“签定”统一修改为“签订”。",
+                **_anchor(field="签署术语", section="协议正文", hint="检查合作协议中的签订、签署等用词是否有错别字", material_area="合作协议正文"),
             }
         )
 
@@ -61,6 +78,7 @@ def review_agreement_text(text: str) -> dict:
                 "category": "代称体系",
                 "rule_key": "agreement_alias_consistent",
                 "desc": "合作协议中出现了“子甲方”或“副甲方”等不规范代称，建议统一为甲乙丙丁等标准称谓。",
+                **_anchor(field="代称体系", section="协议主体", hint="检查合作协议中是否出现子甲方、副甲方等不规范代称", material_area="合作协议主体信息"),
             }
         )
     elif alias_markers and sum(marker in text for marker in ["甲方", "乙方"]) and ("天干" in text or "生肖" in text):
@@ -70,6 +88,7 @@ def review_agreement_text(text: str) -> dict:
                 "category": "代称体系",
                 "rule_key": "agreement_alias_consistent",
                 "desc": "合作协议疑似混用了多套代称体系，请统一整份协议中的各方称谓。",
+                **_anchor(field="代称体系", section="协议主体", hint="检查合作协议中甲乙方等代称是否前后一致", material_area="合作协议主体信息"),
             }
         )
 
@@ -81,6 +100,7 @@ def review_agreement_text(text: str) -> dict:
                 "rule_key": "agreement_key_people",
                 "desc": "合作协议中未识别到项目负责人或指导老师等关键人员信息。",
                 "suggest": "补充项目负责人、指导老师或其他关键责任人信息。",
+                **_anchor(field="关键人员", section="协议主体", hint="检查合作协议中是否出现项目负责人、指导老师等关键人员信息", material_area="合作协议主体信息"),
             }
         )
 
@@ -93,6 +113,7 @@ def review_agreement_text(text: str) -> dict:
                 "category": "日期逻辑",
                 "rule_key": "agreement_dates_valid",
                 "desc": "合作协议中存在多个不同日期，请核对签署日期、生效日期和开发完成日期是否前后一致。",
+                **_anchor(field="日期字段", section="签署日期", hint="检查合作协议中的签署日期、生效日期和完成日期是否一致", material_area="合作协议日期区域"),
             }
         )
 
@@ -107,6 +128,7 @@ def review_agreement_text(text: str) -> dict:
                 "rule_key": "agreement_dates_valid",
                 "desc": f"协议签署日期晚于开发完成日期。签署日期={sign_dates[0].isoformat()}；开发完成日期={completion_dates[0].isoformat()}。",
                 "suggest": "核对协议签署时间与开发完成时间的业务先后关系。",
+                **_anchor(field="签署日期", section="签署日期", hint="检查合作协议签署日期是否晚于开发完成日期", material_area="合作协议日期区域"),
             }
         )
     if sign_dates and apply_dates:
@@ -118,6 +140,7 @@ def review_agreement_text(text: str) -> dict:
                     "rule_key": "agreement_dates_valid",
                     "desc": f"协议签署日期不应晚于或等于申请日期。签署日期={sign_dates[0].isoformat()}；申请日期={apply_dates[0].isoformat()}。",
                     "suggest": "确保合作协议早于正式申请或提交日期。",
+                    **_anchor(field="签署日期", section="签署日期", hint="检查合作协议签署日期是否晚于或等于申请日期", material_area="合作协议日期区域"),
                 }
             )
         elif (apply_dates[0] - sign_dates[0]).days < 240:
@@ -128,6 +151,7 @@ def review_agreement_text(text: str) -> dict:
                     "rule_key": "agreement_dates_valid",
                     "desc": f"协议签署日期距离申请日期过近，间隔仅 {(apply_dates[0] - sign_dates[0]).days} 天。",
                     "suggest": "复核协议签署时间是否合理，避免给审核人造成倒签或临时补签的印象。",
+                    **_anchor(field="签署日期", section="签署日期", hint="检查合作协议签署日期与申请日期的间隔是否过近", material_area="合作协议日期区域"),
                 }
             )
 
@@ -138,6 +162,7 @@ def review_agreement_text(text: str) -> dict:
                 "category": "签章要求",
                 "rule_key": "agreement_stamp_signature",
                 "desc": "协议文本中出现电子章或扫描件信号，需人工确认是否满足鲜章和手签要求。",
+                **_anchor(field="印章与签字", section="签章页", hint="检查合作协议是否使用电子章、扫描件或缺少手签", material_area="合作协议签章页"),
             }
         )
 
@@ -156,6 +181,7 @@ def review_agreement_text(text: str) -> dict:
                 "rule_key": "agreement_approval_sheet",
                 "desc": f"合作协议相关审批手续不完整，缺少：{'、'.join(missing)}。",
                 "suggest": "补齐科研合同审批表，并确认合同类型为技术开发合同。",
+                **_anchor(field="审批手续", section="审批材料", hint="检查合作协议是否附有科研合同审批表和技术开发合同类型说明", material_area="合作协议附件"),
             }
         )
 

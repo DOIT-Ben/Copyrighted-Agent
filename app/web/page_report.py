@@ -388,6 +388,16 @@ def _issue_fix_actions(submission_id: str, case_id: str, dimension_key: str, iss
 
 
 def _issue_precision_hints(issue: dict, prompt_snapshot: dict) -> list[str]:
+    hints: list[str] = []
+    for key in ("anchor_hint", "field_label", "section_label"):
+        value = str(issue.get(key, "") or "").strip()
+        if value and value not in hints:
+            hints.append(value)
+    evidence_anchor = dict(issue.get("evidence_anchor", {}) or {})
+    for key in ("field", "section", "material_area", "hint"):
+        value = str(evidence_anchor.get(key, "") or "").strip()
+        if value and value not in hints:
+            hints.append(value)
     rule_key = str(issue.get("rule_key", "") or "").strip().lower()
     prompt_item = _prompt_dimension_item(prompt_snapshot, _issue_dimension_key(issue))
     hint_map = {
@@ -424,7 +434,9 @@ def _issue_precision_hints(issue: dict, prompt_snapshot: dict) -> list[str]:
         "online_address_precise": ["在线填报地址字段", "电子证书地址字段"],
         "online_dates_consistent": ["在线填报完成日期", "在线填报申请日期", "信息采集表日期字段"],
     }
-    hints = list(hint_map.get(rule_key, []))
+    for item in list(hint_map.get(rule_key, [])):
+        if item and item not in hints:
+            hints.append(item)
     for target in list(prompt_item.get("evidence_targets", []) or []):
         target_text = str(target).strip()
         if target_text and target_text not in hints:
