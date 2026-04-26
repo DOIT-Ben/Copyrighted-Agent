@@ -282,6 +282,78 @@ def _friendly_diagnosis_panel(issues: list[dict], review_dimensions: list[dict],
     return f'<div class="report-card-grid">{"".join(cards)}</div>'
 
 
+def _rule_title_for_issue(issue: dict, review_dimensions: list[dict], prompt_snapshot: dict) -> str:
+    dimension_key = _issue_dimension_key(issue)
+    rule_key = str(issue.get("rule_key", "") or "").strip()
+    rule_item = _find_prompt_rule_item(prompt_snapshot, dimension_key, rule_key)
+    if rule_item:
+        return str(rule_item.get("title", "") or rule_key or "规则引擎")
+    for item in review_dimensions:
+        if str(item.get("key", "") or "") == dimension_key:
+            return str(item.get("title", "") or dimension_key or "规则引擎")
+    return str(issue.get("category", "") or issue.get("title", "") or "规则引擎")
+
+
+def _issue_evidence_points(issue: dict, review_dimensions: list[dict]) -> list[str]:
+    points: list[str] = []
+    detail = _issue_text(issue, "desc", "message", "detail", fallback="")
+    if detail:
+        normalized = (
+            detail.replace("；", "。")
+            .replace(";", "。")
+            .replace("，", "，")
+        )
+        for chunk in normalized.split("。"):
+            text = str(chunk).strip(" ，")
+            if text and text not in points:
+                points.append(text)
+            if len(points) >= 3:
+                break
+
+    material_name = str(issue.get("material_name", "") or "").strip()
+    if material_name:
+        points.append(f"命中材料：{material_name}")
+
+    dimension_key = _issue_dimension_key(issue)
+    for item in review_dimensions:
+        if str(item.get("key", "") or "") != dimension_key:
+            continue
+        for finding in list(item.get("findings", []) or []):
+            finding_text = str(finding).strip()
+            if finding_text and finding_text not in points:
+                points.append(finding_text)
+            if len(points) >= 5:
+                return points
+        break
+    return points[:5]
+
+
+def _issue_explainer_board(issues: list[dict], review_dimensions: list[dict], prompt_snapshot: dict) -> str:
+    if not issues:
+        return empty_state("暂无重点问题", "当前没有需要优先解释的问题。")
+
+    cards = []
+    for index, issue in enumerate(issues[:8], start=1):
+        title, action = _friendly_issue_summary(issue, [])
+        _, tone = business_level(issue)
+        evidence_points = _issue_evidence_points(issue, review_dimensions)
+        evidence_html = "".join(f"<li>{escape_html(text)}</li>" for text in evidence_points) or "<li>-</li>"
+        cards.append(
+            '<article class="report-card">'
+            '<div class="report-card-copy">'
+            f"<strong>{index}. {escape_html(title)}</strong>"
+            f"<span>{pill(_rule_title_for_issue(issue, review_dimensions, prompt_snapshot), tone)}</span>"
+            "</div>"
+            '<div class="rule-checkpoint-list">'
+            f"<p><strong>问题说明：</strong>{escape_html(_issue_text(issue, 'desc', 'message', 'detail', fallback='-'))}</p>"
+            f"<p><strong>建议动作：</strong>{escape_html(action)}</p>"
+            f"<ul>{evidence_html}</ul>"
+            "</div>"
+            "</article>"
+        )
+    return f'<div class="report-card-grid">{"".join(cards)}</div>'
+
+
 def _review_method_table(prompt_snapshot: dict) -> str:
     rows = [
         [
@@ -487,6 +559,7 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
     friendly_diagnosis = _friendly_diagnosis_panel(issues, review_dimensions, materials)
     business_issue_board = _business_issue_board(issues)
     source_issue_board = _issue_source_board(issues)
+    issue_explainer = _issue_explainer_board(issues, review_dimensions, prompt_snapshot)
     issue_trace = _issue_trace_table(issues, review_dimensions, prompt_snapshot, source_submission_id, case_id)
     evidence_board = _dimension_evidence_board(review_dimensions, prompt_snapshot, source_submission_id, case_id)
     method_table = _review_method_table(prompt_snapshot)
@@ -533,6 +606,7 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
         {panel('先改这些地方', friendly_diagnosis, kicker='直观诊断', extra_class='span-12', icon_name='alert', description='直接告诉你哪里不对，以及应该先改什么。', panel_id='report-diagnosis')}
         {panel('问题级别归类', business_issue_board, kicker='业务分组', extra_class='span-12', icon_name='layers', description='按退回级问题、弱智问题、警告项整理本次结果。', panel_id='report-business-levels')}
         {panel('按材料来源看问题', source_issue_board, kicker='来源拆分', extra_class='span-12', icon_name='cluster', description='把问题按信息采集表、说明文档、源代码、协议或跨材料来源拆开查看。', panel_id='report-sources')}
+        {panel('重点问题说明', issue_explainer, kicker='先看卡片', extra_class='span-12', icon_name='report', description='把重点问题直接翻译成人话，展示触发规则、判定依据和处理建议。', panel_id='report-explainer')}
         {panel('发现了什么不足', issue_trace, kicker='问题追踪', extra_class='span-12', icon_name='alert', description='直接展示问题、命中维度、规则依据和建议动作。', panel_id='report-trace')}
         {panel('怎么判定出来的', evidence_board, kicker='证据链', extra_class='span-12', icon_name='search', description='按审查维度查看摘要、证据、规则目标和模型关注点。', panel_id='report-evidence')}
         {panel('用了哪些审查规则', method_table, kicker='规则清单', extra_class='span-12', icon_name='shield', description='展示本次分析实际启用的审查规则和 LLM 关注点。', panel_id='report-method')}
@@ -667,6 +741,7 @@ def render_report_page(report: dict) -> str:
             ("#report-diagnosis", "先改这些地方", "alert"),
             ("#report-business-levels", "问题级别归类", "layers"),
             ("#report-sources", "按材料来源看问题", "cluster"),
+            ("#report-explainer", "重点问题说明", "report"),
             ("#report-trace", "发现了什么不足", "alert"),
             ("#report-evidence", "怎么判定出来的", "search"),
             ("#report-method", "用了哪些审查规则", "shield"),

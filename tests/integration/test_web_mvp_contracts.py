@@ -78,6 +78,7 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
     assert "先改这些地方" in report_page.text
     assert "问题级别归类" in report_page.text
     assert "按材料来源看问题" in report_page.text
+    assert "重点问题说明" in report_page.text
     assert "发现了什么不足" in report_page.text
     assert "怎么判定出来的" in report_page.text
     assert "用了哪些审查规则" in report_page.text
