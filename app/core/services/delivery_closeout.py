@@ -197,6 +197,14 @@ def _check(name: str, label: str, status: str, summary: str, *, value: str = "",
     }
 
 
+def _normalize_recommended_action(status: str, recommended_action: str, fallback: str = "") -> str:
+    normalized_status = str(status or "warning").strip() or "warning"
+    if normalized_status == "pass":
+        return ""
+    action = str(recommended_action or "").strip()
+    return action or str(fallback or "").strip()
+
+
 def _baseline_closeout_check(baseline_status: dict) -> dict:
     totals = dict(baseline_status.get("totals", {}) or {})
     needs_review = int(totals.get("needs_review", 0) or 0)
@@ -348,7 +356,11 @@ def run_delivery_closeout(
             str(release_validation.get("status", "blocked") or "blocked"),
             str(release_validation.get("summary", "") or ""),
             value=str(release_validation.get("generated_at", "") or release_validation.get("file_name", "") or "not_recorded"),
-            recommended_action=str(release_validation.get("recommended_action", "") or "Run py -m app.tools.release_validation before business closeout."),
+            recommended_action=_normalize_recommended_action(
+                str(release_validation.get("status", "blocked") or "blocked"),
+                str(release_validation.get("recommended_action", "") or ""),
+                "Run py -m app.tools.release_validation before business closeout.",
+            ),
         ),
         _check(
             "release_gate",
@@ -356,7 +368,10 @@ def run_delivery_closeout(
             str(release_gate.get("status", "warning") or "warning"),
             str(release_gate.get("summary", "") or ""),
             value=str(release_gate.get("mode", "") or "unknown"),
-            recommended_action=str(release_gate.get("recommended_action", "") or ""),
+            recommended_action=_normalize_recommended_action(
+                str(release_gate.get("status", "warning") or "warning"),
+                str(release_gate.get("recommended_action", "") or ""),
+            ),
         ),
         _baseline_closeout_check(baseline),
         _backup_closeout_check(backup),
@@ -366,7 +381,10 @@ def run_delivery_closeout(
             str(acceptance_checklist.get("status", "warning") or "warning"),
             str(acceptance_checklist.get("summary", "") or ""),
             value=str(acceptance_checklist.get("file_name", "") or "missing"),
-            recommended_action=str(acceptance_checklist.get("recommended_action", "") or ""),
+            recommended_action=_normalize_recommended_action(
+                str(acceptance_checklist.get("status", "warning") or "warning"),
+                str(acceptance_checklist.get("recommended_action", "") or ""),
+            ),
         ),
     ]
 

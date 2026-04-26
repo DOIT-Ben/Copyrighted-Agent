@@ -2,7 +2,7 @@
 
 ## Summary
 
-- generated_at: `2026-04-26T11:30:21`
+- generated_at: `2026-04-26T11:28:44`
 - status: `pass`
 - milestone: `ready_for_business_handoff`
 - summary: Business closeout is complete. Provider validation, sample quality, rollback point, and handoff artifacts are ready.

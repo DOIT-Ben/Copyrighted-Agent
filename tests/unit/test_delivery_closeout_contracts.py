@@ -121,3 +121,82 @@ def test_delivery_closeout_download_helper_rejects_nested_paths(tmp_path):
 
     with pytest.raises(ValueError):
         get_delivery_closeout_artifact_download(dev_root=tmp_path, file_name="../escape.json")
+
+
+@pytest.mark.unit
+@pytest.mark.contract
+def test_delivery_closeout_clears_recommended_actions_for_passing_checks(tmp_path):
+    AppConfig = require_symbol("app.core.services.app_config", "AppConfig")
+    run_delivery_closeout = require_symbol("app.core.services.delivery_closeout", "run_delivery_closeout")
+
+    dev_root = tmp_path / "docs" / "dev"
+    backups_root = tmp_path / "data" / "backups"
+    dev_root.mkdir(parents=True, exist_ok=True)
+    backups_root.mkdir(parents=True, exist_ok=True)
+
+    (dev_root / "real-provider-validation-latest.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-04-26T11:14:23",
+                "status": "pass",
+                "summary": "Real-provider validation passed for probe, release gate, and sample smokes.",
+                "recommended_action": "Run py -m app.tools.release_validation before business closeout.",
+                "provider_probe": {"probe_status": "ok"},
+                "mode_a_smoke": {"status": "pass"},
+                "mode_b_smoke": {"status": "pass"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (dev_root / "106-real-provider-acceptance-checklist.md").write_text("# checklist\n", encoding="utf-8")
+    history_root = dev_root / "history"
+    history_root.mkdir(parents=True, exist_ok=True)
+    (history_root / "real-sample-baseline_20260426_110801.json").write_text(
+        json.dumps(
+            {
+                "snapshot": {
+                    "generated_at": "2026-04-26T11:08:01",
+                    "targets": [
+                        {
+                            "label": "mode_a_real",
+                            "aggregate": {
+                                "materials": 24,
+                                "cases": 6,
+                                "reports": 6,
+                                "unknown": 0,
+                                "needs_review": 0,
+                                "low_quality": 0,
+                                "redactions": 252,
+                            },
+                        }
+                    ],
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (backups_root / "runtime_backup_20260419_2219.zip").write_bytes(b"backup")
+
+    result = run_delivery_closeout(
+        config=AppConfig(
+            data_root=str(tmp_path / "runtime"),
+            sqlite_path=str(tmp_path / "runtime" / "soft_review.db"),
+            log_path=str(tmp_path / "runtime" / "logs" / "app.jsonl"),
+            ai_enabled=True,
+            ai_provider="external_http",
+            ai_endpoint="http://127.0.0.1:18011/review",
+            ai_model="minimax-m2.7-highspeed",
+        ),
+        dev_root=dev_root,
+        backups_root=backups_root,
+        write_artifacts=False,
+    )
+
+    check_map = {item["name"]: item for item in result["checks"]}
+    assert check_map["latest_release_validation"]["recommended_action"] == ""
+    assert check_map["latest_release_validation"]["status"] == "pass"
+    assert check_map["release_gate"]["status"] in {"warning", "blocked", "pass"}
+    assert check_map["acceptance_checklist"]["recommended_action"] == ""
+    assert check_map["acceptance_checklist"]["status"] == "pass"
