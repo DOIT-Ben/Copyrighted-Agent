@@ -23,11 +23,17 @@ from app.core.reviewers.rules.source_code import review_source_code_text
 from app.core.services.app_logging import log_event
 from app.core.services.evidence_anchors import attach_issue_evidence_anchors
 from app.core.services.input_intake import stage_directory_input
+from app.core.services.job_runtime import update_job_state
 from app.core.services.material_classifier import classify_material
 from app.core.services.online_filing import normalize_online_filing
 from app.core.services.review_dimensions import build_case_review_dimensions
 from app.core.services.review_profile import normalize_review_profile
 from app.core.services.sqlite_repository import save_submission_graph
+from app.core.services.submission_insights import (
+    label_for_manual_review_reason,
+    label_for_parse_reason,
+    label_for_unknown_reason,
+)
 from app.core.services.runtime_store import store
 from app.core.services.zip_ingestion import safe_extract_zip
 from app.core.utils.text import ensure_dir, now_iso, slug_id, summarize_severity
@@ -56,16 +62,14 @@ def _update_job(
     finished: bool = False,
     persist_submission_id: str = "",
 ) -> None:
-    if status is not None:
-        job.status = status
-    if progress is not None:
-        job.progress = progress
-    if stage is not None:
-        job.stage = stage
-    if detail is not None:
-        job.detail = detail
-    if finished:
-        job.finished_at = now_iso()
+    update_job_state(
+        job,
+        status=status,
+        progress=progress,
+        stage=stage,
+        detail=detail,
+        finished=finished,
+    )
     if persist_submission_id:
         save_submission_graph(persist_submission_id)
 
@@ -189,11 +193,21 @@ def _build_triage(classification: dict, parse_quality: dict) -> dict:
         or parse_quality.get("quality_level") == "low"
         or float(classification.get("confidence", 0.0)) < 0.85
     )
+    manual_review_reason_code = ""
+    if classification.get("material_type") == MaterialType.UNKNOWN.value:
+        manual_review_reason_code = "manual_review_required_unknown_material"
+    elif parse_quality.get("quality_level") == "low":
+        manual_review_reason_code = "manual_review_required_low_quality"
+    elif float(classification.get("confidence", 0.0)) < 0.85:
+        manual_review_reason_code = "manual_review_required_low_confidence"
     return {
         "needs_manual_review": needs_manual_review,
         "unknown_reason": unknown_reason,
+        "unknown_reason_label": label_for_unknown_reason(unknown_reason),
+        "manual_review_reason_code": manual_review_reason_code,
+        "manual_review_reason_label": label_for_manual_review_reason(manual_review_reason_code),
         "quality_review_reason_code": parse_quality.get("review_reason_code", ""),
-        "quality_review_reason_label": parse_quality.get("review_reason_label", ""),
+        "quality_review_reason_label": label_for_parse_reason(str(parse_quality.get("review_reason_code", "") or "")),
         "legacy_doc_bucket": parse_quality.get("legacy_doc_bucket", ""),
         "legacy_doc_bucket_label": parse_quality.get("legacy_doc_bucket_label", ""),
         "review_recommendation": "manual_triage" if needs_manual_review else "auto_ok",
@@ -293,6 +307,7 @@ def ingest_submission(
             stage="正在登记批次",
             detail="系统已接收文件，正在创建批次记录。",
             started_at=now_iso(),
+            updated_at=now_iso(),
         )
         store.add_job(job)
 

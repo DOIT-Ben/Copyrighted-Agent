@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Thread
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from wsgiref.simple_server import make_server
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
+from app.core.domain.enums import JobStatus
 from app.core.domain.models import Job
 from app.core.pipelines.submission_pipeline import ingest_submission
 from app.core.services.app_config import load_app_config
@@ -21,11 +22,13 @@ from app.core.services.corrections import (
     rerun_case_review,
     reset_submission_review_dimension_rule,
     update_case_online_filing,
+    update_submission_internal_state,
     update_submission_review_dimension_rule,
     upload_desensitized_package,
 )
 from app.core.services.delivery_closeout import get_delivery_closeout_artifact_download, latest_delivery_closeout_status
 from app.core.services.exports import build_submission_export_bundle, get_material_artifact, get_report_download, get_report_json_download
+from app.core.services.job_runtime import classify_job_failure, recover_interrupted_jobs, update_job_state
 from app.core.services.provider_probe import (
     get_provider_probe_artifact_download,
     latest_failed_provider_probe_status,
@@ -37,8 +40,15 @@ from app.core.services.review_profile import normalize_review_profile, parse_rev
 from app.core.services.review_rulebook import parse_dimension_rule_items_from_form
 from app.core.services.release_gate import evaluate_release_gate
 from app.core.services.runtime_store import store
-from app.core.services.sqlite_repository import load_all_into_store, save_submission_graph
+from app.core.services.sqlite_repository import (
+    list_correction_feedback,
+    list_manual_review_queue,
+    list_retryable_jobs,
+    load_all_into_store,
+    save_submission_graph,
+)
 from app.core.services.startup_checks import run_startup_self_check
+from app.core.services.submission_insights import parse_diagnostic_snapshot, submission_quality_snapshot
 from app.core.utils.text import ensure_dir, now_iso, slug_id
 from app.web.page_submission import (
     render_submission_exports_page,
@@ -83,6 +93,121 @@ def _extract_review_profile(form_data, *, fallback: dict | None = None) -> dict:
     return normalize_review_profile(parse_review_profile_form(form_data, fallback=fallback))
 
 
+def _build_async_job_metadata(
+    *,
+    saved_path: Path,
+    original_filename: str,
+    mode: str,
+    review_strategy: str,
+    review_profile: dict,
+    retry_count: int = 0,
+    retry_of_job_id: str = "",
+    retry_of_submission_id: str = "",
+) -> dict:
+    return {
+        "source_path": str(saved_path),
+        "original_filename": original_filename,
+        "mode": mode,
+        "review_strategy": review_strategy,
+        "review_profile": dict(review_profile),
+        "retry_count": max(int(retry_count or 0), 0),
+        "retry_of_job_id": retry_of_job_id,
+        "retry_of_submission_id": retry_of_submission_id,
+    }
+
+
+def _start_async_submission_job(
+    *,
+    saved_path: Path,
+    original_filename: str,
+    mode: str,
+    review_strategy: str,
+    review_profile: dict,
+    retry_count: int = 0,
+    retry_of_job_id: str = "",
+    retry_of_submission_id: str = "",
+) -> tuple[Job, str]:
+    submission_id = slug_id("sub")
+    job = store.add_job(
+        Job(
+            id=slug_id("job"),
+            job_type="ingest_submission",
+            scope_type="submission",
+            scope_id=submission_id,
+            status=JobStatus.QUEUED.value,
+            progress=2,
+            stage="文件已接收",
+            detail=f"已收到 {original_filename}，正在进入处理队列。",
+            started_at=now_iso(),
+            updated_at=now_iso(),
+            retryable=False,
+            metadata=_build_async_job_metadata(
+                saved_path=saved_path,
+                original_filename=original_filename,
+                mode=mode,
+                review_strategy=review_strategy,
+                review_profile=review_profile,
+                retry_count=retry_count,
+                retry_of_job_id=retry_of_job_id,
+                retry_of_submission_id=retry_of_submission_id,
+            ),
+        )
+    )
+    worker = Thread(
+        target=_run_async_submission,
+        kwargs={
+            "saved_path": saved_path,
+            "original_filename": original_filename,
+            "mode": mode,
+            "review_strategy": review_strategy,
+            "review_profile": review_profile,
+            "submission_id": submission_id,
+            "job_id": job.id,
+        },
+        daemon=True,
+    )
+    worker.start()
+    return job, submission_id
+
+
+def _retry_async_submission_job(job_id: str) -> tuple[Job, str]:
+    job = store.jobs.get(job_id)
+    if not job:
+        raise ValueError("job_not_found")
+    if str(getattr(job, "job_type", "") or "") != "ingest_submission":
+        raise ValueError("unsupported_job_type")
+    if str(getattr(job, "status", "") or "").strip().lower() not in {JobStatus.FAILED.value, JobStatus.INTERRUPTED.value}:
+        raise ValueError("job_not_retryable_in_current_status")
+    if not bool(getattr(job, "retryable", False)):
+        raise ValueError("job_retry_disabled")
+
+    metadata = dict(getattr(job, "metadata", {}) or {})
+    source_path_raw = str(metadata.get("source_path", "") or "").strip()
+    mode = str(metadata.get("mode", "") or "").strip()
+    if not source_path_raw:
+        raise ValueError("missing_source_path")
+    source_path = Path(source_path_raw)
+    if not source_path.exists():
+        raise ValueError("missing_source_file")
+    if not mode:
+        raise ValueError("missing_submission_mode")
+
+    original_filename = str(metadata.get("original_filename", "") or source_path.name).strip() or source_path.name
+    review_strategy = str(metadata.get("review_strategy", "auto_review") or "auto_review").strip()
+    review_profile = normalize_review_profile(dict(metadata.get("review_profile", {}) or {}))
+    next_retry_count = int(metadata.get("retry_count", 0) or 0) + 1
+    return _start_async_submission_job(
+        saved_path=source_path,
+        original_filename=original_filename,
+        mode=mode,
+        review_strategy=review_strategy,
+        review_profile=review_profile,
+        retry_count=next_retry_count,
+        retry_of_job_id=job_id,
+        retry_of_submission_id=str(getattr(job, "scope_id", "") or ""),
+    )
+
+
 def _run_async_submission(
     saved_path: Path,
     *,
@@ -119,12 +244,18 @@ def _run_async_submission(
         error_message = str(exc)
         job = store.jobs.get(job_id)
         if job:
-            job.status = "failed"
-            job.progress = 100
-            job.stage = "处理失败"
-            job.detail = error_message or "系统处理时发生错误。"
-            job.error_message = error_message
-            job.finished_at = now_iso()
+            error_code, retryable = classify_job_failure(exc)
+            update_job_state(
+                job,
+                status="failed",
+                progress=100,
+                stage="处理失败",
+                detail=error_message or "系统处理时发生错误。",
+                error_message=error_message,
+                error_code=error_code,
+                retryable=retryable,
+                finished=True,
+            )
         submission = store.submissions.get(submission_id)
         if submission:
             submission.status = "failed"
@@ -154,6 +285,20 @@ def _build_ops_report(config) -> dict:
 
 
 SUBMISSION_NOTICE_MAP = {
+    "job_retried": {
+        "title": "任务已重新发起",
+        "message": "系统已经基于原始上传文件重新创建处理任务，可继续查看新的批次详情。",
+        "tone": "success",
+        "icon_name": "refresh",
+        "meta": ["已生成新任务", "可继续跟踪处理链路"],
+    },
+    "internal_state_updated": {
+        "title": "内部处理状态已更新",
+        "message": "负责人、内部状态和下一步备注已经保存，批次页面已刷新。",
+        "tone": "success",
+        "icon_name": "wrench",
+        "meta": ["内部状态已保存", "操作已留痕"],
+    },
     "material_type_updated": {
         "title": "材料类型已更新",
         "message": "选中的材料类型已经完成修正，相关留痕已写入更正审计。",
@@ -219,6 +364,20 @@ def _submission_notice_location(submission_id: str, code: str, *, focus: str = "
     return f"{base}?{query}{fragment}"
 
 
+def _safe_submission_return_target(value: str) -> str:
+    target = str(value or "").strip()
+    if not target:
+        return ""
+    parsed = urlsplit(target)
+    if parsed.scheme or parsed.netloc:
+        return ""
+    if parsed.path == "/submissions" or (parsed.path.startswith("/submissions/") and parsed.path.endswith("/exports")):
+        suffix = f"?{parsed.query}" if parsed.query else ""
+        fragment = f"#{parsed.fragment}" if parsed.fragment else ""
+        return f"{parsed.path}{suffix}{fragment}"
+    return ""
+
+
 def _submission_context(submission_id: str) -> tuple[dict, list[dict], list[dict], list[dict], list[dict]]:
     submission = store.submissions.get(submission_id)
     if not submission:
@@ -230,16 +389,46 @@ def _submission_context(submission_id: str) -> tuple[dict, list[dict], list[dict
     return submission.to_dict(), materials, cases, reports, parse_results
 
 
+def _submission_diagnostics_payload(submission_id: str) -> dict:
+    submission = store.submissions.get(submission_id)
+    if not submission:
+        raise HTTPException(404, "未找到批次")
+    diagnostics: list[dict] = []
+    for material_id in submission.material_ids:
+        material = store.materials.get(material_id)
+        parse_result = store.parse_results.get(material_id)
+        if not material:
+            continue
+        diagnostics.append(
+            {
+                "material_id": material.id,
+                "original_filename": material.original_filename,
+                "material_type": material.material_type,
+                **parse_diagnostic_snapshot(material.to_dict(), parse_result.to_dict() if parse_result else {}),
+            }
+        )
+    return {
+        "submission_id": submission_id,
+        "summary": submission_quality_snapshot(submission_id),
+        "diagnostics": diagnostics,
+    }
+
+
 def create_app(testing: bool = False):
     startup_report = run_startup_self_check()
     if not testing:
         load_all_into_store()
+        recovered_jobs = recover_interrupted_jobs()
+        for item in recovered_jobs:
+            if item.get("scope_id"):
+                save_submission_graph(item["scope_id"])
         try:
             log_event(
                 "startup_self_check",
                 {
                     "status": startup_report.get("status", "unknown"),
                     "failed_checks": [item.get("name") for item in startup_report.get("checks", []) if item.get("status") == "failed"],
+                    "recovered_jobs": recovered_jobs,
                 },
             )
         except OSError:
@@ -254,14 +443,12 @@ def create_app(testing: bool = False):
 
     @app.get("/submissions")
     def submission_index(request: Request):
-        del request
-        return HTMLResponse(render_submissions_index())
+        return HTMLResponse(render_submissions_index(dict(request.query_params or {})))
 
     @app.get("/ops")
     def ops_page(request: Request):
-        del request
         config = load_app_config()
-        return HTMLResponse(render_ops_page(config.to_dict(), _build_ops_report(config)))
+        return HTMLResponse(render_ops_page(config.to_dict(), _build_ops_report(config), dict(request.query_params or {})))
 
     @app.get("/static/styles.css")
     def styles(request: Request):
@@ -344,34 +531,13 @@ def create_app(testing: bool = False):
             raise HTTPException(422, "缺少导入模式")
 
         saved = _save_uploaded_zip(upload)
-        submission_id = slug_id("sub")
-        job = store.add_job(
-            Job(
-                id=slug_id("job"),
-                job_type="ingest_submission",
-                scope_type="submission",
-                scope_id=submission_id,
-                status="queued",
-                progress=2,
-                stage="文件已接收",
-                detail=f"已收到 {upload.filename}，正在进入处理队列。",
-                started_at=now_iso(),
-            )
+        job, submission_id = _start_async_submission_job(
+            saved_path=saved,
+            original_filename=upload.filename,
+            mode=mode,
+            review_strategy=review_strategy,
+            review_profile=review_profile,
         )
-        worker = Thread(
-            target=_run_async_submission,
-            kwargs={
-                "saved_path": saved,
-                "original_filename": upload.filename,
-                "mode": mode,
-                "review_strategy": review_strategy,
-                "review_profile": review_profile,
-                "submission_id": submission_id,
-                "job_id": job.id,
-            },
-            daemon=True,
-        )
-        worker.start()
         log_event(
             "upload_submission_async_started",
             {
@@ -408,7 +574,19 @@ def create_app(testing: bool = False):
         if not submission:
             raise HTTPException(404, "未找到批次")
         corrections = [store.corrections[item_id].to_dict() for item_id in submission.correction_ids if item_id in store.corrections]
-        return JSONResponse({"corrections": corrections})
+        return JSONResponse(
+            {
+                "submission_id": submission_id,
+                "summary": submission_quality_snapshot(submission_id),
+                "review_profile_meta": dict((getattr(submission, "review_profile", {}) or {}).get("rulebook_meta", {}) or {}),
+                "corrections": corrections,
+            }
+        )
+
+    @app.get("/api/submissions/{submission_id}/diagnostics")
+    def api_get_submission_diagnostics(request: Request, submission_id: str):
+        del request
+        return JSONResponse(_submission_diagnostics_payload(submission_id))
 
     @app.get("/api/submissions/{submission_id}/files")
     def api_get_submission_files(request: Request, submission_id: str):
@@ -433,7 +611,113 @@ def create_app(testing: bool = False):
         job = store.jobs.get(job_id)
         if not job:
             raise HTTPException(404, "未找到任务")
-        return JSONResponse(job.to_dict())
+        payload = job.to_dict()
+        payload["can_retry"] = bool(
+            payload.get("retryable")
+            and payload.get("job_type") == "ingest_submission"
+            and str(payload.get("status", "") or "").strip().lower() in {JobStatus.FAILED.value, JobStatus.INTERRUPTED.value}
+            and str((payload.get("metadata") or {}).get("source_path", "")).strip()
+        )
+        payload["retry_url"] = f"/api/jobs/{job_id}/retry" if payload["can_retry"] else ""
+        return JSONResponse(payload)
+
+    @app.get("/api/ops/manual-review-queue")
+    def api_get_manual_review_queue(request: Request):
+        del request
+        return JSONResponse({"items": list_manual_review_queue(limit=12)})
+
+    @app.get("/api/ops/correction-feedback")
+    def api_get_correction_feedback(request: Request):
+        del request
+        return JSONResponse({"items": list_correction_feedback(limit=12)})
+
+    @app.get("/api/ops/retryable-jobs")
+    def api_get_retryable_jobs(request: Request):
+        del request
+        return JSONResponse({"items": list_retryable_jobs(limit=12)})
+
+    @app.post("/api/jobs/{job_id}/retry")
+    def api_retry_job(request: Request, job_id: str):
+        del request
+        original_job = store.jobs.get(job_id)
+        if not original_job:
+            raise HTTPException(404, "任务不存在")
+        try:
+            retried_job, submission_id = _retry_async_submission_job(job_id)
+        except ValueError as exc:
+            error_code = str(exc)
+            if error_code == "job_not_found":
+                raise HTTPException(404, "任务不存在") from exc
+            if error_code == "unsupported_job_type":
+                raise HTTPException(400, "当前仅支持重试导入任务") from exc
+            if error_code == "missing_source_file":
+                raise HTTPException(409, "原始上传文件已不存在，无法重试") from exc
+            if error_code == "missing_source_path":
+                raise HTTPException(409, "任务缺少可重试的源文件路径") from exc
+            if error_code == "missing_submission_mode":
+                raise HTTPException(409, "任务缺少导入模式，无法重试") from exc
+            raise HTTPException(409, "当前任务不可重试") from exc
+        log_event(
+            "upload_submission_async_retried",
+            {
+                "retry_of_job_id": job_id,
+                "retry_of_submission_id": str(getattr(original_job, "scope_id", "") or ""),
+                "job_id": retried_job.id,
+                "submission_id": submission_id,
+                "mode": str((getattr(retried_job, "metadata", {}) or {}).get("mode", "") or ""),
+                "review_strategy": str((getattr(retried_job, "metadata", {}) or {}).get("review_strategy", "") or ""),
+                "retry_count": int((getattr(retried_job, "metadata", {}) or {}).get("retry_count", 0) or 0),
+            },
+        )
+        return JSONResponse(
+            {
+                "job_id": retried_job.id,
+                "submission_id": submission_id,
+                "status_url": f"/api/jobs/{retried_job.id}",
+                "redirect_url": f"/submissions/{submission_id}",
+                "retry_of_job_id": job_id,
+            },
+            status_code=202,
+        )
+
+    @app.post("/submissions/{submission_id}/actions/retry-job")
+    def retry_job_page(request: Request, submission_id: str):
+        job_id = request.form_data.get("job_id", "")
+        return_to = _safe_submission_return_target(request.form_data.get("return_to", ""))
+        if not job_id:
+            raise HTTPException(422, "缺少 job_id")
+        original_job = store.jobs.get(job_id)
+        if not original_job:
+            raise HTTPException(404, "任务不存在")
+        if str(getattr(original_job, "scope_id", "") or "") != submission_id:
+            raise HTTPException(400, "任务与批次不匹配")
+        try:
+            retried_job, new_submission_id = _retry_async_submission_job(job_id)
+        except ValueError as exc:
+            error_code = str(exc)
+            if error_code == "job_not_found":
+                raise HTTPException(404, "任务不存在") from exc
+            if error_code == "unsupported_job_type":
+                raise HTTPException(400, "当前仅支持重试导入任务") from exc
+            if error_code == "missing_source_file":
+                raise HTTPException(409, "原始上传文件已不存在，无法重试") from exc
+            if error_code == "missing_source_path":
+                raise HTTPException(409, "任务缺少可重试的源文件路径") from exc
+            if error_code == "missing_submission_mode":
+                raise HTTPException(409, "任务缺少导入模式，无法重试") from exc
+            raise HTTPException(409, "当前任务不可重试") from exc
+        log_event(
+            "upload_submission_async_retried_html",
+            {
+                "retry_of_job_id": job_id,
+                "retry_of_submission_id": submission_id,
+                "job_id": retried_job.id,
+                "submission_id": new_submission_id,
+            },
+        )
+        if return_to:
+            return RedirectResponse(return_to, status_code=303)
+        return RedirectResponse(_submission_notice_location(new_submission_id, "job_retried", focus="internal-workbench"), status_code=303)
 
     @app.post("/api/materials/{material_id}/type")
     def api_change_material_type(request: Request, material_id: str):
@@ -549,6 +833,33 @@ def create_app(testing: bool = False):
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         return JSONResponse(result)
+
+    @app.post("/submissions/{submission_id}/actions/update-internal-state")
+    def update_internal_state_page(request: Request, submission_id: str):
+        owner = request.form_data.get("internal_owner", "")
+        internal_status = request.form_data.get("internal_status", "unassigned")
+        next_step = request.form_data.get("internal_next_step", "")
+        note = request.form_data.get("internal_note", "")
+        updated_by = request.form_data.get("updated_by", "operator_ui")
+        return_to = _safe_submission_return_target(request.form_data.get("return_to", ""))
+        try:
+            update_submission_internal_state(
+                submission_id,
+                owner=owner,
+                internal_status=internal_status,
+                next_step=next_step,
+                note=note,
+                updated_by=updated_by,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        log_event(
+            "update_internal_state_html",
+            {"submission_id": submission_id, "internal_status": internal_status, "owner": owner, "by": updated_by},
+        )
+        if return_to:
+            return RedirectResponse(return_to, status_code=303)
+        return RedirectResponse(_submission_notice_location(submission_id, "internal_state_updated", focus="internal-workbench"), status_code=303)
 
     @app.post("/submissions/{submission_id}/actions/change-type")
     def change_material_type_page(request: Request, submission_id: str):

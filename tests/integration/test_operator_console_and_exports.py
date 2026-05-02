@@ -21,6 +21,8 @@ def _create_submission(
         )
     assert response.status_code in (200, 201, 202)
     return response.json()["id"]
+    assert "解析复核队列" in response.text
+    assert "纠错反馈闭环" in response.text
 
 
 @pytest.mark.integration
@@ -41,6 +43,92 @@ def test_submission_detail_exposes_operator_console_and_export_sections(api_clie
 @pytest.mark.integration
 @pytest.mark.contract
 @pytest.mark.web
+def test_submission_detail_shows_retryable_job_history(api_client, mode_a_zip_path):
+    Job = __import__("app.core.domain.models", fromlist=["Job"]).Job
+    runtime_store = __import__("app.core.services.runtime_store", fromlist=["store"]).store
+
+    submission_id = _create_submission(api_client, mode_a_zip_path)
+    runtime_store.add_job(
+        Job(
+            id="job_submission_page_retry",
+            job_type="ingest_submission",
+            scope_type="submission",
+            scope_id=submission_id,
+            status="interrupted",
+            progress=52,
+            error_message="worker_interrupted_during_runtime",
+            error_code="worker_interrupted_during_runtime",
+            retryable=True,
+            started_at="2026-05-02T12:00:00",
+            updated_at="2026-05-02T12:05:00",
+            finished_at="2026-05-02T12:05:00",
+            metadata={
+                "source_path": str(mode_a_zip_path),
+                "original_filename": mode_a_zip_path.name,
+                "mode": "single_case_package",
+                "review_strategy": "auto_review",
+                "review_profile": {},
+                "retry_count": 0,
+            },
+        )
+    )
+
+    response = api_client.get(f"/submissions/{submission_id}")
+
+    assert response.status_code == 200
+    assert "任务链路" in response.text
+    assert "worker_interrupted_during_runtime" in response.text
+    assert "重试导入" in response.text
+    assert f'/submissions/{submission_id}/actions/retry-job' in response.text
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
+def test_html_retry_job_action_redirects_to_new_submission(api_client, mode_a_zip_path):
+    Job = __import__("app.core.domain.models", fromlist=["Job"]).Job
+    runtime_store = __import__("app.core.services.runtime_store", fromlist=["store"]).store
+
+    submission_id = _create_submission(api_client, mode_a_zip_path)
+    runtime_store.add_job(
+        Job(
+            id="job_html_retry",
+            job_type="ingest_submission",
+            scope_type="submission",
+            scope_id=submission_id,
+            status="interrupted",
+            progress=61,
+            error_message="worker_interrupted_during_runtime",
+            error_code="worker_interrupted_during_runtime",
+            retryable=True,
+            started_at="2026-05-02T12:30:00",
+            updated_at="2026-05-02T12:35:00",
+            finished_at="2026-05-02T12:35:00",
+            metadata={
+                "source_path": str(mode_a_zip_path),
+                "original_filename": mode_a_zip_path.name,
+                "mode": "single_case_package",
+                "review_strategy": "auto_review",
+                "review_profile": {},
+                "retry_count": 0,
+            },
+        )
+    )
+
+    response = api_client.post(
+        f"/submissions/{submission_id}/actions/retry-job",
+        data={"job_id": "job_html_retry"},
+    )
+
+    assert response.status_code == 303
+    location = response.headers.get("Location", "")
+    assert "notice=job_retried" in location
+    assert "/submissions/sub_" in location
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
 def test_export_page_separates_handoff_assets_from_support_logs(api_client, mode_a_zip_path):
     submission_id = _create_submission(api_client, mode_a_zip_path)
 
@@ -51,6 +139,61 @@ def test_export_page_separates_handoff_assets_from_support_logs(api_client, mode
     assert "下载批次包" in response.text
     assert "排障附件" in response.text
     assert "下载日志" in response.text
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
+def test_export_page_delivery_confirmation_updates_internal_state(api_client, mode_a_zip_path):
+    submission_id = _create_submission(api_client, mode_a_zip_path)
+
+    exports_page = api_client.get(f"/submissions/{submission_id}/exports")
+    assert exports_page.status_code == 200
+    assert "交付确认" in exports_page.text
+    assert "交付历史" in exports_page.text
+    assert "暂无交付历史" in exports_page.text
+    assert "标记为可交付" in exports_page.text
+    assert "标记为已交付" in exports_page.text
+
+    ready_response = api_client.post(
+        f"/submissions/{submission_id}/actions/update-internal-state",
+        data={
+            "internal_status": "ready_to_deliver",
+            "internal_next_step": "已生成内部交付包，待负责人复核后发送。",
+            "internal_note": "已完成交付前检查，准备内部交付。",
+            "updated_by": "delivery_center",
+            "return_to": f"/submissions/{submission_id}/exports#delivery-check",
+        },
+    )
+    assert ready_response.status_code == 303
+    assert ready_response.headers.get("Location") == f"/submissions/{submission_id}/exports#delivery-check"
+    ready_payload = api_client.get(f"/api/submissions/{submission_id}").json()
+    assert ready_payload["internal_status"] == "ready_to_deliver"
+    assert ready_payload["internal_next_step"] == "已生成内部交付包，待负责人复核后发送。"
+    assert ready_payload["internal_updated_by"] == "delivery_center"
+
+    delivered_response = api_client.post(
+        f"/submissions/{submission_id}/actions/update-internal-state",
+        data={
+            "internal_status": "delivered",
+            "internal_next_step": "本批次已交付并完成内部归档。",
+            "internal_note": "导出中心确认已交付，交付结果已进入内部归档。",
+            "updated_by": "delivery_center",
+            "return_to": f"/submissions/{submission_id}/exports#delivery-check",
+        },
+    )
+    assert delivered_response.status_code == 303
+    delivered_payload = api_client.get(f"/api/submissions/{submission_id}").json()
+    assert delivered_payload["internal_status"] == "delivered"
+    assert delivered_payload["internal_next_step"] == "本批次已交付并完成内部归档。"
+    assert delivered_payload["internal_note"] == "导出中心确认已交付，交付结果已进入内部归档。"
+
+    history_page = api_client.get(f"/submissions/{submission_id}/exports")
+    assert history_page.status_code == 200
+    assert "交付历史" in history_page.text
+    assert "已生成内部交付包，待负责人复核后发送。" in history_page.text
+    assert "本批次已交付并完成内部归档。" in history_page.text
+    assert "delivery_center" in history_page.text
 
 
 @pytest.mark.integration
@@ -88,6 +231,118 @@ def test_ops_page_exposes_self_check_and_support_artifacts(api_client):
     assert "app.tools.minimax_bridge" in response.text or "minimax_bridge" in response.text
     assert "真实通道冒烟" in response.text
     assert "滚动基线" in response.text
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
+def test_ops_page_lists_retryable_jobs(api_client, mode_a_zip_path):
+    Job = __import__("app.core.domain.models", fromlist=["Job"]).Job
+    runtime_store = __import__("app.core.services.runtime_store", fromlist=["store"]).store
+
+    runtime_store.add_job(
+        Job(
+            id="job_ops_retry",
+            job_type="ingest_submission",
+            scope_type="submission",
+            scope_id="sub_ops_retry",
+            status="failed",
+            progress=100,
+            error_message="disk busy",
+            error_code="filesystem_io_error",
+            retryable=True,
+            started_at="2026-05-02T13:00:00",
+            updated_at="2026-05-02T13:02:00",
+            finished_at="2026-05-02T13:02:00",
+            metadata={
+                "source_path": str(mode_a_zip_path),
+                "original_filename": mode_a_zip_path.name,
+                "mode": "single_case_package",
+                "review_strategy": "auto_review",
+                "review_profile": {},
+                "retry_count": 1,
+            },
+        )
+    )
+
+    response = api_client.get("/ops")
+
+    assert response.status_code == 200
+    assert "失败与重试" in response.text
+    assert "filesystem_io_error" in response.text
+    assert "sub_ops_retry" in response.text
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
+def test_ops_page_can_filter_retryable_jobs(api_client, mode_a_zip_path):
+    Job = __import__("app.core.domain.models", fromlist=["Job"]).Job
+    runtime_store = __import__("app.core.services.runtime_store", fromlist=["store"]).store
+
+    runtime_store.add_job(
+        Job(
+            id="job_ops_failed",
+            job_type="ingest_submission",
+            scope_type="submission",
+            scope_id="sub_ops_failed",
+            status="failed",
+            progress=100,
+            error_message="disk busy",
+            error_code="filesystem_io_error",
+            retryable=True,
+            started_at="2026-05-02T13:10:00",
+            updated_at="2026-05-02T13:11:00",
+            finished_at="2026-05-02T13:11:00",
+            metadata={"source_path": str(mode_a_zip_path), "mode": "single_case_package"},
+        )
+    )
+    runtime_store.add_job(
+        Job(
+            id="job_ops_interrupted",
+            job_type="ingest_submission",
+            scope_type="submission",
+            scope_id="sub_ops_interrupted",
+            status="interrupted",
+            progress=55,
+            error_message="worker_interrupted_during_runtime",
+            error_code="worker_interrupted_during_runtime",
+            retryable=True,
+            started_at="2026-05-02T13:12:00",
+            updated_at="2026-05-02T13:13:00",
+            finished_at="2026-05-02T13:13:00",
+            metadata={"source_path": str(mode_a_zip_path), "mode": "single_case_package"},
+        )
+    )
+
+    response = api_client.get("/ops?job_status=interrupted&job_error=worker")
+
+    assert response.status_code == 200
+    assert "sub_ops_interrupted" in response.text
+    assert "sub_ops_failed" not in response.text
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.web
+def test_ops_page_shows_correction_feedback_after_manual_fix(api_client, mode_a_zip_path):
+    submission_id = _create_submission(api_client, mode_a_zip_path)
+    files_payload = api_client.get(f"/api/submissions/{submission_id}/files").json()["files"]
+    material_id = files_payload[0]["id"]
+
+    fix_response = api_client.post(
+        f"/api/materials/{material_id}/type",
+        data={"material_type": "agreement", "corrected_by": "tester", "note": "ops feedback"},
+    )
+    assert fix_response.status_code == 200
+
+    response = api_client.get("/ops")
+
+    assert response.status_code == 200
+    assert "纠错反馈闭环" in response.text
+    assert "manual_material_reclassified" in response.text or "人工重分材料类型" in response.text
+    assert 'name="job_status"' in response.text
+    assert 'name="job_error"' in response.text
 
 
 @pytest.mark.integration

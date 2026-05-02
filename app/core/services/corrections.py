@@ -18,8 +18,14 @@ from app.core.services.app_config import load_app_config
 from app.core.services.app_logging import log_event
 from app.core.services.online_filing import normalize_online_filing
 from app.core.services.review_dimensions import build_case_review_dimensions
-from app.core.services.review_profile import normalize_review_profile
+from app.core.services.review_profile import bump_review_profile_revision, normalize_review_profile
 from app.core.services.review_rulebook import reset_profile_dimension_rule, update_profile_dimension_rule
+from app.core.services.submission_insights import (
+    build_correction_analysis,
+    label_for_correction_outcome,
+    label_for_correction_reason,
+    submission_quality_snapshot,
+)
 from app.core.services.sqlite_repository import save_submission_graph
 from app.core.services.runtime_store import store
 from app.core.utils.text import ensure_dir, now_iso, slug_id, summarize_severity
@@ -135,25 +141,44 @@ def _collect_case_issues(materials: list, consistency_issues: list[dict]) -> lis
     return combined
 
 
+def _submission_metrics(submission_id: str) -> dict:
+    return submission_quality_snapshot(submission_id)
+
+
+def _effect_analysis(submission_id: str, before_metrics: dict) -> tuple[str, dict]:
+    analysis = build_correction_analysis(before_metrics, _submission_metrics(submission_id))
+    return str(analysis.get("outcome_code", "") or ""), analysis
+
+
 def _record_correction(
     submission_id: str,
     correction_type: str,
     *,
     material_id: str = "",
     case_id: str = "",
+    reason_code: str = "",
+    outcome_code: str = "",
     original_value: dict | None = None,
     corrected_value: dict | None = None,
+    analysis: dict | None = None,
     note: str = "",
     corrected_by: str = "local",
 ) -> Correction:
+    normalized_reason_code = str(reason_code or "").strip()
+    normalized_outcome_code = str(outcome_code or "").strip()
     correction = Correction(
         id=slug_id("cor"),
         submission_id=submission_id,
         correction_type=correction_type,
         material_id=material_id,
         case_id=case_id,
+        reason_code=normalized_reason_code,
+        reason_label=label_for_correction_reason(normalized_reason_code),
+        outcome_code=normalized_outcome_code,
+        outcome_label=label_for_correction_outcome(normalized_outcome_code),
         original_value=original_value or {},
         corrected_value=corrected_value or {},
+        analysis=dict(analysis or {}),
         note=note,
         corrected_by=corrected_by,
         corrected_at=now_iso(),
@@ -338,20 +363,24 @@ def update_case_online_filing(
     note: str = "",
 ) -> dict:
     case, submission = _submission_for_case(case_id)
+    before_metrics = _submission_metrics(submission.id)
     original_value = normalize_online_filing(getattr(case, "online_filing", {}) or {})
     normalized = normalize_online_filing(payload)
     case.online_filing = normalized
-
+    rebuilt = _rebuild_case(case.id)
+    outcome_code, analysis = _effect_analysis(submission.id, before_metrics)
     correction = _record_correction(
         submission.id,
         "update_case_online_filing",
         case_id=case.id,
+        reason_code="online_filing_enriched",
+        outcome_code=outcome_code,
         original_value={"online_filing": original_value},
         corrected_value={"online_filing": normalized},
+        analysis=analysis,
         note=note or "online_filing_updated",
         corrected_by=corrected_by,
     )
-    rebuilt = _rebuild_case(case.id)
     save_submission_graph(submission.id)
     log_event(
         "update_case_online_filing",
@@ -386,6 +415,7 @@ def change_material_type(material_id: str, new_material_type: str, corrected_by:
         raise ValueError(f"Unsupported material type: {new_material_type}")
 
     material, submission = _submission_for_material(material_id)
+    before_metrics = _submission_metrics(submission.id)
     original_value = {"material_type": material.material_type}
     material.material_type = new_material_type
     material.metadata = {
@@ -398,19 +428,22 @@ def change_material_type(material_id: str, new_material_type: str, corrected_by:
         },
     }
 
+    if material.case_id:
+        _rebuild_case(material.case_id)
+    outcome_code, analysis = _effect_analysis(submission.id, before_metrics)
     correction = _record_correction(
         submission.id,
         "change_material_type",
         material_id=material.id,
         case_id=material.case_id or "",
+        reason_code="manual_material_reclassified",
+        outcome_code=outcome_code,
         original_value=original_value,
         corrected_value={"material_type": new_material_type},
+        analysis=analysis,
         note=note,
         corrected_by=corrected_by,
     )
-
-    if material.case_id:
-        _rebuild_case(material.case_id)
     save_submission_graph(submission.id)
     log_event(
         "change_material_type",
@@ -425,6 +458,7 @@ def assign_material_to_case(material_id: str, case_id: str, corrected_by: str = 
     case, _ = _submission_for_case(case_id)
     if material.submission_id != case.source_submission_id:
         raise ValueError("Material and case must belong to the same submission")
+    before_metrics = _submission_metrics(submission.id)
 
     original_case_id = material.case_id or ""
     if original_case_id and original_case_id in store.cases:
@@ -437,18 +471,21 @@ def assign_material_to_case(material_id: str, case_id: str, corrected_by: str = 
         case.material_ids.append(material.id)
     material.case_id = case.id
 
+    rebuilt = _rebuild_case(case.id)
+    outcome_code, analysis = _effect_analysis(submission.id, before_metrics)
     correction = _record_correction(
         submission.id,
         "assign_material_to_case",
         material_id=material.id,
         case_id=case.id,
+        reason_code="manual_case_regrouped",
+        outcome_code=outcome_code,
         original_value={"case_id": original_case_id},
         corrected_value={"case_id": case.id},
+        analysis=analysis,
         note=note,
         corrected_by=corrected_by,
     )
-
-    rebuilt = _rebuild_case(case.id)
     save_submission_graph(submission.id)
     log_event(
         "assign_material_to_case",
@@ -475,6 +512,7 @@ def create_case_from_materials(
     submission = store.submissions.get(submission_id)
     if not submission:
         raise ValueError(f"Submission not found: {submission_id}")
+    before_metrics = _submission_metrics(submission_id)
     materials = [store.materials[item_id] for item_id in material_ids if item_id in store.materials]
     if not materials:
         raise ValueError("No valid materials selected")
@@ -504,16 +542,20 @@ def create_case_from_materials(
         material.case_id = new_case.id
         new_case.material_ids.append(material.id)
 
+    rebuilt = _rebuild_case(new_case.id)
+    outcome_code, analysis = _effect_analysis(submission_id, before_metrics)
     correction = _record_correction(
         submission_id,
         "create_case_from_materials",
         case_id=new_case.id,
+        reason_code="manual_case_created",
+        outcome_code=outcome_code,
         original_value={"material_ids": []},
         corrected_value={"material_ids": list(material_ids), "case_name": new_case.case_name},
+        analysis=analysis,
         note=note,
         corrected_by=corrected_by,
     )
-    rebuilt = _rebuild_case(new_case.id)
     save_submission_graph(submission_id)
     log_event(
         "create_case_from_materials",
@@ -534,6 +576,7 @@ def merge_cases(source_case_id: str, target_case_id: str, corrected_by: str = "l
         raise ValueError("Source and target case must be different")
     if source_case.source_submission_id != target_case.source_submission_id:
         raise ValueError("Cases must belong to the same submission")
+    before_metrics = _submission_metrics(submission.id)
 
     moved_materials = list(source_case.material_ids)
     for material_id in moved_materials:
@@ -545,18 +588,21 @@ def merge_cases(source_case_id: str, target_case_id: str, corrected_by: str = "l
             target_case.material_ids.append(material_id)
     source_case.material_ids = []
 
+    rebuilt = _rebuild_case(target_case.id)
+    _remove_case_if_empty(source_case.id)
+    outcome_code, analysis = _effect_analysis(submission.id, before_metrics)
     correction = _record_correction(
         submission.id,
         "merge_cases",
         case_id=target_case.id,
+        reason_code="manual_case_merged",
+        outcome_code=outcome_code,
         original_value={"source_case_id": source_case.id, "target_case_id": target_case.id},
         corrected_value={"merged_case_id": source_case.id},
+        analysis=analysis,
         note=note,
         corrected_by=corrected_by,
     )
-
-    rebuilt = _rebuild_case(target_case.id)
-    _remove_case_if_empty(source_case.id)
     save_submission_graph(submission.id)
     log_event(
         "merge_cases",
@@ -572,20 +618,25 @@ def merge_cases(source_case_id: str, target_case_id: str, corrected_by: str = "l
 
 def rerun_case_review(case_id: str, corrected_by: str = "local", note: str = "", review_profile: dict | None = None) -> dict:
     case, submission = _submission_for_case(case_id)
+    before_metrics = _submission_metrics(submission.id)
     original_review_profile = normalize_review_profile(getattr(submission, "review_profile", {}))
     if review_profile is not None:
         submission.review_profile = normalize_review_profile(review_profile)
+    rebuilt = _rebuild_case(case.id)
+    _sync_submission_status(submission.id)
+    outcome_code, analysis = _effect_analysis(submission.id, before_metrics)
     correction = _record_correction(
         submission.id,
         "rerun_case_review",
         case_id=case.id,
+        reason_code="manual_review_rerun",
+        outcome_code=outcome_code,
         original_value={"review_result_id": case.review_result_id, "review_profile": original_review_profile},
         corrected_value={"review_result_id": case.review_result_id, "review_profile": normalize_review_profile(getattr(submission, "review_profile", {}))},
+        analysis=analysis,
         note=note,
         corrected_by=corrected_by,
     )
-    rebuilt = _rebuild_case(case.id)
-    _sync_submission_status(submission.id)
     save_submission_graph(submission.id)
     log_event("rerun_case_review", {"submission_id": submission.id, "case_id": case.id, "corrected_by": corrected_by})
     return {
@@ -630,12 +681,27 @@ def update_submission_review_dimension_rule(
             "rules": list(rules or []),
         },
     )
-    submission.review_profile = normalize_review_profile(updated_review_profile)
+    submission.review_profile = bump_review_profile_revision(
+        normalize_review_profile(updated_review_profile),
+        updated_by=corrected_by,
+        change_note=note or f"updated:{dimension_key}",
+        last_dimension_key=dimension_key,
+        change_type="dimension_rule_updated",
+    )
     correction = _record_correction(
         submission.id,
         "update_review_dimension_rule",
+        reason_code="rule_dimension_tuned",
+        outcome_code="stabilized_review_configuration",
         original_value={"dimension_key": dimension_key, "review_profile": original_review_profile},
         corrected_value={"dimension_key": dimension_key, "review_profile": submission.review_profile},
+        analysis={
+            "metrics_before": _submission_metrics(submission.id),
+            "metrics_after": _submission_metrics(submission.id),
+            "delta": {},
+            "outcome_code": "stabilized_review_configuration",
+            "outcome_label": label_for_correction_outcome("stabilized_review_configuration"),
+        },
         note=note or f"updated:{dimension_key}",
         corrected_by=corrected_by,
     )
@@ -660,12 +726,27 @@ def reset_submission_review_dimension_rule(
 
     original_review_profile = normalize_review_profile(getattr(submission, "review_profile", {}))
     updated_review_profile = reset_profile_dimension_rule(original_review_profile, dimension_key)
-    submission.review_profile = normalize_review_profile(updated_review_profile)
+    submission.review_profile = bump_review_profile_revision(
+        normalize_review_profile(updated_review_profile),
+        updated_by=corrected_by,
+        change_note=note or f"reset:{dimension_key}",
+        last_dimension_key=dimension_key,
+        change_type="dimension_rule_reset",
+    )
     correction = _record_correction(
         submission.id,
         "reset_review_dimension_rule",
+        reason_code="rule_dimension_reset",
+        outcome_code="stabilized_review_configuration",
         original_value={"dimension_key": dimension_key, "review_profile": original_review_profile},
         corrected_value={"dimension_key": dimension_key, "review_profile": submission.review_profile},
+        analysis={
+            "metrics_before": _submission_metrics(submission.id),
+            "metrics_after": _submission_metrics(submission.id),
+            "delta": {},
+            "outcome_code": "stabilized_review_configuration",
+            "outcome_label": label_for_correction_outcome("stabilized_review_configuration"),
+        },
         note=note or f"reset:{dimension_key}",
         corrected_by=corrected_by,
     )
@@ -679,19 +760,25 @@ def reset_submission_review_dimension_rule(
 
 def continue_case_review_from_desensitized(case_id: str, corrected_by: str = "local", note: str = "") -> dict:
     case, submission = _submission_for_case(case_id)
-    correction = _record_correction(
-        submission.id,
-        "continue_case_review_from_desensitized",
-        case_id=case.id,
-        original_value={"status": case.status, "review_result_id": case.review_result_id, "report_id": case.report_id},
-        corrected_value={"status": "completed"},
-        note=note,
-        corrected_by=corrected_by,
-    )
+    before_metrics = _submission_metrics(submission.id)
+    original_value = {"status": case.status, "review_result_id": case.review_result_id, "report_id": case.report_id}
     case.review_stage = "review_processing"
     rebuilt = _rebuild_case(case.id)
     case.review_stage = "review_completed"
     _sync_submission_status(submission.id)
+    outcome_code, analysis = _effect_analysis(submission.id, before_metrics)
+    correction = _record_correction(
+        submission.id,
+        "continue_case_review_from_desensitized",
+        case_id=case.id,
+        reason_code="desensitized_review_continued",
+        outcome_code=outcome_code,
+        original_value=original_value,
+        corrected_value={"status": "completed"},
+        analysis=analysis,
+        note=note,
+        corrected_by=corrected_by,
+    )
     save_submission_graph(submission.id)
     log_event(
         "continue_case_review_from_desensitized",
@@ -721,6 +808,7 @@ def upload_desensitized_package(
     if not archive_path.exists():
         raise ValueError(f"Desensitized package not found: {archive_path}")
 
+    before_metrics = _submission_metrics(submission.id)
     matched_materials: list[str] = []
     with zipfile.ZipFile(archive_path, "r") as archive:
         names = set(archive.namelist())
@@ -760,18 +848,86 @@ def upload_desensitized_package(
             case.review_stage = "desensitized_uploaded"
 
     submission.review_stage = "desensitized_uploaded"
+    _sync_submission_status(submission.id)
+    outcome_code, analysis = _effect_analysis(submission.id, before_metrics)
     correction = _record_correction(
         submission.id,
         "upload_desensitized_package",
+        reason_code="desensitized_package_uploaded",
+        outcome_code=outcome_code,
         original_value={"review_stage": original_stage},
         corrected_value={"review_stage": "desensitized_uploaded", "matched_material_ids": matched_materials},
+        analysis=analysis,
         note=note or archive_path.name,
         corrected_by=corrected_by,
     )
-    _sync_submission_status(submission.id)
     save_submission_graph(submission.id)
     log_event(
         "upload_desensitized_package",
         {"submission_id": submission.id, "matched_material_count": len(matched_materials), "corrected_by": corrected_by},
     )
     return {"correction": correction.to_dict(), "matched_material_ids": matched_materials, "submission": submission.to_dict()}
+
+
+def update_submission_internal_state(
+    submission_id: str,
+    *,
+    owner: str = "",
+    internal_status: str = "",
+    next_step: str = "",
+    note: str = "",
+    updated_by: str = "operator_ui",
+) -> dict:
+    submission = store.submissions.get(submission_id)
+    if not submission:
+        raise ValueError(f"Submission not found: {submission_id}")
+
+    allowed_statuses = {
+        "unassigned",
+        "in_review",
+        "waiting_materials",
+        "fixing",
+        "ready_to_deliver",
+        "delivered",
+        "blocked",
+    }
+    normalized_status = str(internal_status or "unassigned").strip() or "unassigned"
+    if normalized_status not in allowed_statuses:
+        normalized_status = "unassigned"
+
+    original_value = {
+        "internal_owner": getattr(submission, "internal_owner", ""),
+        "internal_status": getattr(submission, "internal_status", "unassigned"),
+        "internal_next_step": getattr(submission, "internal_next_step", ""),
+        "internal_note": getattr(submission, "internal_note", ""),
+    }
+    updated_at = now_iso()
+    submission.internal_owner = str(owner or "").strip()[:80]
+    submission.internal_status = normalized_status
+    submission.internal_next_step = str(next_step or "").strip()[:240]
+    submission.internal_note = str(note or "").strip()[:500]
+    submission.internal_updated_by = str(updated_by or "operator_ui").strip()[:80]
+    submission.internal_updated_at = updated_at
+
+    corrected_value = {
+        "internal_owner": submission.internal_owner,
+        "internal_status": submission.internal_status,
+        "internal_next_step": submission.internal_next_step,
+        "internal_note": submission.internal_note,
+        "internal_updated_by": submission.internal_updated_by,
+        "internal_updated_at": submission.internal_updated_at,
+    }
+    correction = _record_correction(
+        submission_id,
+        "update_internal_state",
+        original_value=original_value,
+        corrected_value=corrected_value,
+        note=note or next_step or "更新内部处理状态",
+        corrected_by=updated_by,
+    )
+    save_submission_graph(submission_id)
+    log_event(
+        "update_submission_internal_state",
+        {"submission_id": submission_id, "internal_status": normalized_status, "owner": submission.internal_owner, "by": updated_by},
+    )
+    return {"submission": submission.to_dict(), "correction": correction.to_dict()}

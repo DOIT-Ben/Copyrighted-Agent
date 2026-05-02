@@ -96,6 +96,7 @@ def render_review_rule_detail_page(
     rule_entry = rulebook[dimension_key]
     default_rule = default_dimension_rule(dimension_key)
     is_enabled = dimension_key in review_profile.get("enabled_dimensions", [])
+    rulebook_meta = dict(review_profile.get("rulebook_meta", {}) or {})
 
     case_options = "".join(
         f'<option value="{escape_html(case.get("id", ""))}"{" selected" if case.get("id", "") == selected_case_id else ""}>'
@@ -128,6 +129,15 @@ def render_review_rule_detail_page(
     ]
 
     rule_item_editors = "".join(_rule_item_editor(dimension_key, item) for item in list(rule_entry.get("rules", []) or []))
+    version_pairs = list_pairs(
+        [
+            ("规则版本", f"r{int(rulebook_meta.get('revision', 1) or 1)}"),
+            ("最近修改维度", dimension_title(str(rulebook_meta.get("last_dimension_key", "") or dimension_key))),
+            ("最近修改人", str(rulebook_meta.get("updated_by", "") or "未记录")),
+            ("最近备注", str(rulebook_meta.get("change_note", "") or "未记录")),
+        ],
+        css_class="dossier-list dossier-list-single",
+    )
 
     editor_body = f"""
     <form class="operator-form rule-editor-form" action="/submissions/{escape_html(submission_id)}/review-rules/{escape_html(dimension_key)}" method="post">

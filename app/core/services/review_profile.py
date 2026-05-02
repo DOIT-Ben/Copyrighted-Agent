@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.services.review_rulebook import dimension_rulebook_from_profile, parse_dimension_rule_items_from_form
+from app.core.utils.text import now_iso
 
 
 DIMENSION_CATALOG = [
@@ -80,6 +81,22 @@ REVIEW_PROFILE_PRESETS = [
 ]
 
 PRESET_MAP = {item["key"]: item for item in REVIEW_PROFILE_PRESETS}
+REVIEW_PROFILE_SCHEMA_VERSION = 2
+
+
+def _normalize_rulebook_meta(raw: dict[str, Any] | None, *, preset_key: str) -> dict[str, Any]:
+    payload = dict(raw or {})
+    revision = int(payload.get("revision", 1) or 1)
+    return {
+        "schema_version": REVIEW_PROFILE_SCHEMA_VERSION,
+        "revision": max(1, revision),
+        "updated_at": str(payload.get("updated_at", "") or "").strip(),
+        "updated_by": str(payload.get("updated_by", "") or "").strip(),
+        "change_note": str(payload.get("change_note", "") or "").strip(),
+        "last_dimension_key": str(payload.get("last_dimension_key", "") or "").strip(),
+        "change_type": str(payload.get("change_type", "preset_applied") or "preset_applied").strip(),
+        "preset_key": preset_key,
+    }
 
 
 def default_review_profile() -> dict[str, Any]:
@@ -87,6 +104,7 @@ def default_review_profile() -> dict[str, Any]:
         **dict(PRESET_MAP["balanced_default"]["profile"]),
         "preset_key": "balanced_default",
         "dimension_rulebook": dimension_rulebook_from_profile({}),
+        "rulebook_meta": _normalize_rulebook_meta({}, preset_key="balanced_default"),
     }
 
 
@@ -133,7 +151,28 @@ def normalize_review_profile(raw: dict[str, Any] | None) -> dict[str, Any]:
         "strictness": strictness,
         "llm_instruction": llm_instruction,
         "dimension_rulebook": dimension_rulebook_from_profile(payload),
+        "rulebook_meta": _normalize_rulebook_meta(payload.get("rulebook_meta"), preset_key=preset_key),
     }
+
+
+def bump_review_profile_revision(
+    profile: dict[str, Any] | None,
+    *,
+    updated_by: str = "",
+    change_note: str = "",
+    last_dimension_key: str = "",
+    change_type: str = "manual_update",
+) -> dict[str, Any]:
+    normalized = normalize_review_profile(profile)
+    meta = dict(normalized.get("rulebook_meta", {}) or {})
+    meta["revision"] = int(meta.get("revision", 1) or 1) + 1
+    meta["updated_at"] = now_iso()
+    meta["updated_by"] = str(updated_by or meta.get("updated_by", "")).strip()
+    meta["change_note"] = str(change_note or "").strip()
+    meta["last_dimension_key"] = str(last_dimension_key or "").strip()
+    meta["change_type"] = str(change_type or "manual_update").strip()
+    normalized["rulebook_meta"] = _normalize_rulebook_meta(meta, preset_key=normalized.get("preset_key", "balanced_default"))
+    return normalized
 
 
 def parse_review_profile_form(form_data, *, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -234,6 +273,23 @@ def review_profile_summary(profile: dict[str, Any] | None) -> list[tuple[str, st
     ]
 
 
+def review_profile_summary_v2(profile: dict[str, Any] | None) -> list[tuple[str, str]]:
+    normalized = normalize_review_profile(profile)
+    meta = dict(normalized.get("rulebook_meta", {}) or {})
+    dimensions = " / ".join(dimension_title(item) for item in normalized["enabled_dimensions"])
+    return [
+        ("模板", preset_title(normalized.get("preset_key", ""))),
+        ("审查侧重", focus_mode_label(normalized["focus_mode"])),
+        ("严格程度", strictness_label(normalized["strictness"])),
+        ("规则版本", f"r{int(meta.get('revision', 1) or 1)}"),
+        ("启用维度", dimensions),
+        ("LLM 指令", normalized["llm_instruction"] or "未补充"),
+    ]
+
+
+review_profile_summary = review_profile_summary_v2
+
+
 __all__ = [
     "DIMENSION_CATALOG",
     "DIMENSION_KEYS",
@@ -242,6 +298,7 @@ __all__ = [
     "REVIEW_PROFILE_PRESETS",
     "STRICTNESS_LABELS",
     "apply_review_profile_preset",
+    "bump_review_profile_revision",
     "default_review_profile",
     "dimension_title",
     "focus_mode_label",

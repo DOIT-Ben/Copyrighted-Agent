@@ -16,6 +16,12 @@ class Submission:
     review_stage: str = "review_completed"
     created_by: str = "local"
     review_profile: dict[str, Any] = field(default_factory=dict)
+    internal_owner: str = ""
+    internal_status: str = "unassigned"
+    internal_next_step: str = ""
+    internal_note: str = ""
+    internal_updated_by: str = ""
+    internal_updated_at: str = ""
     material_ids: list[str] = field(default_factory=list)
     case_ids: list[str] = field(default_factory=list)
     report_ids: list[str] = field(default_factory=list)
@@ -128,10 +134,14 @@ class Job:
     status: str
     progress: int
     error_message: str = ""
+    error_code: str = ""
+    retryable: bool = False
     stage: str = ""
     detail: str = ""
     started_at: str = ""
+    updated_at: str = ""
     finished_at: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -144,8 +154,13 @@ class Correction:
     correction_type: str
     material_id: str = ""
     case_id: str = ""
+    reason_code: str = ""
+    reason_label: str = ""
+    outcome_code: str = ""
+    outcome_label: str = ""
     original_value: dict[str, Any] = field(default_factory=dict)
     corrected_value: dict[str, Any] = field(default_factory=dict)
+    analysis: dict[str, Any] = field(default_factory=dict)
     note: str = ""
     corrected_by: str = "local"
     corrected_at: str = ""

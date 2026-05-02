@@ -54,6 +54,8 @@ def test_change_material_type_creates_correction_record(api_client, mode_a_zip_p
     corrections = api_client.get(f"/api/submissions/{submission_id}/corrections").json()["corrections"]
     assert len(corrections) == 1
     assert corrections[0]["material_id"] == material["id"]
+    assert corrections[0]["reason_code"] == "manual_material_reclassified"
+    assert corrections[0]["analysis"]["outcome_code"]
 
     submission_page = api_client.get(f"/submissions/{submission_id}")
     assert submission_page.status_code == 200
@@ -119,6 +121,7 @@ def test_manual_case_regroup_flow_supports_create_assign_merge_and_rerun(api_cli
         "rerun_case_review",
         "merge_cases",
     ]
+    assert all(item["reason_code"] for item in corrections)
 
 
 @pytest.mark.integration
@@ -166,6 +169,7 @@ def test_manual_desensitized_review_can_continue_after_download_stage(api_client
 
     corrections = api_client.get(f"/api/submissions/{submission_id}/corrections").json()["corrections"]
     assert corrections[0]["correction_type"] == "continue_case_review_from_desensitized"
+    assert corrections[0]["reason_code"] == "desensitized_review_continued"
 
 
 @pytest.mark.integration
@@ -193,3 +197,4 @@ def test_manual_desensitized_review_accepts_uploaded_desensitized_package(api_cl
 
     corrections = api_client.get(f"/api/submissions/{submission_id}/corrections").json()["corrections"]
     assert corrections[0]["correction_type"] == "upload_desensitized_package"
+    assert corrections[0]["reason_code"] == "desensitized_package_uploaded"

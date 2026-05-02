@@ -17,6 +17,7 @@ def test_home_page_renders_upload_controls(api_client):
     assert 'data-inline-pending' in response.text
     assert 'id="submit-feedback"' in response.text
     assert 'id="submit-feedback-step"' in response.text
+    assert 'id="submit-feedback-actions"' in response.text
     assert 'data-async-upload-url="/api/submissions/async"' in response.text
     assert 'name="focus_mode"' in response.text
     assert 'name="strictness"' in response.text
@@ -260,6 +261,7 @@ def test_review_rule_page_can_save_rule_and_persist_to_submission(api_client, mo
     assert save_response.status_code == 303
     updated_submission = api_client.get(f"/api/submissions/{submission_id}").json()
     source_rule = updated_submission["review_profile"]["dimension_rulebook"]["source_code"]
+    updated_meta = updated_submission["review_profile"]["rulebook_meta"]
     assert source_rule["title"] == "源码校验规则"
     assert source_rule["objective"] == "重点检查源码可读性、命名一致性和版本信号。"
     assert source_rule["llm_focus"] == "优先总结源码相关高风险问题。"
@@ -271,6 +273,8 @@ def test_review_rule_page_can_save_rule_and_persist_to_submission(api_client, mo
     assert desensitized_rule["title"] == "源码脱敏必须完成"
     assert desensitized_rule["severity"] == "severe"
     assert desensitized_rule["prompt_hint"] == "重点排查密码、token、手机号和邮箱是否已脱敏。"
+    assert updated_meta["revision"] >= 2
+    assert updated_meta["last_dimension_key"] == "source_code"
 
     restore_response = api_client.post(
         f"/submissions/{submission_id}/review-rules/source_code",
@@ -284,7 +288,9 @@ def test_review_rule_page_can_save_rule_and_persist_to_submission(api_client, mo
     assert restore_response.status_code == 303
     restored_submission = api_client.get(f"/api/submissions/{submission_id}").json()
     restored_rule = restored_submission["review_profile"]["dimension_rulebook"]["source_code"]
+    restored_meta = restored_submission["review_profile"]["rulebook_meta"]
     assert restored_rule["title"] != "源码校验规则"
+    assert restored_meta["revision"] > updated_meta["revision"]
 
 
 @pytest.mark.integration

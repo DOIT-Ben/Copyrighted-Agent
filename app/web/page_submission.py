@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections import Counter
+from urllib.parse import urlencode
 
 from app.core.services.online_filing import normalize_online_filing, online_filing_summary
 from app.core.services.review_profile import dimension_title, normalize_review_profile, review_profile_summary
 from app.core.services.review_rulebook import dimension_rulebook_from_profile
+from app.core.services.submission_insights import parse_diagnostic_snapshot
 from app.core.services.runtime_store import store
 from app.core.utils.text import escape_html
 
@@ -45,11 +47,25 @@ CORRECTION_LABELS = {
 }
 
 
+CORRECTION_LABELS["update_case_online_filing"] = "补录在线填报信息"
+CORRECTION_LABELS["update_internal_state"] = "更新内部处理状态"
+
+
 QUALITY_BUCKET_LABELS = {
     "usable_text": "文本可用",
     "partial_fragments": "片段可用",
     "binary_noise": "疑似二进制噪声",
     "unknown": "待判断",
+}
+
+INTERNAL_STATUS_LABELS = {
+    "unassigned": "待认领",
+    "in_review": "审查中",
+    "waiting_materials": "待补材料",
+    "fixing": "修正中",
+    "ready_to_deliver": "可交付",
+    "delivered": "已交付",
+    "blocked": "已阻塞",
 }
 
 
@@ -118,6 +134,92 @@ def _submission_corrections(submission_id: str) -> list[dict]:
         return []
     rows = [store.corrections[item_id].to_dict() for item_id in submission.correction_ids if item_id in store.corrections]
     return sorted(rows, key=lambda item: item.get("corrected_at", ""), reverse=True)
+
+
+def _review_profile_meta_badges(review_profile: dict) -> str:
+    meta = dict(review_profile.get("rulebook_meta", {}) or {})
+    if not meta:
+        return ""
+    parts = [pill(f"r{int(meta.get('revision', 1) or 1)}", "info")]
+    last_dimension_key = str(meta.get("last_dimension_key", "") or "").strip()
+    if last_dimension_key:
+        parts.append(pill(dimension_title(last_dimension_key), "neutral"))
+    updated_by = str(meta.get("updated_by", "") or "").strip()
+    if updated_by:
+        parts.append(pill(updated_by, "neutral"))
+    return "".join(parts)
+
+
+def _submission_jobs(submission_id: str) -> list[dict]:
+    rows = []
+    for item in store.jobs.values():
+        if str(getattr(item, "scope_id", "") or "").strip() != str(submission_id or "").strip():
+            continue
+        payload = item.to_dict()
+        payload["can_retry"] = bool(
+            payload.get("retryable")
+            and payload.get("job_type") == "ingest_submission"
+            and str(payload.get("status", "") or "").strip().lower() in {"failed", "interrupted"}
+            and str((payload.get("metadata") or {}).get("source_path", "")).strip()
+        )
+        rows.append(payload)
+    return sorted(rows, key=lambda item: (item.get("started_at", "") or "", item.get("id", "") or ""), reverse=True)
+
+
+def _job_error_label(job: dict) -> str:
+    return str(job.get("error_code", "") or job.get("error_message", "") or job.get("detail", "") or "-").strip() or "-"
+
+
+def _job_retry_action(submission_id: str, job: dict) -> str:
+    if not bool(job.get("can_retry")):
+        return "-"
+    job_id = escape_html(str(job.get("id", "") or ""))
+    return_to = escape_html(f"/submissions/{submission_id}")
+    return (
+        f'<form class="inline-form" action="/submissions/{escape_html(submission_id)}/actions/retry-job" method="post">'
+        f'<input type="hidden" name="job_id" value="{job_id}">'
+        f'<input type="hidden" name="return_to" value="{return_to}">'
+        f'<button class="button-secondary button-compact" type="submit">{icon("refresh", "icon icon-sm")}重试导入</button>'
+        "</form>"
+    )
+
+
+def _job_history_board(submission_id: str) -> str:
+    jobs = _submission_jobs(submission_id)
+    if not jobs:
+        return empty_state("暂无处理任务记录", "当前批次还没有可展示的异步任务链路。")
+
+    rows: list[list[str]] = []
+    for item in jobs[:6]:
+        metadata = dict(item.get("metadata", {}) or {})
+        rows.append(
+            [
+                escape_html(str(item.get("started_at", "") or "-")),
+                pill(status_label(item.get("status", "unknown")), status_tone(item.get("status", "unknown"))),
+                escape_html(str(metadata.get("retry_count", 0) or 0)),
+                escape_html(_job_error_label(item)),
+                _job_retry_action(submission_id, item),
+            ]
+        )
+    return table(["开始时间", "状态", "重试次数", "失败原因", "操作"], rows)
+
+
+def _parse_diagnostics_board(materials: list[dict], parse_results: list[dict]) -> str:
+    parse_lookup = _build_parse_lookup(parse_results)
+    rows: list[list[str]] = []
+    for material in materials[:8]:
+        parse_result = parse_lookup.get(str(material.get("id", "") or ""), {})
+        diagnostic = parse_diagnostic_snapshot(material, parse_result)
+        rows.append(
+            [
+                escape_html(str(material.get("original_filename", "") or material.get("id", "") or "-")),
+                escape_html(str(diagnostic.get("quality_level", "") or "-")),
+                escape_html(str(diagnostic.get("parse_reason_label", "") or "-")),
+                escape_html(str(diagnostic.get("manual_review_reason_label", "") or diagnostic.get("unknown_reason_label", "") or "-")),
+                pill("待复核" if diagnostic.get("needs_manual_review") else "可继续", "warning" if diagnostic.get("needs_manual_review") else "success"),
+            ]
+        )
+    return table(["材料", "质量", "解析原因", "人工原因", "建议"], rows) if rows else empty_state("暂无解析诊断", "当前没有可展示的解析诊断。")
 
 
 def _submission_header_meta(submission: dict, cases: list[dict]) -> str:
@@ -234,7 +336,18 @@ def _submission_view_data(
         [
             escape_html(_correction_label(item.get("correction_type", ""))),
             escape_html(item.get("material_id", "") or item.get("case_id", "") or "-"),
-            escape_html(item.get("note", "") or "-"),
+            escape_html(
+                " / ".join(
+                    part
+                    for part in [
+                        str(item.get("reason_label", "") or item.get("reason_code", "") or "").strip(),
+                        str(item.get("outcome_label", "") or item.get("outcome_code", "") or "").strip(),
+                        str(item.get("note", "") or "").strip(),
+                    ]
+                    if part
+                )
+                or "-"
+            ),
             escape_html(item.get("corrected_at", "") or "-"),
         ]
         for item in corrections
@@ -266,14 +379,59 @@ def _review_rule_links(submission_id: str, review_profile: dict, *, case_id: str
     return '<div class="inline-actions">' + "".join(chips) + "</div>"
 
 
-def render_submissions_index() -> str:
-    submissions = sorted(store.submissions.values(), key=lambda item: item.created_at, reverse=True)
+def render_submissions_index(filters: dict | None = None) -> str:
+    filters = dict(filters or {})
+    all_submissions = sorted(store.submissions.values(), key=lambda item: item.created_at, reverse=True)
+
+    def _submission_todo_flags(submission) -> set[str]:
+        flags: set[str] = set()
+        if any(
+            case_id in store.cases and getattr(store.cases[case_id], "status", "") == "awaiting_manual_review"
+            for case_id in submission.case_ids
+        ):
+            flags.add("pending_review")
+        if any(
+            material_id in store.materials and len(getattr(store.materials[material_id], "issues", []) or []) > 0
+            for material_id in submission.material_ids
+        ):
+            flags.add("has_issues")
+        if not submission.report_ids:
+            flags.add("missing_report")
+        if flags:
+            flags.add("has_todo")
+        else:
+            flags.add("no_todo")
+        return flags
+
+    internal_status_filter = str(filters.get("internal_status", "") or "").strip()
+    owner_filter = str(filters.get("owner", "") or "").strip().lower()
+    system_status_filter = str(filters.get("status", "") or "").strip()
+    todo_filter = str(filters.get("todo", "") or "").strip()
+
+    submissions = []
+    for submission in all_submissions:
+        if internal_status_filter and str(getattr(submission, "internal_status", "unassigned") or "unassigned") != internal_status_filter:
+            continue
+        if owner_filter and owner_filter not in str(getattr(submission, "internal_owner", "") or "").lower():
+            continue
+        if system_status_filter and str(getattr(submission, "status", "") or "") != system_status_filter:
+            continue
+        if todo_filter and todo_filter not in _submission_todo_flags(submission):
+            continue
+        submissions.append(submission)
+
+    total_all = len(all_submissions)
     total = len(submissions)
     materials_total = sum(len(item.material_ids) for item in submissions)
     cases_total = sum(len(item.case_ids) for item in submissions)
     reports_total = sum(len(item.report_ids) for item in submissions)
     latest_status = submissions[0].status if submissions else "idle"
     status_counts = Counter(str(item.status or "unknown") for item in submissions)
+    internal_status_counts = Counter(str(getattr(item, "internal_status", "unassigned") or "unassigned") for item in submissions)
+    unassigned_count = internal_status_counts.get("unassigned", 0)
+    blocked_count = internal_status_counts.get("blocked", 0)
+    waiting_materials_count = internal_status_counts.get("waiting_materials", 0)
+    ready_to_deliver_count = internal_status_counts.get("ready_to_deliver", 0) + internal_status_counts.get("delivered", 0)
 
     def _batch_name_cell(submission) -> str:
         filename = escape_html(str(submission.filename or "-"))
@@ -296,14 +454,114 @@ def render_submissions_index() -> str:
             "</div>"
         )
 
+    def _internal_status_tone(value: str) -> str:
+        normalized = str(value or "unassigned").strip()
+        if normalized in {"ready_to_deliver", "delivered"}:
+            return "success"
+        if normalized in {"waiting_materials", "fixing", "blocked"}:
+            return "warning" if normalized != "blocked" else "danger"
+        if normalized == "in_review":
+            return "info"
+        return "neutral"
+
+    def _batch_internal_cell(submission) -> str:
+        internal_status = str(getattr(submission, "internal_status", "unassigned") or "unassigned")
+        owner = str(getattr(submission, "internal_owner", "") or "").strip() or "未认领"
+        next_step = str(getattr(submission, "internal_next_step", "") or "").strip()
+        updated_at = str(getattr(submission, "internal_updated_at", "") or "").strip()
+        detail = next_step or (f"更新于 {updated_at}" if updated_at else "等待内部认领")
+        return (
+            '<div class="batch-internal-cell">'
+            f'{pill(_internal_status_label(internal_status), _internal_status_tone(internal_status))}'
+            f'<strong>{escape_html(owner)}</strong>'
+            f'<small>{escape_html(detail)}</small>'
+            "</div>"
+        )
+
+    def _batch_todo_cell(submission) -> str:
+        pending_case_count = sum(
+            1
+            for case_id in submission.case_ids
+            if case_id in store.cases and getattr(store.cases[case_id], "status", "") == "awaiting_manual_review"
+        )
+        issue_count = sum(
+            len(getattr(store.materials[material_id], "issues", []) or [])
+            for material_id in submission.material_ids
+            if material_id in store.materials
+        )
+        items = []
+        if pending_case_count:
+            items.append((f"{pending_case_count} 待继续", "warning"))
+        if issue_count:
+            items.append((f"{issue_count} 问题", "warning"))
+        if not submission.report_ids:
+            items.append(("缺报告", "danger"))
+        if not items:
+            items.append(("可跟进", "success"))
+        return '<div class="batch-todo-cell">' + "".join(pill(label, tone) for label, tone in items[:3]) + "</div>"
+
+    def _select_options(options: list[tuple[str, str]], selected: str) -> str:
+        normalized = str(selected or "").strip()
+        return "".join(
+            f'<option value="{escape_html(value)}"{ " selected" if value == normalized else ""}>{escape_html(label)}</option>'
+            for value, label in options
+        )
+
+    return_query = urlencode(
+        {
+            key: value
+            for key, value in {
+                "internal_status": internal_status_filter,
+                "owner": str(filters.get("owner", "") or "").strip(),
+                "status": system_status_filter,
+                "todo": todo_filter,
+            }.items()
+            if value
+        }
+    )
+    return_to = f"/submissions?{return_query}#batch-registry" if return_query else "/submissions#batch-registry"
+
+    def _batch_action_cell(submission) -> str:
+        submission_id = escape_html(str(submission.id))
+        owner = escape_html(str(getattr(submission, "internal_owner", "") or ""))
+        next_step = escape_html(str(getattr(submission, "internal_next_step", "") or ""))
+        note = escape_html(str(getattr(submission, "internal_note", "") or ""))
+        current_status = str(getattr(submission, "internal_status", "unassigned") or "unassigned")
+        quick_options = _select_options(
+            [
+                ("unassigned", "待认领"),
+                ("in_review", "审查中"),
+                ("waiting_materials", "待补材料"),
+                ("ready_to_deliver", "可交付"),
+                ("blocked", "已阻塞"),
+            ],
+            current_status,
+        )
+        return (
+            '<div class="batch-actions-cell">'
+            f'<a class="button-secondary button-compact" href="/submissions/{submission_id}">{icon("search", "icon icon-sm")}详情</a>'
+            f'<form class="quick-internal-state-form" action="/submissions/{submission_id}/actions/update-internal-state" method="post">'
+            f'<input type="hidden" name="internal_owner" value="{owner}">'
+            f'<input type="hidden" name="internal_next_step" value="{next_step}">'
+            f'<input type="hidden" name="internal_note" value="{note}">'
+            '<input type="hidden" name="updated_by" value="batch_registry">'
+            f'<input type="hidden" name="return_to" value="{escape_html(return_to)}">'
+            f'<select name="internal_status" aria-label="快捷更新内部状态">{quick_options}</select>'
+            '<button class="button-secondary button-compact" type="submit">更新</button>'
+            "</form>"
+            "</div>"
+        )
+
     rows = [
         [
             _batch_name_cell(submission),
+            _batch_internal_cell(submission),
+            _batch_todo_cell(submission),
             pill(status_label(submission.status), status_tone(submission.status)),
             escape_html(review_stage_label(getattr(submission, "review_stage", "review_completed"))),
             _batch_count_cell(submission),
             escape_html(submission.created_at),
-            f'<a class="button-secondary button-compact" href="/submissions/{escape_html(str(submission.id))}">{icon("search", "icon icon-sm")}详情</a>',
+            _batch_action_cell(submission),
         ]
         for submission in submissions
     ]
@@ -317,16 +575,62 @@ def render_submissions_index() -> str:
         ]
     )
 
+    internal_board_body = "".join(
+        [
+            _summary_tile("待认领", str(unassigned_count), "还没有负责人，需要内部团队分配"),
+            _summary_tile("已阻塞", str(blocked_count), "需要先解除阻塞再继续交付"),
+            _summary_tile("待补材料", str(waiting_materials_count), "等待客户或内部补齐材料"),
+            _summary_tile("可交付", str(ready_to_deliver_count), "已准备交付或已经交付的批次"),
+        ]
+    )
+    filter_form = f"""
+    <form class="submission-filter-bar" action="/submissions" method="get">
+      <label class="field">
+        <span>内部状态</span>
+        <select name="internal_status">
+          {_select_options([("", "全部内部状态"), *list(INTERNAL_STATUS_LABELS.items())], internal_status_filter)}
+        </select>
+      </label>
+      <label class="field">
+        <span>负责人</span>
+        <input type="search" name="owner" value="{escape_html(str(filters.get('owner', '') or ''))}" placeholder="输入负责人关键字">
+      </label>
+      <label class="field">
+        <span>系统状态</span>
+        <select name="status">
+          {_select_options([("", "全部系统状态"), ("completed", "已完成"), ("processing", "处理中"), ("awaiting_manual_review", "待继续审查"), ("failed", "失败")], system_status_filter)}
+        </select>
+      </label>
+      <label class="field">
+        <span>待办</span>
+        <select name="todo">
+          {_select_options([("", "全部待办"), ("has_todo", "有待办"), ("pending_review", "待继续审查"), ("has_issues", "有审查问题"), ("missing_report", "缺报告"), ("no_todo", "无待办")], todo_filter)}
+        </select>
+      </label>
+      <div class="inline-actions submission-filter-actions">
+        <button class="button-primary button-compact" type="submit">{icon("search", "icon icon-sm")}筛选</button>
+        <a class="button-secondary button-compact" href="/submissions">清空</a>
+        <span class="form-helper-text">当前显示 {total} / {total_all} 个批次</span>
+      </div>
+    </form>
+    """
+
+    has_active_filters = any([internal_status_filter, owner_filter, system_status_filter, todo_filter])
+    empty_title = "没有匹配批次" if has_active_filters else "暂无批次"
+    empty_note = "调整筛选条件后再试，或清空筛选回到完整台账。" if has_active_filters else "导入 ZIP 后，这里会出现批次记录。"
+    registry_body = filter_form + (table(['批次', '内部状态', '待办', '系统状态', '阶段', '数量', '创建时间', '操作'], rows) if rows else empty_state(empty_title, empty_note))
+
     content = f"""
     <section class="kpi-grid">
-      {metric_card('批次数', str(total), '当前已导入的批次数量', 'info', icon_name='layers')}
-      {metric_card('材料数', str(materials_total), '全部批次识别出的材料总量', 'success', icon_name='file')}
-      {metric_card('项目数', str(cases_total), '全部批次形成的项目总量', 'warning', icon_name='lock')}
-      {metric_card('报告数', str(reports_total), '当前已生成的项目级报告数量', 'neutral', icon_name='report')}
+      {metric_card('批次数', str(total), '当前筛选条件下的批次数量', 'info', icon_name='layers')}
+      {metric_card('材料数', str(materials_total), '当前筛选结果识别出的材料总量', 'success', icon_name='file')}
+      {metric_card('项目数', str(cases_total), '当前筛选结果形成的项目总量', 'warning', icon_name='lock')}
+      {metric_card('报告数', str(reports_total), '当前筛选结果已生成的项目级报告数量', 'neutral', icon_name='report')}
     </section>
     <section class="dashboard-grid">
-      {panel('批次台账', table(['批次', '状态', '阶段', '数量', '创建时间', '操作'], rows) if rows else empty_state('暂无批次', '导入 ZIP 后，这里会出现批次记录。'), kicker='批次总览', extra_class='span-12 panel-batch-registry', icon_name='layers', description='这里只保留列表和入口，避免总览页继续堆复杂操作。', panel_id='batch-registry')}
-      {panel('状态分布', distribution_body, kicker='运行状态', extra_class='span-12 panel-soft', icon_name='bar', description='快速判断当前批次池是否稳定。', panel_id='status-distribution')}
+      {panel('内部跟进看板', internal_board_body, kicker='团队协作', extra_class='span-12 panel-internal-board panel-soft', icon_name='wrench', description='用于内部早会和日常巡检，先看待认领、阻塞、待补材料和可交付批次。', panel_id='internal-board')}
+      {panel('批次台账', registry_body, kicker='批次总览', extra_class='span-12 panel-batch-registry', icon_name='layers', description='按内部状态、负责人、系统状态和待办快速定位目标批次。', panel_id='batch-registry')}
+      {panel('状态分布', distribution_body, kicker='运行状态', extra_class='span-12 panel-soft', icon_name='bar', description='快速判断当前筛选结果是否稳定。', panel_id='status-distribution')}
     </section>
     """
 
@@ -340,6 +644,7 @@ def render_submissions_index() -> str:
         content=content,
         header_note="总览页只负责发现问题和进入详情，不承载材料纠偏、导出和大表浏览。",
         page_links=[
+            ("#internal-board", "内部看板", "wrench"),
             ("#batch-registry", "批次台账", "layers"),
             ("#status-distribution", "状态分布", "bar"),
         ],
@@ -409,7 +714,7 @@ def render_submission_detail_legacy(
         if data["correction_rows"]
         else empty_state("暂无更正记录", "人工纠偏和继续审查发生后，这里会保留完整留痕。")
     )
-    review_profile_body = list_pairs(review_profile_summary(review_profile), css_class="dossier-list dossier-list-single")
+    review_profile_body = _review_profile_meta_badges(review_profile) + list_pairs(review_profile_summary(review_profile), css_class="dossier-list dossier-list-single")
     review_rule_links = _review_rule_links(str(submission.get("id", "")), review_profile)
 
     workspace_notice = ""
@@ -699,6 +1004,48 @@ def render_submission_operator_page(
     )
 
 
+def _delivery_history_timeline(submission_id: str) -> str:
+    delivery_events = []
+    for item in _submission_corrections(submission_id):
+        if item.get("correction_type") != "update_internal_state":
+            continue
+        corrected_value = dict(item.get("corrected_value", {}) or {})
+        status = str(corrected_value.get("internal_status", "") or "").strip()
+        if status not in {"ready_to_deliver", "delivered"}:
+            continue
+        delivery_events.append(
+            {
+                "status": status,
+                "next_step": str(corrected_value.get("internal_next_step", "") or "").strip(),
+                "note": str(item.get("note", "") or corrected_value.get("internal_note", "") or "").strip(),
+                "updated_by": str(item.get("corrected_by", "") or corrected_value.get("internal_updated_by", "") or "-").strip(),
+                "updated_at": str(item.get("corrected_at", "") or corrected_value.get("internal_updated_at", "") or "-").strip(),
+            }
+        )
+
+    if not delivery_events:
+        return empty_state("暂无交付历史", "在导出中心标记可交付或已交付后，这里会形成内部交付时间线。")
+
+    rows = []
+    for event in delivery_events:
+        status = event["status"]
+        tone = "success" if status == "delivered" else "info"
+        rows.append(
+            '<article class="delivery-history-item">'
+            '<div class="delivery-history-marker"></div>'
+            '<div class="delivery-history-copy">'
+            '<div class="delivery-history-head">'
+            f'{pill(_internal_status_label(status), tone)}'
+            f'<strong>{escape_html(event["next_step"] or _internal_status_label(status))}</strong>'
+            '</div>'
+            f'<p>{escape_html(event["note"] or "已记录交付状态更新。")}</p>'
+            f'<small>{escape_html(event["updated_at"])} / {escape_html(event["updated_by"] or "-")}</small>'
+            '</div>'
+            '</article>'
+        )
+    return '<div class="delivery-history-list">' + "".join(rows) + '</div>'
+
+
 def render_submission_exports_page(
     submission: dict,
     materials: list[dict],
@@ -706,8 +1053,70 @@ def render_submission_exports_page(
     reports: list[dict],
     parse_results: list[dict],
 ) -> str:
-    del materials, parse_results
+    del parse_results
     submission_id = escape_html(submission.get("id", ""))
+    internal_status = str(submission.get("internal_status", "unassigned") or "unassigned")
+    review_stage = str(submission.get("review_stage", "review_completed") or "review_completed")
+    pending_case_count = sum(1 for case in cases if str(case.get("status", "") or "") == "awaiting_manual_review")
+    issue_count = sum(len(material.get("issues", []) or []) for material in materials)
+    has_reports = bool(reports)
+    has_blocking_internal_status = internal_status in {"blocked", "waiting_materials", "fixing"}
+    is_review_finished = review_stage in {"review_completed", "desensitized_review_completed"}
+
+    delivery_checks = [
+        ("项目报告", has_reports, f"已生成 {len(reports)} 份报告" if has_reports else "尚未生成项目级报告"),
+        ("正式审查", is_review_finished, review_stage_label(review_stage)),
+        ("待继续审查", pending_case_count == 0, "无待继续项目" if pending_case_count == 0 else f"{pending_case_count} 个项目待继续审查"),
+        ("审查问题", issue_count == 0, "暂无材料问题" if issue_count == 0 else f"{issue_count} 个问题待确认"),
+        ("内部状态", not has_blocking_internal_status, _internal_status_label(internal_status)),
+    ]
+    blocking_checks = [item for item in delivery_checks if not item[1]]
+    delivery_ready = not blocking_checks
+    delivery_tone = "success" if delivery_ready else "warning"
+    delivery_title = "可以准备交付" if delivery_ready else "交付前仍需处理"
+    delivery_note = "报告、审查阶段和内部状态均已满足交付前检查。" if delivery_ready else "先处理未通过项，再下载报告和批次包。"
+    delivery_check_rows = "".join(
+        '<div class="delivery-check-item">'
+        f'{pill("通过" if passed else "待处理", "success" if passed else "warning")}'
+        f'<strong>{escape_html(label)}</strong>'
+        f'<span>{escape_html(detail)}</span>'
+        "</div>"
+        for label, passed, detail in delivery_checks
+    )
+    delivery_check_body = (
+        notice_banner(delivery_title, delivery_note, tone=delivery_tone, icon_name="check", meta=[f"报告 {len(reports)}", f"待继续 {pending_case_count}", f"问题 {issue_count}"])
+        + f'<div class="delivery-check-list">{delivery_check_rows}</div>'
+    )
+    delivery_return_to = f"/submissions/{submission_id}/exports#delivery-check"
+    delivery_owner = escape_html(str(submission.get("internal_owner", "") or ""))
+    delivery_note_value = "已完成交付前检查，准备内部交付。" if delivery_ready else "交付前检查仍有未通过项，需处理后再确认交付。"
+    delivery_confirm_body = (
+        '<div class="delivery-confirm-actions">'
+        '<form class="delivery-confirm-form" action="/submissions/'
+        + submission_id
+        + '/actions/update-internal-state" method="post">'
+        + f'<input type="hidden" name="internal_owner" value="{delivery_owner}">'
+        + '<input type="hidden" name="internal_status" value="ready_to_deliver">'
+        + '<input type="hidden" name="internal_next_step" value="已生成内部交付包，待负责人复核后发送。">'
+        + f'<input type="hidden" name="internal_note" value="{escape_html(delivery_note_value)}">'
+        + '<input type="hidden" name="updated_by" value="delivery_center">'
+        + f'<input type="hidden" name="return_to" value="{escape_html(delivery_return_to)}">'
+        + f'<button class="button-secondary" type="submit">{icon("check", "icon icon-sm")}标记为可交付</button>'
+        + '</form>'
+        '<form class="delivery-confirm-form" action="/submissions/'
+        + submission_id
+        + '/actions/update-internal-state" method="post">'
+        + f'<input type="hidden" name="internal_owner" value="{delivery_owner}">'
+        + '<input type="hidden" name="internal_status" value="delivered">'
+        + '<input type="hidden" name="internal_next_step" value="本批次已交付并完成内部归档。">'
+        + '<input type="hidden" name="internal_note" value="导出中心确认已交付，交付结果已进入内部归档。">'
+        + '<input type="hidden" name="updated_by" value="delivery_center">'
+        + f'<input type="hidden" name="return_to" value="{escape_html(delivery_return_to)}">'
+        + f'<button class="button-primary" type="submit">{icon("download", "icon icon-sm")}标记为已交付</button>'
+        + '</form>'
+        '</div>'
+        '<p class="delivery-confirm-note">确认动作会写入内部状态和更正审计；如检查仍有未通过项，建议先处理再标记已交付。</p>'
+    )
 
     report_cards = "".join(
         (
@@ -749,8 +1158,13 @@ def render_submission_exports_page(
         + "</div>"
     )
 
+    delivery_history_body = _delivery_history_timeline(str(submission.get("id", "") or ""))
+
     content = f"""
     <section class="dashboard-grid">
+      {panel('交付前收口检查', delivery_check_body, kicker='内部交付', extra_class='span-12 panel-delivery-check panel-soft', icon_name='check', description='交付前先确认报告、审查阶段、待继续项目、问题和内部状态。', panel_id='delivery-check')}
+      {panel('交付确认', delivery_confirm_body, kicker='状态收口', extra_class='span-12 panel-delivery-confirm panel-soft', icon_name='wrench', description='确认后会更新内部状态并写入更正审计，方便团队追踪可交付和已交付批次。', panel_id='delivery-confirm')}
+      {panel('交付历史', delivery_history_body, kicker='交付留痕', extra_class='span-12 panel-delivery-history panel-soft', icon_name='clock', description='只展示可交付和已交付确认事件，帮助内部团队回看交付状态变化。', panel_id='delivery-history')}
       {panel('导出中心', handoff_body, kicker='产物交付', extra_class='span-12', icon_name='download', description='先处理真正要交付的报告和批次包。', panel_id='export-center')}
       {panel('排障附件', support_body, kicker='按需查看', extra_class='span-12', icon_name='terminal', description='日志单独放在这里，避免和交付动作混在一起。', panel_id='export-support')}
     </section>
@@ -767,6 +1181,9 @@ def render_submission_exports_page(
         header_note="如果要查看材料原件、清洗件和脱敏件，请进入产物浏览页。",
         page_links=[
             (f"/submissions/{submission.get('id', '')}", "批次总览", "file"),
+            ("#delivery-check", "收口检查", "check"),
+            ("#delivery-confirm", "交付确认", "wrench"),
+            ("#delivery-history", "交付历史", "clock"),
             ("#export-center", "导出中心", "download"),
             ("#export-support", "排障附件", "terminal"),
         ],
@@ -983,6 +1400,239 @@ def render_submission_operator_page(
     )
 
 
+def _internal_status_label(value: str) -> str:
+    return INTERNAL_STATUS_LABELS.get(str(value or "unassigned").strip(), "待认领")
+
+
+def _internal_status_options(selected: str) -> str:
+    normalized = str(selected or "unassigned").strip() or "unassigned"
+    return "".join(
+        f'<option value="{escape_html(value)}"{ " selected" if value == normalized else ""}>{escape_html(label)}</option>'
+        for value, label in INTERNAL_STATUS_LABELS.items()
+    )
+
+
+def _internal_issue_counts(materials: list[dict], cases: list[dict]) -> dict[str, int]:
+    material_issue_count = sum(len(material.get("issues", []) or []) for material in materials)
+    case_issue_count = 0
+    for case in cases:
+        review_result_id = str(case.get("review_result_id", "") or "").strip()
+        if review_result_id and review_result_id in store.review_results:
+            case_issue_count += len(store.review_results[review_result_id].issues_json or [])
+    total = max(material_issue_count, case_issue_count)
+    return {
+        "material": material_issue_count,
+        "case": case_issue_count,
+        "total": total,
+    }
+
+
+def _internal_work_status(submission: dict, pending_cases: list[dict], needs_review_count: int, issue_count: int) -> tuple[str, str, str]:
+    status = str(submission.get("status", "") or "")
+    if status == "failed":
+        return "处理异常", "danger", "先查看处理失败原因，必要时重新上传或拆分材料包。"
+    if status == "processing":
+        return "处理中", "warning", "等待系统处理完成后再做人工判断。"
+    if pending_cases:
+        return "待继续审查", "warning", "先确认脱敏件，再到人工干预台继续审查。"
+    if needs_review_count:
+        return "待人工复核", "warning", "先处理待复核材料，确认类型、归属和解析质量。"
+    if issue_count:
+        return "待修复问题", "warning", "进入报告页查看问题清单，先处理退回级和一致性问题。"
+    if status == "completed":
+        return "可交付", "success", "当前没有优先阻塞项，可以进入导出中心生成内部交付包。"
+    return "待判断", "neutral", "先确认材料、项目和报告是否已经生成完整。"
+
+
+def _internal_next_actions(
+    submission_id: str,
+    *,
+    pending_cases_count: int,
+    needs_review_count: int,
+    issue_count: int,
+    reports: list[dict],
+) -> str:
+    actions: list[str] = []
+    if pending_cases_count:
+        actions.append(
+            f'<a class="button-primary button-compact" href="/submissions/{submission_id}/operator">'
+            f'{icon("refresh", "icon icon-sm")}继续审查</a>'
+        )
+    if needs_review_count:
+        actions.append(
+            f'<a class="button-secondary button-compact" href="/submissions/{submission_id}/materials#needs-review">'
+            f'{icon("alert", "icon icon-sm")}处理待复核</a>'
+        )
+    if issue_count and reports:
+        first_report_id = escape_html(str(reports[0].get("id", "")))
+        actions.append(
+            f'<a class="button-secondary button-compact" href="/reports/{first_report_id}">'
+            f'{icon("report", "icon icon-sm")}查看修复清单</a>'
+        )
+    actions.append(
+        f'<a class="button-secondary button-compact" href="/submissions/{submission_id}/exports">'
+        f'{icon("download", "icon icon-sm")}导出内部包</a>'
+    )
+    actions.append(
+        f'<a class="button-secondary button-compact" href="/submissions/{submission_id}/operator">'
+        f'{icon("wrench", "icon icon-sm")}记录人工动作</a>'
+    )
+    return '<div class="inline-actions internal-action-row">' + "".join(actions[:5]) + "</div>"
+
+
+def _render_internal_workbench(
+    submission: dict,
+    materials: list[dict],
+    cases: list[dict],
+    reports: list[dict],
+    data: dict,
+    pending_cases: list[dict],
+) -> str:
+    submission_id = escape_html(str(submission.get("id", "") or ""))
+    needs_review_count = len(data.get("needs_review_items", []) or [])
+    correction_count = len(data.get("correction_rows", []) or [])
+    issue_counts = _internal_issue_counts(materials, cases)
+    work_status, tone, next_step = _internal_work_status(
+        submission,
+        pending_cases,
+        needs_review_count,
+        issue_counts["total"],
+    )
+    saved_owner = str(submission.get("internal_owner", "") or "").strip()
+    saved_status = str(submission.get("internal_status", "unassigned") or "unassigned").strip() or "unassigned"
+    saved_next_step = str(submission.get("internal_next_step", "") or "").strip()
+    saved_note = str(submission.get("internal_note", "") or "").strip()
+    saved_updated_by = str(submission.get("internal_updated_by", "") or "").strip()
+    saved_updated_at = str(submission.get("internal_updated_at", "") or "").strip()
+    owner = saved_owner or "内部待认领"
+    if correction_count and not saved_owner:
+        owner = "已有人工处理"
+
+    blockers: list[str] = []
+    if pending_cases:
+        blockers.append(f"{len(pending_cases)} 个项目等待脱敏后继续审查")
+    if needs_review_count:
+        blockers.append(f"{needs_review_count} 份材料需要人工复核")
+    if issue_counts["total"]:
+        blockers.append(f"{issue_counts['total']} 个审查问题需要确认")
+    if not reports:
+        blockers.append("尚未生成可交付报告")
+    blocker_body = (
+        '<div class="rule-checkpoint-list"><ul>'
+        + "".join(f"<li>{escape_html(item)}</li>" for item in blockers[:5])
+        + "</ul></div>"
+        if blockers
+        else empty_state("暂无内部阻塞项", "这个批次可以进入导出中心准备内部交付。")
+    )
+
+    display_next_step = saved_next_step or next_step
+    updated_meta = ""
+    if saved_updated_at or saved_updated_by:
+        updated_meta = f"最近更新：{saved_updated_at or '-'} / {saved_updated_by or '-'}"
+
+    def _template_options(items: list[str]) -> str:
+        return '<option value="">选择常用模板</option>' + "".join(
+            f'<option value="{escape_html(item)}">{escape_html(item)}</option>'
+            for item in items
+        )
+
+    next_step_templates = [
+        "等客户补协议签署页",
+        "等客户补源码后 30 页",
+        "等客户确认软件名称",
+        "已发客户补材料清单",
+        "已生成内部交付包",
+        "已交付归档",
+    ]
+    note_templates = [
+        "已通知客户补齐缺失材料，等待回传。",
+        "材料命名或项目归属需要内部复核后再继续。",
+        "审查问题已记录，待修正后重新生成报告。",
+        "脱敏件已准备，等待确认后继续正式审查。",
+        "交付包已生成，待负责人复核后发送。",
+        "本批次已交付并完成内部归档。",
+    ]
+    internal_template_picker = f"""
+      <div class="internal-template-grid">
+        <label class="field">
+          <span>下一步模板</span>
+          <select data-template-target="internal_next_step" onchange="if (this.value) this.form.elements[this.dataset.templateTarget].value = this.value; this.selectedIndex = 0;">
+            {_template_options(next_step_templates)}
+          </select>
+        </label>
+        <label class="field">
+          <span>备注模板</span>
+          <select data-template-target="internal_note" onchange="if (this.value) this.form.elements[this.dataset.templateTarget].value = this.value; this.selectedIndex = 0;">
+            {_template_options(note_templates)}
+          </select>
+        </label>
+      </div>
+    """
+    internal_form = f"""
+    <form class="internal-state-form" action="/submissions/{submission_id}/actions/update-internal-state" method="post">
+      <div class="control-grid internal-state-grid">
+        <label class="field">
+          <span>负责人</span>
+          <input type="text" name="internal_owner" value="{escape_html(saved_owner)}" placeholder="例如：张三 / 交付组A">
+        </label>
+        <label class="field">
+          <span>内部状态</span>
+          <select name="internal_status">{_internal_status_options(saved_status)}</select>
+        </label>
+        <label class="field">
+          <span>下一步动作</span>
+          <input type="text" name="internal_next_step" value="{escape_html(saved_next_step)}" placeholder="例如：等客户补协议签署页">
+        </label>
+        <label class="field">
+          <span>更新人</span>
+          <input type="text" name="updated_by" value="{escape_html(saved_updated_by or 'operator_ui')}" placeholder="记录操作人">
+        </label>
+      </div>
+      {internal_template_picker}
+      <label class="field">
+        <span>内部备注</span>
+        <textarea name="internal_note" rows="3" placeholder="只给内部团队看的处理备注">{escape_html(saved_note)}</textarea>
+      </label>
+      <div class="inline-actions internal-action-row">
+        <button class="button-primary button-compact" type="submit">{icon("wrench", "icon icon-sm")}保存内部状态</button>
+        <span class="form-helper-text">{escape_html(updated_meta or "保存后会写入更正审计。")}</span>
+      </div>
+    </form>
+    """
+
+    return (
+        '<div class="internal-workbench">'
+        '<div class="summary-grid internal-workbench-grid">'
+        + _summary_tile("内部状态", _internal_status_label(saved_status), display_next_step)
+        + _summary_tile("负责人", owner, "内部团队当前责任人")
+        + _summary_tile("必须关注", str(len(blockers)), "待继续、待复核、审查问题和报告产物")
+        + _summary_tile("人工留痕", str(correction_count), "材料纠偏、继续审查和规则调整都会记录")
+        + "</div>"
+        + notice_banner(
+            f"内部处理建议：{work_status}",
+            next_step,
+            tone=tone,
+            icon_name="wrench",
+            meta=[
+                f"材料 {len(materials)}",
+                f"项目 {len(cases)}",
+                f"报告 {len(reports)}",
+                f"问题 {issue_counts['total']}",
+            ],
+        )
+        + blocker_body
+        + internal_form
+        + _internal_next_actions(
+            submission_id,
+            pending_cases_count=len(pending_cases),
+            needs_review_count=needs_review_count,
+            issue_count=issue_counts["total"],
+            reports=reports,
+        )
+        + "</div>"
+    )
+
+
 def render_submission_detail(
     submission: dict,
     materials: list[dict],
@@ -1052,9 +1702,13 @@ def render_submission_detail(
         if compact_notes
         else empty_state("当前没有额外提醒", "这个批次已经具备继续查看结果或导出的基本条件。")
     )
+    job_history_body = _job_history_board(str(submission.get("id", "") or ""))
+    parse_diagnostics_body = _parse_diagnostics_board(materials, parse_results)
     advanced_groups = '<div class="operator-group-grid">'
     advanced_groups += _fold_group(1, "审查配置", "查看当前维度和规则入口。", review_profile_body + review_rule_links, open_by_default=False)
     advanced_groups += _fold_group(2, "批次提醒", "只保留当前还值得你注意的补充说明。", compact_note_body, open_by_default=False)
+    advanced_groups += _fold_group(3, "任务链路", "查看导入任务状态、失败原因和重试入口。", job_history_body, open_by_default=False)
+    advanced_groups += _fold_group(9, "解析诊断", "统一查看解析质量、人工复核原因和当前建议。", parse_diagnostics_body, open_by_default=False)
     advanced_groups += "</div>"
 
     content = f"""
@@ -1066,6 +1720,7 @@ def render_submission_detail(
     </section>
     <section class="dashboard-grid">
       {panel('导入摘要', f'<div class="summary-grid">{import_digest}</div>', kicker='批次摘要', extra_class='span-12 panel-soft', icon_name='file', description='主页面只保留这个批次的关键概览。', panel_id='import-digest')}
+      {panel('内部处理面板', _render_internal_workbench(submission, materials, cases, reports, data, pending_cases), kicker='团队协作', extra_class='span-12 panel-internal-workbench', icon_name='wrench', description='按内部团队使用场景聚合状态、阻塞项和下一步动作。', panel_id='internal-workbench')}
       {panel('结果去向', destination_body, kicker='下一步', extra_class='span-12', icon_name='spark', description='首页只保留去往材料、人工处理和导出的入口，不再堆太多解释。', panel_id='review-workflow')}
       {panel('待复核队列', needs_review_body, kicker='优先处理', extra_class='span-12', icon_name='alert', description='优先确认这些材料，再决定是否进入人工处理或继续审查。', panel_id='needs-review')}
       {panel('更多信息', advanced_groups, kicker='按需展开', extra_class='span-12', icon_name='search', description='这里只保留少量补充信息，不再展示冗长列表。', panel_id='submission-more')}
@@ -1083,6 +1738,7 @@ def render_submission_detail(
         header_note="如果当前是“先脱敏后继续审查”模式，请先去产物浏览页下载脱敏件，再到人工干预台回传脱敏包或继续审查。",
         page_links=[
             ("#import-digest", "导入摘要", "file"),
+            ("#internal-workbench", "内部处理", "wrench"),
             ("#review-workflow", "业务流程", "spark"),
             ("#needs-review", "待复核队列", "alert"),
             ("#submission-more", "更多信息", "search"),

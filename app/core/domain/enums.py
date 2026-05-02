@@ -22,7 +22,9 @@ class MaterialType(str, Enum):
 
 
 class JobStatus(str, Enum):
+    QUEUED = "queued"
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    INTERRUPTED = "interrupted"

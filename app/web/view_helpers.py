@@ -59,6 +59,7 @@ STATUS_LABELS = {
     "success": "成功",
     "ready": "就绪",
     "warning": "告警",
+    "queued": "排队中",
     "processing": "处理中",
     "running": "运行中",
     "needs_review": "待复核",
@@ -67,6 +68,7 @@ STATUS_LABELS = {
     "minor": "较轻",
     "moderate": "中等",
     "failed": "失败",
+    "interrupted": "已中断",
     "error": "错误",
     "blocked": "阻塞",
     "danger": "高风险",
@@ -155,9 +157,9 @@ def status_tone(status: str) -> str:
     normalized = str(status or "").lower()
     if normalized in {"ok", "completed", "healthy", "pass", "grouped", "success", "ready"}:
         return "success"
-    if normalized in {"warning", "processing", "running", "needs_review", "awaiting_manual_review", "skipped", "moderate", "minor"}:
+    if normalized in {"warning", "queued", "processing", "running", "needs_review", "awaiting_manual_review", "skipped", "moderate", "minor"}:
         return "warning"
-    if normalized in {"failed", "error", "blocked", "danger", "severe"}:
+    if normalized in {"failed", "interrupted", "error", "blocked", "danger", "severe"}:
         return "danger"
     if normalized in {"info", "active"}:
         return "info"
@@ -432,6 +434,7 @@ def layout(
         <div class="submit-feedback-step" id="submit-feedback-step">文件已提交</div>
         <strong id="submit-feedback-title">正在处理，请稍候</strong>
         <p id="submit-feedback-detail">系统正在提交你的请求。</p>
+        <div class="inline-actions submit-feedback-actions" id="submit-feedback-actions" hidden></div>
       </div>
     </div>
   </div>
@@ -442,7 +445,8 @@ def layout(
       const feedbackDetail = document.getElementById("submit-feedback-detail");
       const feedbackProgressFill = document.getElementById("submit-feedback-progress-fill");
       const feedbackStep = document.getElementById("submit-feedback-step");
-      if (!feedback || !feedbackTitle || !feedbackDetail || !feedbackProgressFill || !feedbackStep) {{
+      const feedbackActions = document.getElementById("submit-feedback-actions");
+      if (!feedback || !feedbackTitle || !feedbackDetail || !feedbackProgressFill || !feedbackStep || !feedbackActions) {{
         return;
       }}
 
@@ -489,6 +493,85 @@ def layout(
 
       const setFeedbackState = (state) => {{
         feedback.classList.toggle("is-error", state === "error");
+      }};
+
+      const clearFeedbackActions = () => {{
+        feedbackActions.innerHTML = "";
+        feedbackActions.hidden = true;
+      }};
+
+      const setFeedbackActions = (actions) => {{
+        if (!Array.isArray(actions) || !actions.length) {{
+          clearFeedbackActions();
+          return;
+        }}
+        feedbackActions.innerHTML = "";
+        for (const item of actions) {{
+          if (!item || !item.label) {{
+            continue;
+          }}
+          if (item.kind === "button") {{
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = item.primary ? "button-primary button-compact" : "button-secondary button-compact";
+            button.textContent = String(item.label);
+            button.addEventListener("click", () => item.onClick && item.onClick());
+            feedbackActions.appendChild(button);
+            continue;
+          }}
+          const link = document.createElement("a");
+          link.className = item.primary ? "button-primary button-compact" : "button-secondary button-compact";
+          link.href = String(item.href || "#");
+          link.textContent = String(item.label);
+          feedbackActions.appendChild(link);
+        }}
+        feedbackActions.hidden = feedbackActions.childElementCount === 0;
+      }};
+
+      const jobFailureHint = (payload) => {{
+        const errorCode = String(payload.error_code || "").trim();
+        const fallback = String(payload.error_message || payload.detail || "").trim();
+        const hintMap = {{
+          worker_interrupted_during_runtime: "任务在处理过程中中断，可以重新发起导入。",
+          filesystem_io_error: "文件读写阶段失败，稍后重试通常可以恢复。",
+          source_file_missing: "原始上传文件已经不存在，建议重新上传 ZIP。",
+          invalid_zip_archive: "ZIP 文件本身不可用，建议重新打包后再上传。",
+          unsupported_submission_mode: "导入模式异常，请重新选择正确模式后提交。",
+          unsupported_review_strategy: "审查策略异常，请刷新页面后重新提交。",
+          invalid_submission_request: "这次提交参数不完整，建议返回首页重新提交。",
+          unexpected_runtime_error: "系统处理过程中出现未预期错误，可以先重试一次。",
+        }};
+        return hintMap[errorCode] || fallback || "处理失败，请稍后重试。";
+      }};
+
+      const pollAsyncJob = async (statusUrl, redirectUrl, inlineStep, pendingDetail) => {{
+        for (;;) {{
+          const jobResponse = await window.fetch(statusUrl, {{ headers: {{ Accept: "application/json" }} }});
+          if (!jobResponse.ok) {{
+            throw new Error(await readErrorMessage(jobResponse));
+          }}
+          const jobPayload = await jobResponse.json();
+          applyJobFeedback(jobPayload, inlineStep, pendingDetail);
+          if (jobPayload.status === "completed") {{
+            clearFeedbackActions();
+            feedbackTitle.textContent = "分析完成，正在跳转";
+            feedbackDetail.textContent = jobPayload.detail || "批次结果已生成，即将进入详情页。";
+            feedbackStep.textContent = jobPayload.stage || "结果已生成";
+            feedbackProgressFill.style.width = "100%";
+            if (inlineStep) {{
+              inlineStep.textContent = jobPayload.stage || "结果已生成";
+            }}
+            window.setTimeout(() => {{
+              window.location.href = redirectUrl;
+            }}, 380);
+            return;
+          }}
+          if (jobPayload.status === "failed" || jobPayload.status === "interrupted") {{
+            const hint = jobFailureHint(jobPayload);
+            throw Object.assign(new Error(hint), {{ jobPayload, redirectUrl }});
+          }}
+          await wait(900);
+        }}
       }};
 
       const restoreForm = (form) => {{
@@ -603,6 +686,7 @@ def layout(
             inlineNote.classList.remove("is-error");
             inlineNote.hidden = false;
           }}
+          clearFeedbackActions();
           feedbackTitle.textContent = pendingText;
           feedbackDetail.textContent = pendingDetail;
           feedback.hidden = false;
@@ -648,35 +732,13 @@ def layout(
               return;
             }}
 
-            for (;;) {{
-              const jobResponse = await window.fetch(statusUrl, {{ headers: {{ Accept: "application/json" }} }});
-              if (!jobResponse.ok) {{
-                throw new Error(await readErrorMessage(jobResponse));
-              }}
-              const jobPayload = await jobResponse.json();
-              applyJobFeedback(jobPayload, inlineStep, pendingDetail);
-              if (jobPayload.status === "completed") {{
-                feedbackTitle.textContent = "分析完成，正在跳转";
-                feedbackDetail.textContent = jobPayload.detail || "批次结果已生成，即将进入详情页。";
-                feedbackStep.textContent = jobPayload.stage || "结果已生成";
-                feedbackProgressFill.style.width = "100%";
-                if (inlineStep) {{
-                  inlineStep.textContent = jobPayload.stage || "结果已生成";
-                }}
-                window.setTimeout(() => {{
-                  window.location.href = redirectUrl;
-                }}, 380);
-                return;
-              }}
-              if (jobPayload.status === "failed") {{
-                throw new Error(jobPayload.error_message || jobPayload.detail || "处理失败，请稍后重试。");
-              }}
-              await wait(900);
-            }}
+            await pollAsyncJob(statusUrl, redirectUrl, inlineStep, pendingDetail);
           }} catch (error) {{
             stopStageTimer();
             setFeedbackState("error");
             feedbackTitle.textContent = "分析失败，请重试";
+            const jobPayload = error && typeof error === "object" && "jobPayload" in error ? error.jobPayload : null;
+            const redirectUrl = error && typeof error === "object" && "redirectUrl" in error ? error.redirectUrl : "";
             feedbackDetail.textContent = error instanceof Error ? error.message : "系统处理失败，请稍后重试。";
             feedbackStep.textContent = "本次提交未完成";
             feedbackProgressFill.style.width = "100%";
@@ -686,6 +748,40 @@ def layout(
             if (inlineStep) {{
               inlineStep.textContent = error instanceof Error ? error.message : "系统处理失败，请稍后重试。";
             }}
+            const actions = [];
+            if (redirectUrl) {{
+              actions.push({{ kind: "link", label: "查看批次详情", href: redirectUrl, primary: false }});
+            }}
+            if (jobPayload && jobPayload.can_retry && jobPayload.retry_url) {{
+              actions.unshift({{
+                kind: "button",
+                label: "立即重试",
+                primary: true,
+                onClick: async () => {{
+                  clearFeedbackActions();
+                  setFeedbackState("running");
+                  feedbackTitle.textContent = "正在重新发起任务";
+                  feedbackDetail.textContent = "系统正在根据原始上传文件重试导入。";
+                  feedbackStep.textContent = "重新进入处理队列";
+                  feedbackProgressFill.style.width = "18%";
+                  try {{
+                    const retryResponse = await window.fetch(String(jobPayload.retry_url), {{ method: "POST", headers: {{ Accept: "application/json" }} }});
+                    if (!retryResponse.ok) {{
+                      throw new Error(await readErrorMessage(retryResponse));
+                    }}
+                    const retryPayload = await retryResponse.json();
+                    await pollAsyncJob(String(retryPayload.status_url || ""), String(retryPayload.redirect_url || redirectUrl || "/submissions"), inlineStep, pendingDetail);
+                  }} catch (retryError) {{
+                    setFeedbackState("error");
+                    feedbackTitle.textContent = "重试失败";
+                    feedbackDetail.textContent = retryError instanceof Error ? retryError.message : "任务重试失败，请稍后再试。";
+                    feedbackStep.textContent = "重试未完成";
+                    setFeedbackActions(actions);
+                  }}
+                }},
+              }});
+            }}
+            setFeedbackActions(actions);
             restoreForm(form);
           }}
         }});

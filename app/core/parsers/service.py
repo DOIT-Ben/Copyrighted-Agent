@@ -10,6 +10,7 @@ from app.core.parsers.page_segments import build_page_segments
 from app.core.parsers.pdf_parser import PdfParser
 from app.core.parsers.quality import assess_parse_quality
 from app.core.privacy.desensitization import desensitize_text
+from app.core.services.submission_insights import label_for_parse_reason
 from app.core.utils.text import (
     clean_text,
     extract_company_name,
@@ -54,6 +55,11 @@ def parse_material(file_path: str | Path, material_type: str) -> dict:
         "parser_name": parser_name,
         "parse_quality": quality,
         "garbled_ratio": quality["garbled_ratio"],
+        "diagnostics": {
+            "parse_reason_code": str(quality.get("review_reason_code", "") or ""),
+            "parse_reason_label": label_for_parse_reason(str(quality.get("review_reason_code", "") or "")),
+            "quality_level": str(quality.get("quality_level", "") or ""),
+        },
     }
     privacy = desensitize_text(cleaned_text, metadata=metadata)
     metadata["privacy"] = privacy["summary"]
