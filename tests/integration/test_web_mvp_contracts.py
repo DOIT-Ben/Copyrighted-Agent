@@ -60,6 +60,8 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
     assert submission_page.status_code == 200
     assert mode_a_zip_path.name in submission_page.text
     assert "导入摘要" in submission_page.text
+    assert "整包全局审查" in submission_page.text
+    assert "下一步建议" in submission_page.text
     assert "结果去向" in submission_page.text
     assert "更多信息" in submission_page.text
 
@@ -382,6 +384,8 @@ def test_batch_upload_flow_exposes_batch_report_and_registry_pages(api_client, m
     submission_page = api_client.get(location)
     assert submission_page.status_code == 200
     assert "导入摘要" in submission_page.text
+    assert "整包全局审查" in submission_page.text
+    assert "下一步建议" in submission_page.text
     assert "结果去向" in submission_page.text
     assert "产物浏览" in submission_page.text
     assert "导出中心" in submission_page.text

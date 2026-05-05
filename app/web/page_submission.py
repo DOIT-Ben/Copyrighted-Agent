@@ -125,6 +125,39 @@ def _global_review_status_tone(value: str) -> str:
     return GLOBAL_REVIEW_STATUS_TONES.get(str(value or "").strip(), "neutral")
 
 
+def _global_review_next_action(submission_id: str, global_review: dict) -> dict[str, str]:
+    status = str(global_review.get("status", "") or "").strip()
+    inventory = dict(global_review.get("material_inventory", {}) or {})
+    report_id = str(global_review.get("report_id", "") or "").strip()
+    if status == "blocked":
+        return {
+            "title": "下一步建议：先处理阻断项",
+            "note": "优先确认未知材料、低质解析、核心材料缺失或批量未分组问题，避免带着结构性风险进入交付。",
+            "href": f"/submissions/{submission_id}/materials#needs-review",
+            "label": "查看待复核材料",
+        }
+    if status == "needs_review" or int(inventory.get("manual_review_count", 0) or 0) > 0:
+        return {
+            "title": "下一步建议：完成人工复核",
+            "note": "当前整包基本可审，但仍建议先确认待复核材料和分组，再查看项目报告。",
+            "href": f"/submissions/{submission_id}/operator",
+            "label": "进入人工干预台",
+        }
+    if report_id:
+        return {
+            "title": "下一步建议：查看整包报告",
+            "note": "整包结构稳定，可以打开全局报告确认结论，随后进入导出中心生成交付包。",
+            "href": f"/reports/{report_id}",
+            "label": "查看整包报告",
+        }
+    return {
+        "title": "下一步建议：继续查看结果",
+        "note": "整包结构稳定，可以继续查看项目报告或进入导出中心。",
+        "href": f"/submissions/{submission_id}/exports",
+        "label": "进入导出中心",
+    }
+
+
 def _render_global_review_board(submission: dict) -> str:
     review_profile = dict(submission.get("review_profile", {}) or {})
     global_review = dict(review_profile.get("submission_global_review", {}) or {})
@@ -145,6 +178,16 @@ def _render_global_review_board(submission: dict) -> str:
         f'<a class="button-secondary button-compact" href="/reports/{escape_html(report_id)}">{icon("report", "icon icon-sm")}查看整包报告</a>'
         if report_id
         else ""
+    )
+    next_action = _global_review_next_action(str(submission.get("id", "") or ""), global_review)
+    next_action_body = (
+        '<div class="operator-note global-review-next-step">'
+        f"<strong>{escape_html(next_action['title'])}</strong>"
+        f"<span>{escape_html(next_action['note'])}</span>"
+        '<div class="inline-actions">'
+        f'<a class="button-primary button-compact" href="{escape_html(next_action["href"])}">{icon("spark", "icon icon-sm")}{escape_html(next_action["label"])}</a>'
+        "</div>"
+        "</div>"
     )
     issue_body = (
         '<div class="rule-checkpoint-list"><ul>'
@@ -179,6 +222,7 @@ def _render_global_review_board(submission: dict) -> str:
         + _summary_tile("低质解析", str(inventory.get("low_quality_count", 0)), "解析质量不足的材料数量")
         + _summary_tile("人工复核", str(inventory.get("manual_review_count", 0)), "建议人工确认的材料数量")
         + "</div>"
+        + next_action_body
         + issue_body
         + (f'<div class="inline-actions">{report_link}</div>' if report_link else "")
         + "</div>"
