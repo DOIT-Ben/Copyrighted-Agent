@@ -28,6 +28,7 @@ This repository is now organized around the Web MVP in `app/`.
 - `tests/integration/`: upload flows, API contracts, persistence, provider bridge, and operational workflows.
 - `tests/e2e/`: browser-style workflow coverage against the local app.
 - `tests/non_functional/`: repository-level checks such as encoding guardrails.
+- `docs/ENCODING.md`: UTF-8 and Chinese copywriting guardrails for Windows-safe editing.
 
 ## Legacy Area
 
