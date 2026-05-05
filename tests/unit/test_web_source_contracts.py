@@ -8,6 +8,7 @@ from tests.helpers.contracts import require_symbol
 
 
 EXPECTED_EXPORT_MAP = {
+    "render_app_script": "app.web.view_helpers",
     "render_case_detail": "app.web.page_case",
     "render_home_page": "app.web.page_home",
     "render_ops_page": "app.web.page_ops",

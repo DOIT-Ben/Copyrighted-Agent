@@ -166,7 +166,7 @@ def test_export_page_delivery_confirmation_updates_internal_state(api_client, mo
         },
     )
     assert ready_response.status_code == 303
-    assert ready_response.headers.get("Location") == f"/submissions/{submission_id}/exports#delivery-check"
+    assert ready_response.headers.get("Location") == f"/submissions/{submission_id}/exports?notice=internal_state_updated#delivery-check"
     ready_payload = api_client.get(f"/api/submissions/{submission_id}").json()
     assert ready_payload["internal_status"] == "ready_to_deliver"
     assert ready_payload["internal_next_step"] == "已生成内部交付包，待负责人复核后发送。"

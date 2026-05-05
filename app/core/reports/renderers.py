@@ -117,6 +117,58 @@ def render_case_report_markdown(payload: dict) -> str:
     return "\n".join(lines)
 
 
+def render_submission_global_review_markdown(payload: dict) -> str:
+    inventory = dict(payload.get("material_inventory", {}) or {})
+    case_inventory = dict(payload.get("case_inventory", {}) or {})
+    severity_counts = dict(payload.get("severity_counts", {}) or {})
+    issues = list(payload.get("issues", []) or [])
+    lines = [
+        "# 整包全局审查报告",
+        "",
+        f"- 全局状态: {payload.get('status', 'unknown')}",
+        f"- 全局得分: {payload.get('score', 'n/a')}",
+        f"- 结论摘要: {payload.get('summary', '') or '-'}",
+        f"- 材料总数: {inventory.get('total', 0)}",
+        f"- 项目分组数: {case_inventory.get('total', 0)}",
+        f"- 严重问题: {severity_counts.get('severe', 0)}",
+        f"- 需复核问题: {severity_counts.get('moderate', 0)}",
+        f"- 提醒项: {severity_counts.get('minor', 0)}",
+        "",
+        "## 材料清单",
+        "",
+    ]
+    files = list(inventory.get("files", []) or [])
+    if files:
+        for item in files:
+            name = item.get("file_name", "未知文件")
+            material_type = item.get("material_type_label") or item.get("material_type", "unknown")
+            identity = " ".join(
+                part
+                for part in [
+                    str(item.get("detected_software_name", "") or "").strip(),
+                    str(item.get("detected_version", "") or "").strip(),
+                ]
+                if part
+            )
+            suffix = f"；识别：{identity}" if identity else ""
+            lines.append(
+                f"- {name}: {material_type}；解析质量 {item.get('quality_level', 'unknown')}；问题 {item.get('issue_count', 0)} 个{suffix}"
+            )
+    else:
+        lines.append("- 未发现可处理材料")
+
+    lines.extend(["", "## 全局问题", ""])
+    if issues:
+        for issue in issues:
+            lines.append(
+                f"- [{issue.get('severity', 'minor')}] {issue.get('category', '全局审查')}: "
+                f"{issue.get('desc', '')} 建议：{issue.get('suggestion', issue.get('suggest', ''))}"
+            )
+    else:
+        lines.append("- 未发现全局问题")
+    return "\n".join(lines)
+
+
 def render_batch_report_markdown(payload: dict) -> str:
     submission_name = payload.get("submission_name", "批次报告")
     items = payload.get("items", [])

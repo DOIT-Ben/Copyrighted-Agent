@@ -10,6 +10,11 @@ from app.core.pipelines.submission_pipeline import ingest_submission
 def _metrics_from_result(result: dict) -> dict:
     materials = result.get("materials", [])
     parse_results = result.get("parse_results", [])
+    project_reports = [
+        item
+        for item in result.get("reports", [])
+        if item.get("report_type") != "submission_global_review_markdown"
+    ]
     type_counter = Counter(item.get("material_type", "unknown") for item in materials)
     review_reason_counter = Counter()
     legacy_bucket_counter = Counter()
@@ -36,7 +41,7 @@ def _metrics_from_result(result: dict) -> dict:
     return {
         "materials": len(materials),
         "cases": len(result.get("cases", [])),
-        "reports": len(result.get("reports", [])),
+        "reports": len(project_reports),
         "types": dict(type_counter),
         "needs_review": needs_review,
         "low_quality": low_quality,

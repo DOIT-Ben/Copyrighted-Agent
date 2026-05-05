@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from app.core.services.online_filing import normalize_online_filing, online_filing_summary
 from app.core.services.review_profile import dimension_title, normalize_review_profile, review_profile_summary
 from app.core.services.review_rulebook import dimension_rulebook_from_profile
+from app.core.services.sqlite_repository import list_submission_registry
 from app.core.services.submission_insights import parse_diagnostic_snapshot
 from app.core.services.runtime_store import store
 from app.core.utils.text import escape_html
@@ -70,11 +71,11 @@ INTERNAL_STATUS_LABELS = {
 
 
 def _summary_tile(label: str, value: str, note: str) -> str:
+    del note
     return (
         '<div class="summary-tile">'
         f"<span>{escape_html(label)}</span>"
         f"<strong>{escape_html(value)}</strong>"
-        f"<small>{escape_html(note)}</small>"
         "</div>"
     )
 
@@ -101,6 +102,87 @@ def _correction_label(value: str) -> str:
 
 def _quality_bucket_label(value: str) -> str:
     return QUALITY_BUCKET_LABELS.get(str(value or "").strip(), value or "待判断")
+
+
+GLOBAL_REVIEW_STATUS_LABELS = {
+    "ready": "整包可继续",
+    "needs_review": "需要复核",
+    "blocked": "存在阻断",
+}
+
+GLOBAL_REVIEW_STATUS_TONES = {
+    "ready": "success",
+    "needs_review": "warning",
+    "blocked": "danger",
+}
+
+
+def _global_review_status_label(value: str) -> str:
+    return GLOBAL_REVIEW_STATUS_LABELS.get(str(value or "").strip(), "待生成")
+
+
+def _global_review_status_tone(value: str) -> str:
+    return GLOBAL_REVIEW_STATUS_TONES.get(str(value or "").strip(), "neutral")
+
+
+def _render_global_review_board(submission: dict) -> str:
+    review_profile = dict(submission.get("review_profile", {}) or {})
+    global_review = dict(review_profile.get("submission_global_review", {}) or {})
+    if not global_review:
+        return empty_state("整包全局审查待生成", "完成导入后，系统会把材料完整性、分组和跨项目风险统一汇总到这里。")
+
+    status = str(global_review.get("status", "") or "").strip()
+    severity_counts = dict(global_review.get("severity_counts", {}) or {})
+    inventory = dict(global_review.get("material_inventory", {}) or {})
+    case_inventory = dict(global_review.get("case_inventory", {}) or {})
+    issues = list(global_review.get("issues", []) or [])
+    top_issues = sorted(
+        issues,
+        key=lambda item: {"severe": 0, "moderate": 1, "minor": 2}.get(str(item.get("severity", "minor")), 3),
+    )[:5]
+    report_id = str(global_review.get("report_id", "") or "").strip()
+    report_link = (
+        f'<a class="button-secondary button-compact" href="/reports/{escape_html(report_id)}">{icon("report", "icon icon-sm")}查看整包报告</a>'
+        if report_id
+        else ""
+    )
+    issue_body = (
+        '<div class="rule-checkpoint-list"><ul>'
+        + "".join(
+            "<li>"
+            f"<strong>{escape_html(str(item.get('category', '全局审查') or '全局审查'))}</strong>"
+            f"：{escape_html(str(item.get('desc', '') or ''))}"
+            "</li>"
+            for item in top_issues
+        )
+        + "</ul></div>"
+        if top_issues
+        else empty_state("未发现整包级阻断", "当前整包结构稳定，可继续查看项目报告或进入导出中心。")
+    )
+    return (
+        '<div class="global-review-board">'
+        + notice_banner(
+            f"整包结论：{_global_review_status_label(status)}",
+            str(global_review.get("summary", "") or "系统已完成整包级材料审查。"),
+            tone=_global_review_status_tone(status),
+            icon_name="shield",
+            meta=[
+                f"材料 {inventory.get('total', 0)}",
+                f"项目 {case_inventory.get('total', 0)}",
+                f"严重 {severity_counts.get('severe', 0)}",
+                f"复核 {severity_counts.get('moderate', 0)}",
+            ],
+        )
+        + '<div class="summary-grid">'
+        + _summary_tile("全局得分", str(global_review.get("score", "-")), "整包级确定性规则评分")
+        + _summary_tile("未知材料", str(inventory.get("unknown_count", 0)), "未稳定识别类型的材料数量")
+        + _summary_tile("低质解析", str(inventory.get("low_quality_count", 0)), "解析质量不足的材料数量")
+        + _summary_tile("人工复核", str(inventory.get("manual_review_count", 0)), "建议人工确认的材料数量")
+        + "</div>"
+        + issue_body
+        + (f'<div class="inline-actions">{report_link}</div>' if report_link else "")
+        + "</div>"
+    )
 
 
 def _fold_group(index: int, title: str, note: str, body: str, *, open_by_default: bool = False) -> str:
@@ -381,7 +463,7 @@ def _review_rule_links(submission_id: str, review_profile: dict, *, case_id: str
 
 def render_submissions_index(filters: dict | None = None) -> str:
     filters = dict(filters or {})
-    all_submissions = sorted(store.submissions.values(), key=lambda item: item.created_at, reverse=True)
+    all_submissions = list_submission_registry()
 
     def _submission_todo_flags(submission) -> set[str]:
         flags: set[str] = set()
@@ -404,18 +486,11 @@ def render_submissions_index(filters: dict | None = None) -> str:
         return flags
 
     internal_status_filter = str(filters.get("internal_status", "") or "").strip()
-    owner_filter = str(filters.get("owner", "") or "").strip().lower()
     system_status_filter = str(filters.get("status", "") or "").strip()
     todo_filter = str(filters.get("todo", "") or "").strip()
-
+    filtered_by_registry = list_submission_registry(filters)
     submissions = []
-    for submission in all_submissions:
-        if internal_status_filter and str(getattr(submission, "internal_status", "unassigned") or "unassigned") != internal_status_filter:
-            continue
-        if owner_filter and owner_filter not in str(getattr(submission, "internal_owner", "") or "").lower():
-            continue
-        if system_status_filter and str(getattr(submission, "status", "") or "") != system_status_filter:
-            continue
+    for submission in filtered_by_registry:
         if todo_filter and todo_filter not in _submission_todo_flags(submission):
             continue
         submissions.append(submission)
@@ -615,7 +690,7 @@ def render_submissions_index(filters: dict | None = None) -> str:
     </form>
     """
 
-    has_active_filters = any([internal_status_filter, owner_filter, system_status_filter, todo_filter])
+    has_active_filters = any([internal_status_filter, str(filters.get("owner", "") or "").strip().lower(), system_status_filter, todo_filter])
     empty_title = "没有匹配批次" if has_active_filters else "暂无批次"
     empty_note = "调整筛选条件后再试，或清空筛选回到完整台账。" if has_active_filters else "导入 ZIP 后，这里会出现批次记录。"
     registry_body = filter_form + (table(['批次', '内部状态', '待办', '系统状态', '阶段', '数量', '创建时间', '操作'], rows) if rows else empty_state(empty_title, empty_note))
@@ -634,6 +709,16 @@ def render_submissions_index(filters: dict | None = None) -> str:
     </section>
     """
 
+    notice_code = str(filters.get("notice", "") or "").strip()
+    workspace_notice = ""
+    if notice_code:
+        notice_map = {
+            "internal_state_updated": ("内部处理状态已更新", "负责人、内部状态和下一步备注已经保存，台账已刷新。", "success", "wrench"),
+        }
+        notice_info = notice_map.get(notice_code)
+        if notice_info:
+            workspace_notice = notice_banner(notice_info[0], notice_info[1], tone=notice_info[2], icon_name=notice_info[3])
+
     return layout(
         title="批次总览",
         active_nav="submissions",
@@ -648,6 +733,7 @@ def render_submissions_index(filters: dict | None = None) -> str:
             ("#batch-registry", "批次台账", "layers"),
             ("#status-distribution", "状态分布", "bar"),
         ],
+        workspace_notice=workspace_notice,
     )
 
 
@@ -663,6 +749,8 @@ def render_submission_detail_legacy(
     submission_id = escape_html(submission.get("id", ""))
     pending_cases = _pending_manual_cases(cases)
     review_profile = normalize_review_profile(submission.get("review_profile", {}))
+    global_review = dict((submission.get("review_profile", {}) or {}).get("submission_global_review", {}) or {})
+    global_status = str(global_review.get("status", "") or "").strip()
 
     workspace_notice = ""
     if notice:
@@ -1645,6 +1733,8 @@ def render_submission_detail(
     submission_id = escape_html(submission.get("id", ""))
     pending_cases = _pending_manual_cases(cases)
     review_profile = normalize_review_profile(submission.get("review_profile", {}))
+    global_review = dict((submission.get("review_profile", {}) or {}).get("submission_global_review", {}) or {})
+    global_status = str(global_review.get("status", "") or "").strip()
 
     workspace_notice = ""
     if notice:
@@ -1705,6 +1795,7 @@ def render_submission_detail(
     job_history_body = _job_history_board(str(submission.get("id", "") or ""))
     parse_diagnostics_body = _parse_diagnostics_board(materials, parse_results)
     advanced_groups = '<div class="operator-group-grid">'
+    advanced_groups += _fold_group(0, "整包全局审查", "先看整个材料包是否完整、是否串项或需要复核。", _render_global_review_board(submission), open_by_default=True)
     advanced_groups += _fold_group(1, "审查配置", "查看当前维度和规则入口。", review_profile_body + review_rule_links, open_by_default=False)
     advanced_groups += _fold_group(2, "批次提醒", "只保留当前还值得你注意的补充说明。", compact_note_body, open_by_default=False)
     advanced_groups += _fold_group(3, "任务链路", "查看导入任务状态、失败原因和重试入口。", job_history_body, open_by_default=False)
@@ -1713,6 +1804,7 @@ def render_submission_detail(
 
     content = f"""
     <section class="kpi-grid">
+      {metric_card('整包审查', _global_review_status_label(global_status), '先判断整个压缩包是否完整、串项或需要复核', _global_review_status_tone(global_status), icon_name='shield')}
       {metric_card('材料数', str(len(materials)), '当前批次识别出的材料数量', 'info', icon_name='file')}
       {metric_card('项目数', str(len(cases)), '当前批次形成的项目数量', 'success', icon_name='lock')}
       {metric_card('报告数', str(len(reports)), '当前可查看的项目级报告数量', 'neutral', icon_name='report')}

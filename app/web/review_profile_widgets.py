@@ -15,7 +15,7 @@ from app.core.utils.text import escape_html
 
 def _rule_item_editor(dimension_key: str, item: dict) -> str:
     base = f"rule_{dimension_key}_item_{item.get('key', '')}"
-    checked = ' checked' if item.get("enabled", True) else ""
+    checked = " checked" if item.get("enabled", True) else ""
     severity_options = "".join(
         f'<option value="{escape_html(level)}"{" selected" if level == item.get("severity", "moderate") else ""}>{escape_html(level)}</option>'
         for level in ["severe", "moderate", "minor"]
@@ -55,29 +55,54 @@ def _inline_rule_editor(key: str, rule: dict) -> str:
     <details class="dimension-rule-editor">
       <summary>
         <span>导入前编辑规则</span>
-        <small>已启用 {enabled_rule_count} 项检查点</small>
+        <small>已启用 {enabled_rule_count} 项检查点，点开后进入右侧编辑面板</small>
       </summary>
-      <div class="dimension-rule-editor-body">
-        <label class="field">
-          <span>规则名称</span>
-          <input type="text" name="rule_{escape_html(key)}_title" value="{escape_html(rule.get('title', ''))}">
-        </label>
-        <label class="field">
-          <span>审查目标</span>
-          <textarea name="rule_{escape_html(key)}_objective" rows="3">{escape_html(rule.get('objective', ''))}</textarea>
-        </label>
-        <div class="rule-item-stack">
-          {rule_items}
+      <div class="dimension-rule-editor-modal" role="dialog" aria-modal="true" aria-label="导入前编辑规则">
+        <div class="dimension-rule-editor-backdrop"></div>
+        <div class="dimension-rule-editor-window">
+          <div class="dimension-rule-editor-window-head">
+            <div class="dimension-rule-editor-window-copy">
+              <span class="dimension-rule-editor-kicker">右侧编辑面板</span>
+              <strong>{escape_html(rule.get("title", ""))}</strong>
+              <small>只处理当前维度。先改规则项，再补检查点和提示语，避免在首页堆太多信息。</small>
+            </div>
+            <div class="dimension-rule-editor-window-meta">
+              <span class="dimension-rule-editor-chip">规则项 {enabled_rule_count}</span>
+              <span class="dimension-rule-editor-close">再次点击入口即可收起</span>
+            </div>
+          </div>
+          <div class="dimension-rule-editor-body">
+            <div class="dimension-rule-editor-grid">
+              <label class="field">
+                <span>规则名称</span>
+                <input type="text" name="rule_{escape_html(key)}_title" value="{escape_html(rule.get('title', ''))}">
+              </label>
+              <label class="field">
+                <span>审查目标</span>
+                <textarea name="rule_{escape_html(key)}_objective" rows="3">{escape_html(rule.get('objective', ''))}</textarea>
+              </label>
+            </div>
+            <div class="dimension-rule-editor-section">
+              <div class="dimension-rule-editor-section-head">
+                <strong>规则项</strong>
+                <small>这里决定导入后会重点命中哪些判断条件。</small>
+              </div>
+              <div class="rule-item-stack">
+                {rule_items}
+              </div>
+            </div>
+            <div class="dimension-rule-editor-grid dimension-rule-editor-grid-wide">
+              <label class="field">
+                <span>检查点摘要</span>
+                <textarea name="rule_{escape_html(key)}_checkpoints" rows="5">{escape_html(checkpoints)}</textarea>
+              </label>
+              <label class="field">
+                <span>LLM 关注点</span>
+                <textarea name="rule_{escape_html(key)}_llm_focus" rows="5">{escape_html(rule.get('llm_focus', ''))}</textarea>
+              </label>
+            </div>
+          </div>
         </div>
-        <label class="field">
-          <span>检查点摘要</span>
-          <textarea name="rule_{escape_html(key)}_checkpoints" rows="5">{escape_html(checkpoints)}</textarea>
-          <span class="field-hint">默认会根据启用的子规则自动生成，这里也可以手动补充。</span>
-        </label>
-        <label class="field">
-          <span>LLM 关注点</span>
-          <textarea name="rule_{escape_html(key)}_llm_focus" rows="3">{escape_html(rule.get('llm_focus', ''))}</textarea>
-        </label>
       </div>
     </details>
     """
@@ -135,7 +160,7 @@ def render_review_profile_form_fields(
         for item in REVIEW_PROFILE_PRESETS
     )
     helper_copy = (
-        "只保留本次审查需要关注的重点，详细规则按需展开即可。"
+        "只保留本次审查需要关注的重点，详细规则按需打开小窗即可。"
         if submit_context == "import"
         else "修改后会保存到当前批次，并用于下一次重跑审查。"
     )
@@ -169,7 +194,6 @@ def render_review_profile_form_fields(
           <label class="field">
             <span>LLM 补充指令</span>
             <textarea name="llm_instruction" rows="3" placeholder="例如：重点关注申请人排序一致性、协议日期逻辑和源码脱敏。">{escape_html(normalized["llm_instruction"])}</textarea>
-            <span class="field-hint">用于补充这次材料的个性化审查要求。</span>
           </label>
           <div class="dimension-choice-grid">
             {dimension_items}

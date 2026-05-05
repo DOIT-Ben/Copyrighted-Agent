@@ -26,6 +26,7 @@ from app.core.services.submission_insights import (
     label_for_correction_reason,
     submission_quality_snapshot,
 )
+from app.core.services.submission_global_review import upsert_submission_global_review
 from app.core.services.sqlite_repository import save_submission_graph
 from app.core.services.runtime_store import store
 from app.core.utils.text import ensure_dir, now_iso, slug_id, summarize_severity
@@ -143,6 +144,11 @@ def _collect_case_issues(materials: list, consistency_issues: list[dict]) -> lis
 
 def _submission_metrics(submission_id: str) -> dict:
     return submission_quality_snapshot(submission_id)
+
+
+def _save_submission_graph_with_global_review(submission_id: str) -> None:
+    upsert_submission_global_review(submission_id)
+    save_submission_graph(submission_id)
 
 
 def _effect_analysis(submission_id: str, before_metrics: dict) -> tuple[str, dict]:
@@ -381,7 +387,7 @@ def update_case_online_filing(
         note=note or "online_filing_updated",
         corrected_by=corrected_by,
     )
-    save_submission_graph(submission.id)
+    _save_submission_graph_with_global_review(submission.id)
     log_event(
         "update_case_online_filing",
         {"submission_id": submission.id, "case_id": case.id, "has_data": normalized.get("has_data", False), "corrected_by": corrected_by},
@@ -444,7 +450,7 @@ def change_material_type(material_id: str, new_material_type: str, corrected_by:
         note=note,
         corrected_by=corrected_by,
     )
-    save_submission_graph(submission.id)
+    _save_submission_graph_with_global_review(submission.id)
     log_event(
         "change_material_type",
         {"submission_id": submission.id, "material_id": material.id, "material_type": new_material_type, "corrected_by": corrected_by},
@@ -486,7 +492,7 @@ def assign_material_to_case(material_id: str, case_id: str, corrected_by: str = 
         note=note,
         corrected_by=corrected_by,
     )
-    save_submission_graph(submission.id)
+    _save_submission_graph_with_global_review(submission.id)
     log_event(
         "assign_material_to_case",
         {"submission_id": submission.id, "material_id": material.id, "case_id": case.id, "corrected_by": corrected_by},
@@ -556,7 +562,7 @@ def create_case_from_materials(
         note=note,
         corrected_by=corrected_by,
     )
-    save_submission_graph(submission_id)
+    _save_submission_graph_with_global_review(submission_id)
     log_event(
         "create_case_from_materials",
         {"submission_id": submission_id, "case_id": new_case.id, "material_ids": material_ids, "corrected_by": corrected_by},
@@ -603,7 +609,7 @@ def merge_cases(source_case_id: str, target_case_id: str, corrected_by: str = "l
         note=note,
         corrected_by=corrected_by,
     )
-    save_submission_graph(submission.id)
+    _save_submission_graph_with_global_review(submission.id)
     log_event(
         "merge_cases",
         {"submission_id": submission.id, "source_case_id": source_case.id, "target_case_id": target_case.id, "corrected_by": corrected_by},
@@ -637,7 +643,7 @@ def rerun_case_review(case_id: str, corrected_by: str = "local", note: str = "",
         note=note,
         corrected_by=corrected_by,
     )
-    save_submission_graph(submission.id)
+    _save_submission_graph_with_global_review(submission.id)
     log_event("rerun_case_review", {"submission_id": submission.id, "case_id": case.id, "corrected_by": corrected_by})
     return {
         "correction": correction.to_dict(),
@@ -705,7 +711,7 @@ def update_submission_review_dimension_rule(
         note=note or f"updated:{dimension_key}",
         corrected_by=corrected_by,
     )
-    save_submission_graph(submission.id)
+    _save_submission_graph_with_global_review(submission.id)
     log_event(
         "update_review_dimension_rule",
         {"submission_id": submission.id, "dimension_key": dimension_key, "corrected_by": corrected_by},
@@ -750,7 +756,7 @@ def reset_submission_review_dimension_rule(
         note=note or f"reset:{dimension_key}",
         corrected_by=corrected_by,
     )
-    save_submission_graph(submission.id)
+    _save_submission_graph_with_global_review(submission.id)
     log_event(
         "reset_review_dimension_rule",
         {"submission_id": submission.id, "dimension_key": dimension_key, "corrected_by": corrected_by},
@@ -779,7 +785,7 @@ def continue_case_review_from_desensitized(case_id: str, corrected_by: str = "lo
         note=note,
         corrected_by=corrected_by,
     )
-    save_submission_graph(submission.id)
+    _save_submission_graph_with_global_review(submission.id)
     log_event(
         "continue_case_review_from_desensitized",
         {"submission_id": submission.id, "case_id": case.id, "corrected_by": corrected_by},
@@ -861,7 +867,7 @@ def upload_desensitized_package(
         note=note or archive_path.name,
         corrected_by=corrected_by,
     )
-    save_submission_graph(submission.id)
+    _save_submission_graph_with_global_review(submission.id)
     log_event(
         "upload_desensitized_package",
         {"submission_id": submission.id, "matched_material_count": len(matched_materials), "corrected_by": corrected_by},
@@ -925,7 +931,7 @@ def update_submission_internal_state(
         note=note or next_step or "更新内部处理状态",
         corrected_by=updated_by,
     )
-    save_submission_graph(submission_id)
+    _save_submission_graph_with_global_review(submission_id)
     log_event(
         "update_submission_internal_state",
         {"submission_id": submission_id, "internal_status": normalized_status, "owner": submission.internal_owner, "by": updated_by},

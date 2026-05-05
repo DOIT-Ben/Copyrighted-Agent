@@ -184,6 +184,7 @@ class FastAPI:
             201: "201 Created",
             202: "202 Accepted",
             302: "302 Found",
+            303: "303 See Other",
             400: "400 Bad Request",
             404: "404 Not Found",
             415: "415 Unsupported Media Type",

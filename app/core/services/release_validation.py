@@ -67,6 +67,11 @@ def _temporary_env(overrides: dict[str, str]) -> Iterator[None]:
 def _metrics_from_submission_result(result: dict) -> dict:
     materials = result.get("materials", [])
     parse_results = result.get("parse_results", [])
+    project_reports = [
+        item
+        for item in result.get("reports", [])
+        if item.get("report_type") != "submission_global_review_markdown"
+    ]
     type_totals: dict[str, int] = {}
     review_reason_totals: dict[str, int] = {}
     legacy_bucket_totals: dict[str, int] = {}
@@ -103,7 +108,7 @@ def _metrics_from_submission_result(result: dict) -> dict:
     return {
         "materials": len(materials),
         "cases": len(result.get("cases", [])),
-        "reports": len(result.get("reports", [])),
+        "reports": len(project_reports),
         "types": type_totals,
         "needs_review": needs_review,
         "low_quality": low_quality,

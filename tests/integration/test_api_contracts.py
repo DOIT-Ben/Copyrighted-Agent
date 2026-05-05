@@ -77,8 +77,12 @@ def test_upload_submission_supports_batch_mode_and_returns_batch_report(api_clie
     payload = response.json()
     assert payload["status"] == "completed"
     assert len(payload["materials"]) == 3
-    assert len(payload["reports"]) == 1
-    assert payload["reports"][0]["report_type"] == "batch_markdown"
+    assert len(payload["reports"]) == 2
+    assert {item["report_type"] for item in payload["reports"]} == {
+        "batch_markdown",
+        "submission_global_review_markdown",
+    }
+    assert payload["review_profile"]["submission_global_review"]["material_inventory"]["total"] == 3
 
 
 @pytest.mark.integration
@@ -239,6 +243,57 @@ def test_submission_diagnostics_and_corrections_api_expose_summary(api_client, m
     assert "summary" in corrections_payload
     assert "review_profile_meta" in corrections_payload
     assert corrections_payload["corrections"][0]["reason_code"] == "manual_material_reclassified"
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.api
+def test_submission_review_rule_history_api_exposes_revision_timeline(api_client, mode_a_zip_path):
+    with mode_a_zip_path.open("rb") as handle:
+        response = api_client.post(
+            "/upload",
+            files={"file": (mode_a_zip_path.name, handle, "application/zip")},
+            data={"mode": "single_case_package", "review_strategy": "auto_review"},
+        )
+
+    submission_id = response.headers.get("Location", "").rsplit("/", 1)[-1]
+    submission_payload = api_client.get(f"/api/submissions/{submission_id}").json()
+    case_id = submission_payload["case_ids"][0]
+
+    save_response = api_client.post(
+        f"/submissions/{submission_id}/review-rules/source_code",
+        data={
+            "title": "源码校验规则",
+            "objective": "重点检查源码可读性。",
+            "checkpoints": "- 源码需要可读",
+            "llm_focus": "优先总结源码风险。",
+            "rule_source_code_item_code_desensitized_enabled": "1",
+            "rule_source_code_item_code_desensitized_title": "源码脱敏必须完成",
+            "rule_source_code_item_code_desensitized_severity": "severe",
+            "rule_source_code_item_code_desensitized_prompt_hint": "检查敏感信息。",
+            "case_id": case_id,
+            "action": "save",
+            "note": "第一次调整源码规则",
+        },
+    )
+    assert save_response.status_code == 303
+
+    restore_response = api_client.post(
+        f"/submissions/{submission_id}/review-rules/source_code",
+        data={"case_id": case_id, "action": "restore_default", "note": "恢复默认"},
+    )
+    assert restore_response.status_code == 303
+
+    history_response = api_client.get(f"/api/submissions/{submission_id}/review-rules/source_code/history")
+    assert history_response.status_code == 200
+    history_payload = history_response.json()
+    assert history_payload["submission_id"] == submission_id
+    assert history_payload["dimension_key"] == "source_code"
+    assert history_payload["items"]
+    assert history_payload["items"][0]["dimension_key"] == "source_code"
+    assert history_payload["items"][0]["revision"] >= 2
+    assert any(item["change_note"] == "第一次调整源码规则" for item in history_payload["items"])
+    assert any(item["correction_type"] == "reset_review_dimension_rule" for item in history_payload["items"])
 
 
 @pytest.mark.integration

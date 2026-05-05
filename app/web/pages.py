@@ -8,10 +8,11 @@ from app.web.page_submission import (
     render_submission_detail,
     render_submissions_index,
 )
-from app.web.view_helpers import render_stylesheet
+from app.web.view_helpers import render_app_script, render_stylesheet
 
 
 __all__ = [
+    "render_app_script",
     "render_case_detail",
     "render_home_page",
     "render_ops_page",

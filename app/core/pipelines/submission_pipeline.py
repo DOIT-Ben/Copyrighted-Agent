@@ -34,6 +34,7 @@ from app.core.services.submission_insights import (
     label_for_parse_reason,
     label_for_unknown_reason,
 )
+from app.core.services.submission_global_review import upsert_submission_global_review
 from app.core.services.runtime_store import store
 from app.core.services.zip_ingestion import safe_extract_zip
 from app.core.utils.text import ensure_dir, now_iso, slug_id, summarize_severity
@@ -254,6 +255,37 @@ def _build_case_review_record(
         "prompt_snapshot_json": dict(ai_review.get("prompt_snapshot") or {}),
     }
     return {"report_payload": report_payload, "review_payload": review_payload}
+
+
+def _attach_submission_global_review(
+    submission: Submission,
+    materials: list[Material],
+    cases: list[Case],
+    reports: list[ReportArtifact],
+    review_results: list[ReviewResult],
+    *,
+    mode: str,
+    review_strategy: str,
+    review_profile: dict,
+    submission_dir: Path,
+) -> dict:
+    del materials, cases, review_profile, submission_dir
+    should_write_report = not (
+        review_strategy == ReviewStrategy.MANUAL_DESENSITIZED_REVIEW.value
+        and mode == SubmissionMode.SINGLE_CASE_PACKAGE.value
+    )
+    global_review = upsert_submission_global_review(submission.id, write_report=should_write_report)
+    review_result_id = str(global_review.get("review_result_id", "") or "")
+    report_id = str(global_review.get("report_id", "") or "")
+    if review_result_id and review_result_id in store.review_results:
+        review_result = store.review_results[review_result_id]
+        if all(item.id != review_result.id for item in review_results):
+            review_results.append(review_result)
+    if report_id and report_id in store.report_artifacts:
+        report = store.report_artifacts[report_id]
+        if all(item.id != report.id for item in reports):
+            reports.append(report)
+    return global_review
 
 
 def ingest_submission(
@@ -655,6 +687,18 @@ def ingest_submission(
         store.add_report_artifact(batch_report)
         submission.report_ids.append(batch_report.id)
         reports.append(batch_report)
+
+    _attach_submission_global_review(
+        submission,
+        materials,
+        cases,
+        reports,
+        review_results,
+        mode=mode,
+        review_strategy=review_strategy,
+        review_profile=normalized_review_profile,
+        submission_dir=submission_dir,
+    )
 
     submission.status = (
         "awaiting_manual_review"

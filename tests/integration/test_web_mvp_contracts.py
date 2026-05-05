@@ -26,6 +26,8 @@ def test_home_page_renders_upload_controls(api_client):
     assert 'name="rule_source_code_checkpoints"' in response.text
     assert 'name="rule_consistency_item_party_order_match_prompt_hint"' in response.text
     assert 'data-review-preset="source_code_strict"' in response.text
+    assert 'dimension-rule-editor-modal' in response.text
+    assert '进入右侧编辑面板' in response.text
 
 
 @pytest.mark.integration
@@ -35,7 +37,7 @@ def test_stylesheet_route_serves_css_media_type(api_client):
     response = api_client.get("/static/styles.css")
     assert response.status_code == 200
     assert getattr(response, "media_type", "").startswith("text/css")
-    assert response.headers.get("Cache-Control") == "no-store"
+    assert response.headers.get("Cache-Control") == "public, max-age=86400"
     assert ".admin-shell" in response.text
 
 
@@ -65,6 +67,11 @@ def test_upload_flow_exposes_submission_case_report_and_index_pages(api_client, 
     submission_payload = api_client.get(f"/api/submissions/{submission_id}").json()
     assert submission_payload["case_ids"]
     assert submission_payload["report_ids"]
+    global_review = submission_payload["review_profile"]["submission_global_review"]
+    assert global_review["status"] in {"ready", "needs_review", "blocked"}
+    assert global_review["material_inventory"]["total"] == len(submission_payload["material_ids"])
+    assert global_review["review_result_id"]
+    assert global_review["report_id"] in submission_payload["report_ids"]
 
     case_page = api_client.get(f"/cases/{submission_payload['case_ids'][0]}")
     assert case_page.status_code == 200
@@ -237,6 +244,10 @@ def test_review_rule_page_can_save_rule_and_persist_to_submission(api_client, mo
 
     rule_page = api_client.get(f"/submissions/{submission_id}/review-rules/source_code?case_id={case_id}")
     assert rule_page.status_code == 200
+    assert "规则版本" in rule_page.text
+    assert "rule-version" in rule_page.text
+    assert "rule-focus-modal" in rule_page.text
+    assert "聚焦编辑" in rule_page.text
 
     save_response = api_client.post(
         f"/submissions/{submission_id}/review-rules/source_code",
@@ -275,6 +286,11 @@ def test_review_rule_page_can_save_rule_and_persist_to_submission(api_client, mo
     assert desensitized_rule["prompt_hint"] == "重点排查密码、token、手机号和邮箱是否已脱敏。"
     assert updated_meta["revision"] >= 2
     assert updated_meta["last_dimension_key"] == "source_code"
+
+    updated_rule_page = api_client.get(f"/submissions/{submission_id}/review-rules/source_code?case_id={case_id}")
+    assert updated_rule_page.status_code == 200
+    assert "更新源码规则" in updated_rule_page.text
+    assert f"r{updated_meta['revision']}" in updated_rule_page.text
 
     restore_response = api_client.post(
         f"/submissions/{submission_id}/review-rules/source_code",
@@ -375,6 +391,9 @@ def test_batch_upload_flow_exposes_batch_report_and_registry_pages(api_client, m
     assert submission_payload["mode"] == "batch_same_material"
     assert submission_payload["report_ids"]
     assert len(submission_payload["material_ids"]) == 3
+    global_review = submission_payload["review_profile"]["submission_global_review"]
+    assert global_review["case_inventory"]["total"] == len(submission_payload["case_ids"])
+    assert global_review["material_inventory"]["total"] == 3
 
     exports_page = api_client.get(f"/submissions/{submission_id}/exports")
     assert exports_page.status_code == 200

@@ -23,11 +23,11 @@ from app.web.view_helpers import (
 
 
 def _summary_tile(label: str, value: str, note: str) -> str:
+    del note
     return (
         '<div class="summary-tile">'
         f"<span>{escape_html(label)}</span>"
         f"<strong>{escape_html(value)}</strong>"
-        f"<small>{escape_html(note)}</small>"
         "</div>"
     )
 
@@ -97,17 +97,14 @@ def _import_form() -> str:
           <div class="summary-tile">
             <span>直接审查</span>
             <strong>上传后出结果</strong>
-            <small>适合材料已经整理好的软著包。</small>
           </div>
           <div class="summary-tile">
             <span>先脱敏后继续</span>
             <strong>先下载再审查</strong>
-            <small>适合先确认脱敏件是否可直接提交。</small>
           </div>
           <div class="summary-tile">
             <span>批次详情</span>
             <strong>继续材料与报告处理</strong>
-            <small>材料、脱敏件、规则、报告都在下一页完成。</small>
           </div>
         </div>
         <div class="import-route-list">

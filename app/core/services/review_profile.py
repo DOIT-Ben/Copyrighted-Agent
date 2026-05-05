@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.services.review_rulebook import dimension_rulebook_from_profile, parse_dimension_rule_items_from_form
+from app.core.services.runtime_store import store
 from app.core.utils.text import now_iso
 
 
@@ -287,6 +288,52 @@ def review_profile_summary_v2(profile: dict[str, Any] | None) -> list[tuple[str,
     ]
 
 
+def list_review_rule_history(submission_id: str, dimension_key: str = "", *, limit: int = 20) -> list[dict[str, Any]]:
+    submission = store.submissions.get(str(submission_id or "").strip())
+    if not submission:
+        return []
+
+    normalized_dimension_key = str(dimension_key or "").strip()
+    rows: list[dict[str, Any]] = []
+    for correction_id in reversed(list(getattr(submission, "correction_ids", []) or [])):
+        correction = store.corrections.get(correction_id)
+        if not correction:
+            continue
+        if correction.correction_type not in {"update_review_dimension_rule", "reset_review_dimension_rule"}:
+            continue
+        original_value = dict(getattr(correction, "original_value", {}) or {})
+        corrected_value = dict(getattr(correction, "corrected_value", {}) or {})
+        current_dimension_key = str(corrected_value.get("dimension_key") or original_value.get("dimension_key") or "").strip()
+        if normalized_dimension_key and current_dimension_key != normalized_dimension_key:
+            continue
+        corrected_profile = normalize_review_profile(dict(corrected_value.get("review_profile", {}) or {}))
+        meta = dict(corrected_profile.get("rulebook_meta", {}) or {})
+        rows.append(
+            {
+                "correction_id": str(getattr(correction, "id", "") or ""),
+                "submission_id": str(submission.id),
+                "dimension_key": current_dimension_key,
+                "dimension_title": dimension_title(current_dimension_key),
+                "revision": int(meta.get("revision", 1) or 1),
+                "change_type": str(meta.get("change_type", "") or getattr(correction, "correction_type", "") or "").strip(),
+                "change_type_label": str(
+                    getattr(correction, "reason_label", "")
+                    or getattr(correction, "reason_code", "")
+                    or getattr(correction, "correction_type", "")
+                    or "-"
+                ),
+                "updated_by": str(meta.get("updated_by", "") or getattr(correction, "corrected_by", "") or "").strip(),
+                "change_note": str(meta.get("change_note", "") or getattr(correction, "note", "") or "").strip(),
+                "corrected_at": str(getattr(correction, "corrected_at", "") or "").strip(),
+                "correction_type": str(getattr(correction, "correction_type", "") or "").strip(),
+                "review_profile_meta": meta,
+            }
+        )
+        if limit > 0 and len(rows) >= limit:
+            break
+    return rows
+
+
 review_profile_summary = review_profile_summary_v2
 
 
@@ -302,6 +349,7 @@ __all__ = [
     "default_review_profile",
     "dimension_title",
     "focus_mode_label",
+    "list_review_rule_history",
     "normalize_review_profile",
     "parse_review_profile_form",
     "preset_title",

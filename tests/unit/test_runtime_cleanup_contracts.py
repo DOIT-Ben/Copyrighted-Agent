@@ -9,6 +9,8 @@ import pytest
 
 from tests.helpers.contracts import require_symbol
 
+REFERENCE_NOW = datetime(2026, 4, 19, 12, 0, 0)
+
 
 def _write_file(path: Path, content: str = "data") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -17,7 +19,7 @@ def _write_file(path: Path, content: str = "data") -> Path:
 
 
 def _mark_age(path: Path, days_old: int) -> None:
-    timestamp = time.time() - (days_old * 24 * 60 * 60)
+    timestamp = time.mktime(REFERENCE_NOW.timetuple()) - (days_old * 24 * 60 * 60)
     os.utime(path, (timestamp, timestamp))
 
 

@@ -11,7 +11,6 @@ def _dimension_cards(dimensions: list[dict]) -> str:
             '<article class="prompt-dimension-card">'
             f'<strong>{escape_html(str(item.get("title", "") or item.get("key", "-")))}</strong>'
             f'<p>{escape_html(str(item.get("objective", "") or "-"))}</p>'
-            f'<small>{escape_html(str(item.get("llm_focus", "") or "-"))}</small>'
             "</article>"
         )
         for item in dimensions

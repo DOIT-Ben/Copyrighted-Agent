@@ -129,13 +129,15 @@ def review_source_code_text(text: str) -> dict:
             )
             break
 
-    if "calculate_angle" not in text and "angle" not in text.lower():
+    feature_terms = metadata["feature_terms"]
+    if len(feature_terms) < 2:
         issues.append(
             {
                 "severity": "minor",
                 "category": "功能呼应",
                 "rule_key": "code_logic_supports_doc",
-                "desc": "未检测到明显的关键逻辑或代表性函数，当前源码展示可能不足以支撑文档中的功能描述。",
+                "desc": f"仅识别到 {len(feature_terms)} 个代表性函数或类名，当前源码展示可能不足以支撑文档中的功能描述。",
+                "suggest": "确保提交的源码包含与说明文档对应的核心函数、类或模块。",
                 **_anchor(field="核心逻辑", section="源码正文", hint="检查源码中是否展示了与说明文档对应的关键函数或核心流程", material_area="源码 PDF 正文"),
             }
         )
@@ -150,6 +152,18 @@ def review_source_code_text(text: str) -> dict:
                 "rule_key": "code_comment_ratio_reasonable",
                 "desc": "注释量高于代码量，存在注释过多或凑数风险，建议人工复核。",
                 **_anchor(field="注释比例", section="源码正文", hint="检查源码中注释量是否明显高于代码量", material_area="源码 PDF 正文"),
+            }
+        )
+
+    if code_lines < 300:
+        issues.append(
+            {
+                "severity": "severe",
+                "category": "源码行数",
+                "rule_key": "code_effective_lines",
+                "desc": f"有效代码行数约 {code_lines} 行，低于软著登记通常要求的最低行数。",
+                "suggest": "软著登记一般要求源代码不少于 3000 行（约 60 页），请补充完整核心代码。",
+                **_anchor(field="有效行数", section="源码正文", hint="统计源码中去掉注释和空行后的有效代码行数", material_area="源码 PDF 正文"),
             }
         )
 

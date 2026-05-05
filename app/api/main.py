@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Thread
-from urllib.parse import quote, urlencode, urlsplit
-from wsgiref.simple_server import make_server
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from socketserver import ThreadingMixIn
+from wsgiref.simple_server import WSGIServer, make_server
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -36,7 +37,7 @@ from app.core.services.provider_probe import (
     list_provider_probe_history,
 )
 from app.core.services.online_filing import parse_online_filing_form
-from app.core.services.review_profile import normalize_review_profile, parse_review_profile_form
+from app.core.services.review_profile import list_review_rule_history, normalize_review_profile, parse_review_profile_form
 from app.core.services.review_rulebook import parse_dimension_rule_items_from_form
 from app.core.services.release_gate import evaluate_release_gate
 from app.core.services.runtime_store import store
@@ -57,6 +58,7 @@ from app.web.page_submission import (
 )
 from app.web.page_review_rule import render_review_rule_detail_page
 from app.web.pages import (
+    render_app_script,
     render_case_detail,
     render_home_page,
     render_ops_page,
@@ -453,8 +455,15 @@ def create_app(testing: bool = False):
     @app.get("/static/styles.css")
     def styles(request: Request):
         del request
-        response = Response(render_stylesheet(), status_code=200, headers={"Cache-Control": "no-store"})
+        response = Response(render_stylesheet(), status_code=200, headers={"Cache-Control": "public, max-age=86400"})
         response.media_type = "text/css; charset=utf-8"
+        return response
+
+    @app.get("/static/app.js")
+    def app_js(request: Request):
+        del request
+        response = Response(render_app_script(), status_code=200, headers={"Cache-Control": "public, max-age=86400"})
+        response.media_type = "application/javascript; charset=utf-8"
         return response
 
     @app.post("/upload")
@@ -587,6 +596,23 @@ def create_app(testing: bool = False):
     def api_get_submission_diagnostics(request: Request, submission_id: str):
         del request
         return JSONResponse(_submission_diagnostics_payload(submission_id))
+
+    @app.get("/api/submissions/{submission_id}/review-rules/{dimension_key}/history")
+    def api_get_submission_review_rule_history(request: Request, submission_id: str, dimension_key: str):
+        del request
+        submission = store.submissions.get(submission_id)
+        if not submission:
+            raise HTTPException(404, "submission not found")
+        review_profile = normalize_review_profile(getattr(submission, "review_profile", {}) or {})
+        rulebook_meta = dict(review_profile.get("rulebook_meta", {}) or {})
+        return JSONResponse(
+            {
+                "submission_id": submission_id,
+                "dimension_key": dimension_key,
+                "current_revision": int(rulebook_meta.get("revision", 1) or 1),
+                "items": list_review_rule_history(submission_id, dimension_key, limit=20),
+            }
+        )
 
     @app.get("/api/submissions/{submission_id}/files")
     def api_get_submission_files(request: Request, submission_id: str):
@@ -858,7 +884,12 @@ def create_app(testing: bool = False):
             {"submission_id": submission_id, "internal_status": internal_status, "owner": owner, "by": updated_by},
         )
         if return_to:
-            return RedirectResponse(return_to, status_code=303)
+            parsed = urlsplit(return_to)
+            existing_query = parsed.query
+            notice_param = urlencode({"notice": "internal_state_updated"})
+            merged_query = f"{existing_query}&{notice_param}" if existing_query else notice_param
+            return_with_notice = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, merged_query, parsed.fragment))
+            return RedirectResponse(return_with_notice, status_code=303)
         return RedirectResponse(_submission_notice_location(submission_id, "internal_state_updated", focus="internal-workbench"), status_code=303)
 
     @app.post("/submissions/{submission_id}/actions/change-type")
@@ -1233,12 +1264,16 @@ def create_app(testing: bool = False):
     return app
 
 
+class _ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    daemon_threads = True
+
+
 def main():
     app = create_app()
     config = load_app_config()
     host = config.host
     port = config.port
-    with make_server(host, port, app) as server:
+    with make_server(host, port, app, server_class=_ThreadingWSGIServer) as server:
         print(f"软著分析平台运行中: http://{host}:{port}")
         server.serve_forever()
 

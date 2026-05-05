@@ -18,6 +18,8 @@ TABLE_COLUMNS = {
         "review_stage": "TEXT NOT NULL DEFAULT ''",
         "review_strategy": "TEXT NOT NULL DEFAULT ''",
         "internal_status": "TEXT NOT NULL DEFAULT ''",
+        "internal_owner": "TEXT NOT NULL DEFAULT ''",
+        "internal_updated_at": "TEXT NOT NULL DEFAULT ''",
         "created_at": "TEXT NOT NULL DEFAULT ''",
         "review_profile_revision": "INTEGER NOT NULL DEFAULT 1",
         "review_profile_preset": "TEXT NOT NULL DEFAULT ''",
@@ -165,6 +167,8 @@ def _submission_columns(payload: dict) -> dict:
         "review_stage": str(payload.get("review_stage", "") or ""),
         "review_strategy": str(payload.get("review_strategy", "") or ""),
         "internal_status": str(payload.get("internal_status", "") or ""),
+        "internal_owner": str(payload.get("internal_owner", "") or ""),
+        "internal_updated_at": str(payload.get("internal_updated_at", "") or ""),
         "created_at": str(payload.get("created_at", "") or ""),
         "review_profile_revision": int(meta.get("revision", 1) or 1),
         "review_profile_preset": str(review_profile.get("preset_key", "") or ""),
@@ -290,6 +294,10 @@ def save_submission_graph(submission_id: str) -> None:
             report = store.report_artifacts.get(report_id)
             if report:
                 _upsert(connection, "report_artifacts", report.id, submission_id, report.to_dict())
+
+        for review_result in store.review_results.values():
+            if getattr(review_result, "scope_type", "") == "submission" and getattr(review_result, "scope_id", "") == submission_id:
+                _upsert(connection, "review_results", review_result.id, submission_id, review_result.to_dict())
 
         for correction_id in submission.correction_ids:
             correction = store.corrections.get(correction_id)
@@ -437,6 +445,63 @@ def list_correction_feedback(limit: int = 10) -> list[dict]:
         return payloads
     fallback = [item.to_dict() for item in store.corrections.values()]
     return sorted(fallback, key=lambda item: (item.get("corrected_at", "") or "", item.get("id", "") or ""), reverse=True)[: max(int(limit or 0), 0)]
+
+
+def list_submission_registry(filters: dict | None = None, limit: int = 0) -> list[Submission]:
+    init_db()
+    filters = dict(filters or {})
+    clauses = ["1 = 1"]
+    params: list[object] = []
+
+    internal_status_filter = str(filters.get("internal_status", "") or "").strip()
+    owner_filter = str(filters.get("owner", "") or "").strip().lower()
+    system_status_filter = str(filters.get("status", "") or "").strip()
+
+    if internal_status_filter:
+        clauses.append("internal_status = ?")
+        params.append(internal_status_filter)
+    if owner_filter:
+        clauses.append("LOWER(internal_owner) LIKE ?")
+        params.append(f"%{owner_filter}%")
+    if system_status_filter:
+        clauses.append("status = ?")
+        params.append(system_status_filter)
+
+    query = (
+        "SELECT payload_json FROM submissions "
+        f"WHERE {' AND '.join(clauses)} "
+        "ORDER BY created_at DESC, id DESC"
+    )
+    if int(limit or 0) > 0:
+        query += " LIMIT ?"
+        params.append(int(limit))
+
+    with _connect() as connection:
+        rows = connection.execute(query, params).fetchall()
+    payloads = [json.loads(row["payload_json"]) for row in rows]
+    if payloads:
+        normalized_payloads = []
+        for payload in payloads:
+            payload.setdefault("internal_owner", "")
+            payload.setdefault("internal_status", "unassigned")
+            payload.setdefault("internal_next_step", "")
+            payload.setdefault("internal_note", "")
+            payload.setdefault("internal_updated_by", "")
+            payload.setdefault("internal_updated_at", "")
+            normalized_payloads.append(Submission(**payload))
+        return normalized_payloads
+
+    fallback = sorted(store.submissions.values(), key=lambda item: item.created_at, reverse=True)
+    filtered: list[Submission] = []
+    for submission in fallback:
+        if internal_status_filter and str(getattr(submission, "internal_status", "unassigned") or "unassigned") != internal_status_filter:
+            continue
+        if owner_filter and owner_filter not in str(getattr(submission, "internal_owner", "") or "").lower():
+            continue
+        if system_status_filter and str(getattr(submission, "status", "") or "") != system_status_filter:
+            continue
+        filtered.append(submission)
+    return filtered[: int(limit)] if int(limit or 0) > 0 else filtered
 
 
 def clear_database() -> None:
