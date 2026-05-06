@@ -91,7 +91,10 @@ SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 }
-POST_FORM_PATTERN = re.compile(r"(<form\b(?=[^>]*\bmethod=[\"']post[\"'])[^>]*>)", re.IGNORECASE | re.DOTALL)
+POST_FORM_PATTERN = re.compile(
+    r"(<form\b(?=[^>]*\bmethod=[\"']post[\"'])[^>]*>)(.*?</form>)",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def _request_header(request: Request, name: str) -> str:
@@ -107,11 +110,15 @@ def _csrf_token_input(token: str) -> str:
 
 
 def _inject_csrf_tokens(html: str, token: str) -> str:
-    if not token or CSRF_FIELD_NAME in html:
+    if not token:
         return html
 
     def replace(match: re.Match[str]) -> str:
-        return match.group(1) + "\n        " + _csrf_token_input(token)
+        opening_tag = match.group(1)
+        form_body = match.group(2)
+        if f'name="{CSRF_FIELD_NAME}"' in form_body or f"name='{CSRF_FIELD_NAME}'" in form_body:
+            return match.group(0)
+        return opening_tag + "\n        " + _csrf_token_input(token) + form_body
 
     return POST_FORM_PATTERN.sub(replace, html)
 
@@ -125,11 +132,19 @@ def _apply_security_headers(response: Response) -> Response:
 def _validate_csrf_request(request: Request) -> Response | None:
     if request.method != "POST" or not getattr(request.app, "csrf_enforced", True):
         return None
+    if not _requires_csrf(request.path):
+        return None
     expected = str(getattr(request.app, "csrf_token", "") or "")
     provided = str(request.form_data.get(CSRF_FIELD_NAME, "") or _request_header(request, CSRF_HEADER_NAME))
     if expected and hmac.compare_digest(provided, expected):
         return None
     return JSONResponse({"detail": "CSRF token missing or invalid"}, status_code=403)
+
+
+def _requires_csrf(path: str) -> bool:
+    return path == "/upload" or (
+        path.startswith("/submissions/") and ("/actions/" in path or "/review-rules/" in path)
+    )
 
 
 def _harden_response(request: Request, response: Response) -> Response:

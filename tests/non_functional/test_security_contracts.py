@@ -46,6 +46,34 @@ def test_production_html_post_rejects_missing_csrf_token():
 @pytest.mark.integration
 @pytest.mark.contract
 @pytest.mark.security
+def test_production_api_post_is_not_blocked_by_browser_csrf_guard(mode_a_zip_path):
+    client = _create_test_client(testing=False)
+
+    with mode_a_zip_path.open("rb") as handle:
+        response = client.post(
+            "/api/submissions",
+            files={"file": (mode_a_zip_path.name, handle, "application/zip")},
+            data={"mode": "single_case_package"},
+        )
+
+    assert response.status_code != 403
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.security
+def test_every_html_post_form_receives_csrf_token():
+    client = _create_test_client(testing=False)
+
+    response = client.get("/submissions")
+
+    assert response.status_code == 200
+    assert response.text.count('method="post"') == response.text.count('name="csrf_token"')
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.security
 @pytest.mark.zip
 def test_safe_extract_zip_blocks_zip_slip_entries(zip_with_zip_slip_path, tmp_path: Path):
     safe_extract_zip = require_symbol("app.core.services.zip_ingestion", "safe_extract_zip")

@@ -259,6 +259,29 @@
     button.addEventListener("click", () => applyReviewPreset(button));
   }
 
+  const printButtons = Array.from(document.querySelectorAll("[data-print-page]"));
+  for (const button of printButtons) {
+    button.addEventListener("click", () => window.print());
+  }
+
+  const templateSelectors = Array.from(document.querySelectorAll("select[data-template-target]"));
+  for (const selector of templateSelectors) {
+    selector.addEventListener("change", () => {
+      const targetName = selector.dataset.templateTarget || "";
+      if (!selector.value || !selector.form || !targetName || !selector.form.elements[targetName]) {
+        return;
+      }
+      selector.form.elements[targetName].value = selector.value;
+      selector.selectedIndex = 0;
+    });
+  }
+
+  const metricFills = Array.from(document.querySelectorAll("[data-metric-percent]"));
+  for (const fill of metricFills) {
+    const percent = Number(fill.dataset.metricPercent || 0);
+    fill.style.width = Math.max(0, Math.min(100, percent || 0)) + "%";
+  }
+
   const forms = Array.from(document.querySelectorAll("form[data-pending-text]"));
   for (const form of forms) {
     form.addEventListener("submit", async (event) => {

@@ -89,7 +89,7 @@ def _metric_row(label: str, value: int, total: int, tone: str, icon_name: str) -
         f"<span>{escape_html(label)}</span>"
         "</div>"
         '<div class="metric-track">'
-        f'<span class="metric-fill metric-fill-{tone}" style="width: {percent}%"></span>'
+        f'<span class="metric-fill metric-fill-{tone}" data-metric-percent="{percent}"></span>'
         "</div>"
         f"<strong>{value}</strong>"
         "</div>"
@@ -1688,13 +1688,13 @@ def _render_internal_workbench(
       <div class="internal-template-grid">
         <label class="field">
           <span>下一步模板</span>
-          <select data-template-target="internal_next_step" onchange="if (this.value) this.form.elements[this.dataset.templateTarget].value = this.value; this.selectedIndex = 0;">
+          <select data-template-target="internal_next_step">
             {_template_options(next_step_templates)}
           </select>
         </label>
         <label class="field">
           <span>备注模板</span>
-          <select data-template-target="internal_note" onchange="if (this.value) this.form.elements[this.dataset.templateTarget].value = this.value; this.selectedIndex = 0;">
+          <select data-template-target="internal_note">
             {_template_options(note_templates)}
           </select>
         </label>

@@ -101,12 +101,18 @@ def test_web_shell_keeps_mobile_responsive_contracts():
 @pytest.mark.unit
 @pytest.mark.contract
 def test_import_frontend_avoids_inline_handlers_and_html_string_injection():
-    home_page = Path("app/web/page_home.py").read_text(encoding="utf-8")
+    web_sources = "\n".join(path.read_text(encoding="utf-8") for path in sorted(Path("app/web").glob("*.py")))
     app_script = Path("app/web/static/app.js").read_text(encoding="utf-8")
 
-    assert "onsubmit=" not in home_page
+    assert "onsubmit=" not in web_sources
+    assert "onclick=" not in web_sources
+    assert "onchange=" not in web_sources
+    assert "style=" not in web_sources
     assert "normalizeLocalUrl" in app_script
     assert "new URL(rawValue, window.location.origin)" in app_script
     assert '"X-CSRF-Token": csrfToken' in app_script
+    assert "data-print-page" in web_sources
+    assert "data-template-target" in web_sources
+    assert "data-metric-percent" in web_sources
     assert "text.textContent = String(label || \"正在处理，请稍候\")" in app_script
     assert "button.innerHTML = '<span" not in app_script

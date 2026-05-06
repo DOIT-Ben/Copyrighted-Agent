@@ -690,7 +690,7 @@ def _report_toolbar_legacy(report: dict) -> str:
     return (
         '<div class="report-toolbar print-hidden">'
         f"{download_chip(f'/downloads/reports/{report_id}', '保存为 MD') if report_id else ''}"
-        '<button class="button-secondary button-compact" type="button" onclick="window.print()">保存为 PDF</button>'
+        '<button class="button-secondary button-compact" type="button" data-print-page>保存为 PDF</button>'
         "</div>"
     )
 
@@ -1012,7 +1012,7 @@ def _report_toolbar(report: dict) -> str:
     return (
         '<div class="report-toolbar print-hidden">'
         f"{chips}"
-        '<button class="button-secondary button-compact" type="button" onclick="window.print()">打印 / 另存 PDF</button>'
+        '<button class="button-secondary button-compact" type="button" data-print-page>打印 / 另存 PDF</button>'
         "</div>"
     )
 
