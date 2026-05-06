@@ -67,6 +67,14 @@ class FastAPI:
     def __init__(self, title: str = "App"):
         self.title = title
         self.routes: list[_Route] = []
+        self.before_request_hooks = []
+        self.after_response_hooks = []
+
+    def add_before_request_hook(self, hook):
+        self.before_request_hooks.append(hook)
+
+    def add_after_response_hook(self, hook):
+        self.after_response_hooks.append(hook)
 
     def add_api_route(self, path: str, endpoint, methods: list[str]):
         for method in methods:
@@ -129,20 +137,31 @@ class FastAPI:
             files=files or {},
             app=self,
         )
+        for hook in self.before_request_hooks:
+            hook_response = hook(request)
+            if isinstance(hook_response, Response):
+                for after_hook in self.after_response_hooks:
+                    hook_response = after_hook(request, hook_response)
+                return hook_response
         try:
             result = self._invoke(route.endpoint, request, path_params or {})
         except HTTPException as exc:
-            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+            response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         except Exception as exc:
-            return PlainTextResponse(f"Internal Server Error\n{exc}", status_code=500)
+            response = PlainTextResponse(f"Internal Server Error\n{exc}", status_code=500)
+        else:
+            if isinstance(result, Response):
+                response = result
+            elif isinstance(result, dict):
+                response = JSONResponse(result)
+            elif isinstance(result, str):
+                response = HTMLResponse(result)
+            else:
+                response = PlainTextResponse(str(result))
 
-        if isinstance(result, Response):
-            return result
-        if isinstance(result, dict):
-            return JSONResponse(result)
-        if isinstance(result, str):
-            return HTMLResponse(result)
-        return PlainTextResponse(str(result))
+        for hook in self.after_response_hooks:
+            response = hook(request, response)
+        return response
 
     def __call__(self, environ, start_response):
         method = environ.get("REQUEST_METHOD", "GET")
@@ -186,6 +205,7 @@ class FastAPI:
             302: "302 Found",
             303: "303 See Other",
             400: "400 Bad Request",
+            403: "403 Forbidden",
             404: "404 Not Found",
             415: "415 Unsupported Media Type",
             422: "422 Unprocessable Entity",

@@ -45,12 +45,11 @@ def _import_form() -> str:
         data-pending-text="分析中，请稍候"
         data-pending-detail="系统正在解析 ZIP、识别材料并执行审查。完成后会自动跳转到批次详情页。"
         data-pending-steps="文件已提交|正在解析材料|正在执行脱敏与审查|正在整理结果页"
-        onsubmit="this.classList.add('is-submitting'); var note=this.querySelector('[data-inline-pending]'); if(note) note.hidden=false; var step=this.querySelector('[data-inline-step]'); if(step) step.textContent='文件已提交 -> 正在解析材料 -> 正在执行脱敏与审查'; var btn=this.querySelector('button[type=submit]'); if(btn && !btn.disabled){{ btn.disabled=true; btn.classList.add('is-loading'); btn.innerHTML='<span class=&quot;button-spinner&quot; aria-hidden=&quot;true&quot;></span><span>分析中，请稍候</span>'; }} return true;"
       >
         <div class="import-console-topline">
           <div class="import-console-copy">
             <strong>上传一个 ZIP，直接进入处理流程</strong>
-            <p>浏览器端导入说明已经收纳到这一张卡片里。首页只保留导入入口，材料、脱敏件、审查结果和导出入口统一放到批次详情页继续处理。</p>
+            <p>浏览器端导入说明已经收纳到这张卡片里。首页只保留导入入口，材料、脱敏件、审查结果和导出入口统一放到批次详情页继续处理。</p>
           </div>
           <div class="helper-chip-row">
             <span class="helper-chip">支持单项目整包</span>
@@ -132,7 +131,6 @@ def render_home_page() -> str:
     reports = list(store.report_artifacts.values())
 
     latest_submission = submissions[0] if submissions else None
-    latest_status = latest_submission.status if latest_submission else "idle"
     awaiting_continue_count = sum(1 for item in submissions if getattr(item, "status", "") == "awaiting_manual_review")
 
     header_meta = "".join(
@@ -205,7 +203,7 @@ def render_home_page() -> str:
         title="总控台",
         active_nav="home",
         header_tag="总控台",
-        header_title="上传一个软著并开始处理",
+        header_title="上传一个软著包并开始处理",
         header_subtitle="上传 ZIP，选择模式并开始处理。",
         header_meta=header_meta,
         content=content,

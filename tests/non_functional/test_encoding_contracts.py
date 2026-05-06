@@ -11,10 +11,22 @@ UTF8_TARGETS = [
     Path("docs/ENCODING.md"),
     Path("docs/PROJECT_STRUCTURE.md"),
     Path("docs/dev/221-encoding-governance-audit-log.md"),
+    Path("app/web/page_home.py"),
+    Path("app/web/static/app.js"),
+    Path("app/web/static/styles.css"),
     Path(".github/workflows/ci.yml"),
     Path(".gitattributes"),
     Path("pyproject.toml"),
 ]
+
+MOJIBAKE_MARKERS = (
+    "\ufffd",
+    "鍒嗘",
+    "鎵规",
+    "瀵煎",
+    "鏌ョ",
+    "绯荤",
+)
 
 
 @pytest.mark.non_functional
@@ -23,6 +35,8 @@ def test_key_docs_are_utf8_readable():
     for target in UTF8_TARGETS:
         text = target.read_text(encoding="utf-8")
         assert text.strip(), f"{target} should not be empty"
+        for marker in MOJIBAKE_MARKERS:
+            assert marker not in text, f"{target} contains suspicious mojibake marker: {marker}"
 
 
 @pytest.mark.non_functional

@@ -7,6 +7,42 @@ import pytest
 from tests.helpers.contracts import require_symbol
 
 
+def _create_test_client(*, testing: bool = True):
+    from fastapi.testclient import TestClient
+
+    create_app = require_symbol("app.api.main", "create_app")
+    return TestClient(create_app(testing=testing))
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.security
+def test_html_responses_include_browser_security_headers_and_csrf_token():
+    client = _create_test_client(testing=False)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["Content-Security-Policy"].startswith("default-src 'self'")
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "same-origin"
+    assert 'name="csrf_token"' in response.text
+
+
+@pytest.mark.integration
+@pytest.mark.contract
+@pytest.mark.security
+def test_production_html_post_rejects_missing_csrf_token():
+    client = _create_test_client(testing=False)
+
+    response = client.post("/upload", data={"mode": "single_case_package"})
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "CSRF token missing or invalid"
+
+
 @pytest.mark.integration
 @pytest.mark.contract
 @pytest.mark.security

@@ -75,3 +75,38 @@ def test_active_web_source_files_avoid_known_mojibake_markers():
         assert "\ufffd" not in text, str(path)
         for marker in markers:
             assert marker not in text, f"{path} contains suspicious mojibake marker: {marker}"
+
+
+@pytest.mark.unit
+@pytest.mark.contract
+def test_web_shell_keeps_mobile_responsive_contracts():
+    stylesheet = Path("app/web/static/styles.css").read_text(encoding="utf-8")
+    helpers = Path("app/web/view_helpers.py").read_text(encoding="utf-8")
+
+    assert '<meta name="viewport" content="width=device-width, initial-scale=1">' in helpers
+    assert "@media (max-width: 1120px)" in stylesheet
+    assert "@media (max-width: 960px)" in stylesheet
+    assert "@media (max-width: 720px)" in stylesheet
+    assert "@media (prefers-reduced-motion: reduce)" in stylesheet
+    assert ".data-table thead" in stylesheet
+    assert ".table-cell-label" in stylesheet
+    assert (
+        ".panel-batch-registry .data-table {\n"
+        "    min-width: 0;\n"
+        "    table-layout: auto;\n"
+        "  }"
+    ) in stylesheet
+
+
+@pytest.mark.unit
+@pytest.mark.contract
+def test_import_frontend_avoids_inline_handlers_and_html_string_injection():
+    home_page = Path("app/web/page_home.py").read_text(encoding="utf-8")
+    app_script = Path("app/web/static/app.js").read_text(encoding="utf-8")
+
+    assert "onsubmit=" not in home_page
+    assert "normalizeLocalUrl" in app_script
+    assert "new URL(rawValue, window.location.origin)" in app_script
+    assert '"X-CSRF-Token": csrfToken' in app_script
+    assert "text.textContent = String(label || \"正在处理，请稍候\")" in app_script
+    assert "button.innerHTML = '<span" not in app_script

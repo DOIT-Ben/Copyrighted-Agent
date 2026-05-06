@@ -3599,6 +3599,11 @@ textarea:focus-visible {
     min-width: 0;
   }
 
+  .panel-batch-registry .data-table {
+    min-width: 0;
+    table-layout: auto;
+  }
+
   .data-table thead {
     display: none;
   }
