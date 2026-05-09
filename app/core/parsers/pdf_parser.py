@@ -62,6 +62,38 @@ class PdfParser:
                         parts.append(decoded)
         return "".join(parts)
 
+    def parse_blocks(self, file_path: str | Path) -> list[dict]:
+        data = Path(file_path).read_bytes()
+        streams = self._decoded_streams(data)
+        blocks: list[dict] = []
+        if streams:
+            code_map = self._extract_cmap(streams)
+            page_no = 1
+            for stream in streams:
+                if b"Tj" not in stream and b"TJ" not in stream:
+                    continue
+                texts: list[str] = []
+                for hex_text in re.findall(rb"<([0-9A-Fa-f]+)>\s*Tj", stream):
+                    decoded = self._decode_hex_text(hex_text, code_map)
+                    if decoded:
+                        texts.append(decoded)
+                for array_payload in re.findall(rb"\[(.*?)\]\s*TJ", stream, flags=re.S):
+                    for hex_text in re.findall(rb"<([0-9A-Fa-f]+)>", array_payload):
+                        decoded = self._decode_hex_text(hex_text, code_map)
+                        if decoded:
+                            texts.append(decoded)
+                text = clean_text(" ".join(texts))
+                if text:
+                    blocks.append({"page": page_no, "text": text, "is_heading": False, "source": "pdf_stream"})
+                    page_no += 1
+        if not blocks:
+            text = self.parse(file_path)
+            for index, line in enumerate(text.splitlines(), start=1):
+                line_text = clean_text(line)
+                if line_text:
+                    blocks.append({"page": None, "text": line_text, "is_heading": False, "source": "pdf_fallback", "order": index})
+        return blocks
+
     def parse(self, file_path: str | Path) -> str:
         data = Path(file_path).read_bytes()
         streams = self._decoded_streams(data)

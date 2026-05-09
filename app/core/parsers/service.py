@@ -8,6 +8,7 @@ from app.core.parsers.doc_binary import DocBinaryParser
 from app.core.parsers.docx_parser import DocxParser
 from app.core.parsers.page_segments import build_page_segments
 from app.core.parsers.pdf_parser import PdfParser
+from app.core.parsers.structured_blocks import build_segments_from_blocks
 from app.core.parsers.quality import assess_parse_quality
 from app.core.privacy.desensitization import desensitize_text
 from app.core.services.submission_insights import label_for_parse_reason
@@ -40,18 +41,22 @@ def parse_material(file_path: str | Path, material_type: str) -> dict:
 
     raw_text = strip_control_chars(parser.parse(file_path))
     cleaned_text = clean_text(raw_text)
+    parse_blocks = getattr(parser, "parse_blocks", None)
+    blocks = parse_blocks(file_path) if callable(parse_blocks) else []
     quality = assess_parse_quality(
         raw_text=raw_text,
         clean_text=cleaned_text,
         parser_name=parser_name,
         file_header_bytes=file_header_bytes,
     )
+    page_segments = build_segments_from_blocks(blocks) if blocks else build_page_segments(cleaned_text)
     metadata = {
         "software_name": extract_software_name(cleaned_text),
         "version": extract_version(cleaned_text),
         "company_name": extract_company_name(cleaned_text),
         "line_count": len(cleaned_text.splitlines()) if cleaned_text else 0,
-        "page_segments": build_page_segments(cleaned_text),
+        "parse_blocks": blocks,
+        "page_segments": page_segments,
         "parser_name": parser_name,
         "parse_quality": quality,
         "garbled_ratio": quality["garbled_ratio"],
