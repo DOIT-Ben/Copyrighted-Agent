@@ -501,7 +501,7 @@ def render_ops_page_legacy(config: dict, self_check: dict) -> str:
 
     content = f"""
     <section class="kpi-grid kpi-grid-ops">{kpis}</section>
-    <section class="dashboard-grid">
+    <section class="dashboard-grid ops-shell-grid">
       {panel("业务收尾", closeout_body, extra_class="span-12 panel-soft", icon_name="shield", panel_id="delivery-closeout")}
       {panel("常用运维入口", command_body, extra_class="span-12", icon_name="terminal", panel_id="operator-commands")}
       {panel("发布闸门", release_body, extra_class="span-6", icon_name="alert", panel_id="release-gate")}

@@ -8422,6 +8422,195 @@ body:has(.dimension-rule-editor[open]) .rule-drawer-trigger {
   display: none !important;
 }
 
+/* Jobs Design continuation: ops center and rule editor density. */
+.ops-shell-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  align-items: start !important;
+}
+
+.ops-shell-grid > .panel {
+  box-shadow: none !important;
+}
+
+.ops-shell-grid #delivery-closeout {
+  grid-column: span 7 !important;
+}
+
+.ops-shell-grid #operator-commands {
+  grid-column: span 5 !important;
+}
+
+.ops-shell-grid #ops-gate,
+.ops-shell-grid #ops-retry-jobs,
+.ops-shell-grid #ops-manual-review,
+.ops-shell-grid #ops-correction-feedback,
+.ops-shell-grid #ops-observatory {
+  grid-column: span 12 !important;
+}
+
+.ops-shell-grid #delivery-closeout,
+.ops-shell-grid #operator-commands {
+  min-height: 260px !important;
+}
+
+#delivery-closeout {
+  border-color: rgba(0, 113, 227, 0.14) !important;
+  background: #ffffff !important;
+}
+
+#delivery-closeout .closeout-board,
+#operator-commands,
+#ops-gate,
+#ops-retry-jobs,
+#ops-manual-review,
+#ops-correction-feedback,
+#ops-observatory {
+  min-width: 0 !important;
+}
+
+#delivery-closeout .closeout-callout,
+#ops-gate .ops-detail-callout,
+#operator-commands .ops-detail-summary {
+  border-radius: 12px !important;
+  border: 1px solid rgba(29, 29, 31, 0.08) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  box-shadow: none !important;
+}
+
+#delivery-closeout .closeout-callout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 12px !important;
+  align-items: start !important;
+  padding: 14px !important;
+}
+
+#delivery-closeout .closeout-callout-copy p,
+.ops-detail-callout p {
+  max-width: 760px !important;
+  color: var(--jd-text-2) !important;
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+}
+
+#delivery-closeout .closeout-summary-grid,
+#operator-commands .ops-detail-summary,
+.ops-detail-summary,
+.probe-summary-grid,
+.trend-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.ops-shell-grid .summary-tile {
+  padding: 10px 11px !important;
+  border-radius: 10px !important;
+  border-color: rgba(29, 29, 31, 0.08) !important;
+  background: #ffffff !important;
+}
+
+#operator-commands .operator-group-grid,
+#ops-gate .operator-group-grid,
+#ops-observatory .operator-group-grid {
+  gap: 10px !important;
+}
+
+#operator-commands .operator-group,
+#ops-gate .operator-group,
+#ops-observatory .operator-group {
+  border-radius: 12px !important;
+  border-color: rgba(29, 29, 31, 0.08) !important;
+  box-shadow: none !important;
+}
+
+#operator-commands .operator-group summary,
+#ops-gate .operator-group summary,
+#ops-observatory .operator-group summary {
+  min-height: 46px !important;
+  padding: 12px 14px !important;
+}
+
+#operator-commands .operator-group > .control-grid,
+#ops-gate .operator-group > .control-grid,
+#ops-observatory .operator-group > .control-grid {
+  padding: 0 14px 14px !important;
+}
+
+.command-block {
+  padding: 10px 11px !important;
+  border-radius: 10px !important;
+}
+
+.command-block strong {
+  font-size: 13px !important;
+}
+
+.command-block code {
+  white-space: normal !important;
+  word-break: break-word !important;
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+}
+
+.quick-filter-form {
+  display: grid !important;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr) auto !important;
+  gap: 10px !important;
+  align-items: end !important;
+  margin-bottom: 12px !important;
+}
+
+.dimension-rule-editor-window {
+  max-height: min(78vh, 720px) !important;
+  border-radius: 18px !important;
+}
+
+.dimension-rule-editor-window-head {
+  min-height: 62px !important;
+  padding: 14px 18px !important;
+}
+
+.dimension-rule-editor-window-copy strong {
+  font-size: 17px !important;
+  letter-spacing: 0 !important;
+}
+
+.dimension-rule-editor-body {
+  gap: 12px !important;
+  padding: 14px 18px 18px !important;
+}
+
+.dimension-rule-editor-grid:first-child {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.dimension-rule-editor-section-head {
+  margin-top: 2px !important;
+}
+
+.rule-item-stack {
+  gap: 7px !important;
+}
+
+.rule-item-card {
+  grid-template-columns: 30px minmax(0, 1fr) 104px !important;
+  gap: 7px 8px !important;
+  padding: 10px !important;
+  border-radius: 10px !important;
+}
+
+.rule-item-card input[type="text"],
+.rule-item-card select {
+  min-height: 34px !important;
+  font-size: 13px !important;
+}
+
+.rule-item-card textarea {
+  min-height: 42px !important;
+  max-height: 72px !important;
+  font-size: 12.5px !important;
+}
+
 /* Jobs Design continuation: report and submission detail hierarchy. */
 .report-metrics-strip,
 .submission-metrics-strip {
@@ -8625,6 +8814,34 @@ body:has(.dimension-rule-editor[open]) .rule-drawer-trigger {
   }
 
   #report-context .dossier-list {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .ops-shell-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .ops-shell-grid #delivery-closeout,
+  .ops-shell-grid #operator-commands,
+  .ops-shell-grid #ops-gate,
+  .ops-shell-grid #ops-retry-jobs,
+  .ops-shell-grid #ops-manual-review,
+  .ops-shell-grid #ops-correction-feedback,
+  .ops-shell-grid #ops-observatory {
+    grid-column: 1 / -1 !important;
+    min-height: 0 !important;
+  }
+
+  .quick-filter-form {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #delivery-closeout .closeout-callout,
+  #delivery-closeout .closeout-summary-grid,
+  #operator-commands .ops-detail-summary,
+  .ops-detail-summary,
+  .probe-summary-grid,
+  .trend-summary-grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
