@@ -105,6 +105,23 @@ def _segment_match(issue: dict, page_segments: list[dict]) -> dict | None:
     return None
 
 
+def _anchor_path(anchor: dict) -> str:
+    parts: list[str] = []
+    page = anchor.get("page")
+    if page is not None and str(page).strip():
+        parts.append(f"第 {page} 页")
+    matched_text = str(anchor.get("matched_text", "") or "").strip()
+    section = str(anchor.get("section", "") or anchor.get("section_label", "") or "").strip()
+    field = str(anchor.get("field", "") or anchor.get("field_label", "") or "").strip()
+    if matched_text:
+        parts.append(matched_text)
+    elif section:
+        parts.append(section)
+    if field and field not in parts:
+        parts.append(field)
+    return " / ".join(parts)
+
+
 def attach_issue_evidence_anchors(issues: list[dict], text: str, *, page_segments: list[dict] | None = None) -> list[dict]:
     lines = _normalized_lines(text)
     markers = _page_markers(lines)
@@ -126,11 +143,18 @@ def attach_issue_evidence_anchors(issues: list[dict], text: str, *, page_segment
             headings = list(segment_match.get("headings", []) or [])
             if headings:
                 anchor.setdefault("matched_text", str(headings[0])[:80])
+            path_text = _anchor_path(anchor)
+            if path_text:
+                anchor.setdefault("path", path_text)
             issue["evidence_anchor"] = anchor
             if anchor.get("excerpt") and not issue.get("evidence_excerpt"):
                 issue["evidence_excerpt"] = anchor.get("excerpt")
             if anchor.get("page") is not None and not issue.get("evidence_page"):
                 issue["evidence_page"] = anchor.get("page")
+            if anchor.get("matched_text") and not issue.get("evidence_match_text"):
+                issue["evidence_match_text"] = anchor.get("matched_text")
+            if anchor.get("path") and not issue.get("evidence_path"):
+                issue["evidence_path"] = anchor.get("path")
             enriched.append(issue)
             continue
         match_line: int | None = None
@@ -153,11 +177,18 @@ def attach_issue_evidence_anchors(issues: list[dict], text: str, *, page_segment
         snippet = _excerpt(lines, match_line)
         if snippet:
             anchor.setdefault("excerpt", snippet)
+        path_text = _anchor_path(anchor)
+        if path_text:
+            anchor.setdefault("path", path_text)
         issue["evidence_anchor"] = anchor
         if snippet and not issue.get("evidence_excerpt"):
             issue["evidence_excerpt"] = snippet
         if page is not None and not issue.get("evidence_page"):
             issue["evidence_page"] = page
+        if anchor.get("matched_text") and not issue.get("evidence_match_text"):
+            issue["evidence_match_text"] = anchor.get("matched_text")
+        if anchor.get("path") and not issue.get("evidence_path"):
+            issue["evidence_path"] = anchor.get("path")
         enriched.append(issue)
     return enriched
 

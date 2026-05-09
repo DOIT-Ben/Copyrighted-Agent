@@ -390,6 +390,9 @@ def _issue_fix_actions(submission_id: str, case_id: str, dimension_key: str, iss
 
 def _issue_precision_hints(issue: dict, prompt_snapshot: dict) -> list[str]:
     hints: list[str] = []
+    evidence_path = str(issue.get("evidence_path", "") or dict(issue.get("evidence_anchor", {}) or {}).get("path", "") or "").strip()
+    if evidence_path:
+        hints.append(evidence_path)
     for key in ("anchor_hint", "field_label", "section_label"):
         value = str(issue.get(key, "") or "").strip()
         if value and value not in hints:
@@ -453,6 +456,9 @@ def _issue_precision_hints(issue: dict, prompt_snapshot: dict) -> list[str]:
 
 def _issue_evidence_points(issue: dict, review_dimensions: list[dict], prompt_snapshot: dict) -> list[str]:
     points: list[str] = []
+    match_text = str(issue.get("evidence_match_text", "") or dict(issue.get("evidence_anchor", {}) or {}).get("matched_text", "") or "").strip()
+    if match_text:
+        points.append(f"命中：{match_text}")
     excerpt = str(issue.get("evidence_excerpt", "") or dict(issue.get("evidence_anchor", {}) or {}).get("excerpt", "") or "").strip()
     if excerpt:
         points.append(f"摘录：{excerpt}")
@@ -624,6 +630,9 @@ def _issue_trace_table(
         precision_hints = _issue_precision_hints(issue, prompt_snapshot)
         if precision_hints:
             evidence += f'<br><span class="table-subtext">定位：{escape_html(precision_hints[0])}</span>'
+        match_text = str(issue.get("evidence_match_text", "") or dict(issue.get("evidence_anchor", {}) or {}).get("matched_text", "") or "").strip()
+        if match_text:
+            evidence += f'<br><span class="table-subtext">命中：{escape_html(match_text)}</span>'
         excerpt = str(issue.get("evidence_excerpt", "") or dict(issue.get("evidence_anchor", {}) or {}).get("excerpt", "") or "").strip()
         if excerpt:
             evidence += f'<br><span class="table-subtext">摘录：{escape_html(excerpt)}</span>'
