@@ -8422,6 +8422,148 @@ body:has(.dimension-rule-editor[open]) .rule-drawer-trigger {
   display: none !important;
 }
 
+/* Jobs Design continuation: report and submission detail hierarchy. */
+.report-metrics-strip,
+.submission-metrics-strip {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  margin-bottom: 14px !important;
+}
+
+.report-metrics-strip .kpi-card,
+.submission-metrics-strip .kpi-card {
+  min-height: 58px !important;
+  padding: 10px 12px !important;
+  border-color: rgba(29, 29, 31, 0.08) !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: none !important;
+}
+
+.report-metrics-strip .kpi-icon,
+.submission-metrics-strip .kpi-icon {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 8px !important;
+}
+
+.report-metrics-strip .kpi-label,
+.submission-metrics-strip .kpi-label {
+  font-size: 11px !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+.report-metrics-strip .kpi-copy strong,
+.submission-metrics-strip .kpi-copy strong {
+  font-size: 15px !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0 !important;
+  word-break: break-word !important;
+}
+
+.report-shell-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  align-items: start !important;
+}
+
+.report-shell-grid #report-reader {
+  grid-column: span 12 !important;
+}
+
+.report-shell-grid #report-context {
+  grid-column: span 12 !important;
+  max-width: 520px !important;
+}
+
+#report-context {
+  padding: 14px !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+#report-context .panel-head {
+  padding-bottom: 8px !important;
+}
+
+#report-context .dossier-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+#report-context .dossier-list > div {
+  min-width: 0 !important;
+  padding: 9px 10px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(29, 29, 31, 0.08) !important;
+  background: #ffffff !important;
+}
+
+.submission-detail-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  align-items: start !important;
+}
+
+.submission-detail-grid #review-workflow {
+  grid-column: span 7 !important;
+  min-height: 148px !important;
+}
+
+.submission-detail-grid #import-digest,
+.submission-detail-grid #needs-review {
+  grid-column: span 5 !important;
+}
+
+.submission-detail-grid #submission-more {
+  grid-column: span 12 !important;
+}
+
+#review-workflow {
+  border-color: rgba(0, 113, 227, 0.16) !important;
+  background: #ffffff !important;
+}
+
+#review-workflow .inline-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+}
+
+#review-workflow .button-primary,
+#review-workflow .button-secondary {
+  min-width: 96px !important;
+}
+
+#import-digest,
+#needs-review,
+#submission-more {
+  box-shadow: none !important;
+}
+
+#import-digest .summary-grid,
+#needs-review .summary-grid {
+  gap: 8px !important;
+}
+
+#import-digest .summary-tile,
+#needs-review .summary-tile {
+  padding: 10px 11px !important;
+  border-radius: 10px !important;
+}
+
+#submission-more .operator-group summary small {
+  display: none !important;
+}
+
+#submission-more .operator-group-index {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+}
+
 @media (max-width: 820px) {
   .dimension-rule-editor[open] .dimension-rule-editor-modal {
     grid-template-columns: minmax(0, 1fr) !important;
@@ -8457,5 +8599,32 @@ body:has(.dimension-rule-editor[open]) .rule-drawer-trigger {
 
   .rule-item-card > .compact-grid > .rule-item-enabled {
     display: none !important;
+  }
+
+  .report-metrics-strip,
+  .submission-metrics-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .report-shell-grid,
+  .submission-detail-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .report-shell-grid #report-reader,
+  .report-shell-grid #report-context,
+  .submission-detail-grid #review-workflow,
+  .submission-detail-grid #import-digest,
+  .submission-detail-grid #needs-review,
+  .submission-detail-grid #submission-more {
+    grid-column: 1 / -1 !important;
+  }
+
+  #report-context {
+    max-width: none !important;
+  }
+
+  #report-context .dossier-list {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }

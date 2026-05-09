@@ -1064,12 +1064,12 @@ def render_report_page(report: dict) -> str:
 
     content = f"""
     {contract_markers("报告上下文")}
-    <section class="kpi-grid">
+    <section class="kpi-grid report-metrics-strip">
       {report_metrics}
       {metric_card('行数', str(line_count), '', 'neutral', icon_name='bar')}
       {metric_card('字符', str(character_count), '', 'neutral', icon_name='search')}
     </section>
-    <section class="dashboard-grid">
+    <section class="dashboard-grid report-shell-grid">
       {panel('审查结果', report_body, kicker='', extra_class='span-12', icon_name='report', description='', panel_id='report-reader')}
       {panel('元数据', list_pairs(context_pairs, css_class='dossier-list dossier-list-single'), kicker='', extra_class='span-6', icon_name='layers', description='', panel_id='report-context')}
     </section>

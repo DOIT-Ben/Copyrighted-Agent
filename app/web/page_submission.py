@@ -741,13 +741,13 @@ def render_submissions_index(filters: dict | None = None) -> str:
     registry_body = filter_form + (table(['批次', '内部状态', '待办', '系统状态', '阶段', '数量', '创建时间', '操作'], rows) if rows else empty_state(empty_title, empty_note))
 
     content = f"""
-    <section class="kpi-grid">
+    <section class="kpi-grid submission-metrics-strip">
       {metric_card('批次数', str(total), '当前筛选条件下的批次数量', 'info', icon_name='layers')}
       {metric_card('材料数', str(materials_total), '当前筛选结果识别出的材料总量', 'success', icon_name='file')}
       {metric_card('项目数', str(cases_total), '当前筛选结果形成的项目总量', 'warning', icon_name='lock')}
       {metric_card('报告数', str(reports_total), '当前筛选结果已生成的项目级报告数量', 'neutral', icon_name='report')}
     </section>
-    <section class="dashboard-grid">
+    <section class="dashboard-grid submission-detail-grid">
       {panel('内部跟进看板', internal_board_body, kicker='团队协作', extra_class='span-12 panel-internal-board panel-soft', icon_name='wrench', description='用于内部早会和日常巡检，先看待认领、阻塞、待补材料和可交付批次。', panel_id='internal-board')}
       {panel('批次台账', registry_body, kicker='批次总览', extra_class='span-12 panel-batch-registry', icon_name='layers', description='按内部状态、负责人、系统状态和待办快速定位目标批次。', panel_id='batch-registry')}
       {panel('状态分布', distribution_body, kicker='运行状态', extra_class='span-12 panel-soft', icon_name='bar', description='快速判断当前筛选结果是否稳定。', panel_id='status-distribution')}
