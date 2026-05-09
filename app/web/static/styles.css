@@ -7963,6 +7963,145 @@ body {
   margin-top: 22px !important;
 }
 
+.home-secondary-grid-quiet {
+  align-items: start !important;
+}
+
+.home-quiet-list {
+  display: grid !important;
+  gap: 10px !important;
+}
+
+.home-quiet-item {
+  display: grid !important;
+  gap: 4px !important;
+  padding: 10px 0 !important;
+  border-bottom: 1px solid rgba(29, 29, 31, 0.08) !important;
+}
+
+.home-quiet-item:last-child {
+  border-bottom: 0 !important;
+}
+
+.home-quiet-item span {
+  color: var(--jd-text-3) !important;
+  font-size: 12px !important;
+  line-height: 1.3 !important;
+}
+
+.home-quiet-item strong {
+  color: var(--jd-text) !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+  font-weight: 600 !important;
+  word-break: break-word !important;
+}
+
+.report-shell-grid {
+  align-items: start !important;
+}
+
+.report-context-panel {
+  position: sticky !important;
+  top: 24px !important;
+}
+
+.report-context-panel .dossier-list {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.report-context-panel .dossier-list > div {
+  padding: 10px 0 !important;
+  border-bottom: 1px solid rgba(29, 29, 31, 0.08) !important;
+}
+
+.report-context-panel .dossier-list > div:last-child {
+  border-bottom: 0 !important;
+}
+
+.report-context-panel .dossier-list span {
+  font-size: 12px !important;
+  color: var(--jd-text-3) !important;
+}
+
+.report-context-panel .dossier-list strong {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+#report-reader {
+  min-width: 0 !important;
+}
+
+#report-reader .panel-head,
+#submission-more .panel-head,
+#latest-result .panel-head,
+#recent-imports .panel-head {
+  margin-bottom: 0 !important;
+  padding-bottom: 12px !important;
+}
+
+#report-reader .report-toolbar {
+  padding-bottom: 12px !important;
+  border-bottom: 1px solid rgba(29, 29, 31, 0.08) !important;
+}
+
+#report-reader .report-section-stack {
+  gap: 16px !important;
+}
+
+#report-reader .report-card-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+
+#report-reader .report-card,
+#submission-more .operator-group,
+#needs-review .summary-grid > .summary-tile,
+#import-digest .summary-grid > .summary-tile {
+  border-radius: 14px !important;
+}
+
+#submission-more .operator-group-grid {
+  gap: 10px !important;
+}
+
+#submission-more .operator-group {
+  border: 1px solid rgba(29, 29, 31, 0.08) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+}
+
+#submission-more .operator-group summary {
+  padding: 14px 16px !important;
+}
+
+#submission-more .operator-group > .control-grid {
+  padding: 0 16px 16px !important;
+}
+
+#import-digest .summary-grid,
+#needs-review .summary-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+#review-workflow .inline-actions {
+  justify-content: flex-start !important;
+}
+
+.workspace-header {
+  padding-top: 24px !important;
+  padding-bottom: 8px !important;
+}
+
+.workspace-subtitle {
+  max-width: 520px !important;
+  color: var(--jd-text-2) !important;
+}
+
+.workspace-header-meta .pill {
+  min-height: 26px !important;
+}
+
 .rule-drawer-trigger {
   right: 24px !important;
   bottom: 22px !important;
@@ -7997,6 +8136,21 @@ body {
 
   .workspace-header h1 {
     font-size: 28px !important;
+  }
+
+  .home-secondary-grid-quiet,
+  .report-shell-grid,
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  #report-reader .report-card-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .report-context-panel {
+    position: static !important;
+    top: auto !important;
   }
 
   .workspace-content,
