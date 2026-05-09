@@ -40,7 +40,7 @@ from app.core.services.provider_probe import (
     list_provider_probe_history,
 )
 from app.core.services.online_filing import parse_online_filing_form
-from app.core.services.review_profile import list_review_rule_history, normalize_review_profile, parse_review_profile_form
+from app.core.services.review_profile import _load_global_review_profile, list_review_rule_history, normalize_review_profile, parse_review_profile_form, save_global_review_profile
 from app.core.services.review_rulebook import parse_dimension_rule_items_from_form
 from app.core.services.release_gate import evaluate_release_gate
 from app.core.services.runtime_store import store
@@ -59,7 +59,7 @@ from app.web.page_submission import (
     render_submission_materials_page,
     render_submission_operator_page,
 )
-from app.web.page_review_rule import render_review_rule_detail_page
+from app.web.page_review_rule import render_global_rule_detail_page, render_review_rule_detail_page
 from app.web.pages import (
     render_app_script,
     render_case_detail,
@@ -753,6 +753,16 @@ def create_app(testing: bool = False):
         del request
         return JSONResponse({"items": list_retryable_jobs(limit=12)})
 
+    @app.post("/api/global-rules")
+    def api_save_global_rules(request: Request):
+        try:
+            profile = parse_review_profile_form(request.form_data)
+            save_global_review_profile(profile)
+            log_event("global_review_profile_saved", {"preset_key": profile.get("preset_key"), "enabled_dimensions": profile.get("enabled_dimensions")})
+            return JSONResponse({"success": True, "message": "规则配置已保存"})
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
     @app.post("/api/jobs/{job_id}/retry")
     def api_retry_job(request: Request, job_id: str):
         del request
@@ -1325,6 +1335,33 @@ def create_app(testing: bool = False):
         if action == "save_and_rerun" and case_id:
             return RedirectResponse(_submission_notice_location(submission_id, "case_review_rerun", focus="review-profile"), status_code=303)
         return RedirectResponse(f"/submissions/{submission_id}/review-rules/{dimension_key}?case_id={quote(case_id)}", status_code=303)
+
+    @app.get("/global-rules/{dimension_key}")
+    def global_rule_detail(request: Request, dimension_key: str):
+        del request
+        return HTMLResponse(render_global_rule_detail_page(dimension_key))
+
+    @app.post("/api/global-rules/{dimension_key}")
+    def api_save_global_dimension_rule(request: Request, dimension_key: str):
+        try:
+            global_profile = _load_global_review_profile() or {}
+            profile = normalize_review_profile(global_profile)
+            rulebook = dimension_rulebook_from_profile(profile)
+            if dimension_key not in rulebook:
+                raise HTTPException(404, "维度不存在")
+
+            rule_entry = dict(rulebook[dimension_key])
+            rules = parse_dimension_rule_items_from_form(request.form_data, dimension_key)
+            rule_entry["rules"] = rules
+
+            profile["dimension_rulebook"] = {**profile.get("dimension_rulebook", {}), dimension_key: rule_entry}
+            profile["rulebook_meta"] = _normalize_rulebook_meta(profile, preset_key=profile.get("preset_key", "balanced_default"))
+
+            save_global_review_profile(profile)
+            log_event("global_dimension_rule_saved", {"dimension_key": dimension_key})
+            return JSONResponse({"success": True, "message": "规则已保存"})
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     @app.get("/cases/{case_id}")
     def case_detail(request: Request, case_id: str):

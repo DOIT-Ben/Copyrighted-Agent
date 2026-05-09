@@ -429,3 +429,138 @@
     });
   }
 })();
+
+(() => {
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-close-details]");
+    if (!trigger) {
+      return;
+    }
+    const details = trigger.closest("details");
+    if (details) {
+      details.removeAttribute("open");
+    }
+  });
+})();
+
+(() => {
+  const drawer = document.getElementById("rule-drawer");
+  const triggerButton = document.querySelector("[data-open-drawer]");
+  const closeButtons = document.querySelectorAll("[data-close-drawer]");
+  const form = drawer?.querySelector("form[data-async-form]");
+
+  if (!drawer || !triggerButton) {
+    return;
+  }
+
+  const openDrawer = () => {
+    drawer.setAttribute("data-open", "");
+    document.body.style.overflow = "hidden";
+  };
+
+  const closeDrawer = () => {
+    drawer.removeAttribute("data-open");
+    document.body.style.overflow = "";
+  };
+
+  triggerButton.addEventListener("click", openDrawer);
+
+  closeButtons.forEach((button) => {
+    button.addEventListener("click", closeDrawer);
+  });
+
+  if (form) {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submitButton = form.querySelector('button[type="submit"]');
+      if (!submitButton) {
+        return;
+      }
+
+      const originalText = submitButton.textContent;
+      submitButton.disabled = true;
+      submitButton.textContent = "保存中...";
+
+      try {
+        const formData = new FormData(form);
+        const response = await fetch(form.action, {
+          method: form.method,
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error("保存失败");
+        }
+
+        const result = await response.json();
+        if (result.success) {
+          closeDrawer();
+          alert("规则配置已保存");
+        } else {
+          throw new Error(result.message || "保存失败");
+        }
+      } catch (error) {
+        alert(error.message || "保存失败，请重试");
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = originalText;
+      }
+    });
+  }
+})();
+
+(() => {
+  document.addEventListener("click", (event) => {
+    if (event.target.closest(".dimension-rule-editor")) {
+      return;
+    }
+    const checkbox = event.target.closest('input[type="checkbox"]');
+    const dimensionChoice = event.target.closest(".dimension-choice");
+    if (checkbox && dimensionChoice) {
+      event.stopPropagation();
+      event.preventDefault();
+      checkbox.checked = !checkbox.checked;
+    }
+  });
+})();
+
+(() => {
+  const closeEditor = (editor) => {
+    if (!editor) {
+      return;
+    }
+    editor.removeAttribute("open");
+  };
+
+  document.addEventListener("toggle", (event) => {
+    const editor = event.target.closest?.(".dimension-rule-editor");
+    if (!editor || !editor.open) {
+      return;
+    }
+    const scope = editor.closest(".review-profile-box") || document;
+    for (const other of Array.from(scope.querySelectorAll(".dimension-rule-editor[open]"))) {
+      if (other !== editor) {
+        closeEditor(other);
+      }
+    }
+  }, true);
+
+  document.addEventListener("click", (event) => {
+    const closeButton = event.target.closest("[data-close-rule-editor]");
+    if (!closeButton) {
+      return;
+    }
+    event.preventDefault();
+    closeEditor(closeButton.closest(".dimension-rule-editor"));
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") {
+      return;
+    }
+    const openEditor = document.querySelector(".dimension-rule-editor[open]");
+    if (openEditor) {
+      closeEditor(openEditor);
+    }
+  });
+})();

@@ -114,6 +114,7 @@ def review_case_consistency(
 
     names = {values.get("software_name", "") for values in observed.values() if values.get("software_name")}
     versions = {values.get("version", "") for values in observed.values() if values.get("version")}
+    company_names = {values.get("company_name", "") for values in observed.values() if values.get("company_name")}
 
     if len(names) > 1:
         detail = _format_field_values(observed, "software_name")
@@ -137,6 +138,18 @@ def review_case_consistency(
                 "desc": f"不同材料中的版本号不一致。当前识别到：{detail}。",
                 "suggest": "统一所有材料中的版本号写法和大小写格式。",
                 **_anchor(field="版本号", section="跨材料一致性", hint="逐项比对各份材料中的版本号写法", material_area="跨材料比对"),
+            }
+        )
+    if len(company_names) > 1:
+        detail = _format_field_values(observed, "company_name")
+        issues.append(
+            {
+                "severity": "severe",
+                "category": "主体名称一致性",
+                "rule_key": "company_name_exact_match",
+                "desc": f"不同材料中的申请主体名称不一致。当前识别到：{detail}。",
+                "suggest": "统一信息采集表、合作协议和在线填报中的申请主体全称，确保逐字一致。",
+                **_anchor(field="申请主体", section="跨材料一致性", hint="逐项比对各份材料中的申请主体名称", material_area="跨材料比对"),
             }
         )
 
@@ -216,11 +229,43 @@ def review_case_consistency(
             {
                 "severity": "moderate",
                 "category": "功能呼应",
-                "rule_key": "code_logic_supports_doc",
+                "rule_key": "cross_material_feature_match",
                 "desc": f"说明文档提到的功能点与源代码信号呼应不足。文档功能词：{'、'.join(doc_terms[:6])}；源码命中：{'、'.join(matched_terms[:6]) or '未识别'}。",
-                "suggest": "补充与文档功能对应的核心代码、函数名或关键流程片段。",
-                **_anchor(field="功能呼应", section="跨材料一致性", hint="比对说明文档中的功能点与源码中的关键函数或模块信号", material_area="说明文档与源码对照"),
+                "suggest": "确保说明文档中的核心功能在源码中有对应的函数或类实现。",
+                **_anchor(field="功能呼应", section="跨材料一致性", hint="比对说明文档功能词与源码函数/类名", material_area="跨材料功能比对"),
             }
         )
 
-    return {"issues": issues}
+    code_language = source_code.get("programming_language", "").lower()
+    doc_content = software_doc.get("software_name", "") + " " + " ".join(software_doc.get("feature_terms", []))
+    doc_content_lower = doc_content.lower()
+    
+    language_keywords = {
+        "python": ["python", "py", "python3", "django", "flask", "pandas", "numpy"],
+        "java": ["java", "jdk", "jre", "spring", "maven", "gradle"],
+        "javascript": ["javascript", "js", "node", "react", "vue", "angular", "npm"],
+        "c": ["c语言", "c语言", "gcc", "stdio.h"],
+        "cpp": ["c++", "cpp", "gcc", "g++", "stl", "iostream"],
+        "csharp": ["c#", "csharp", ".net", "dotnet", "microsoft"],
+        "php": ["php", "php7", "php8", "laravel", "composer"],
+        "go": ["go", "golang", "goroutine", "channel"],
+        "rust": ["rust", "cargo", "rustc", "crate"],
+        "vb": ["vb", "visual basic", ".net", "visual studio"],
+    }
+    
+    if code_language and code_language != "unknown":
+        keywords = language_keywords.get(code_language, [])
+        has_language_mention = any(keyword in doc_content_lower for keyword in keywords)
+        if not has_language_mention:
+            issues.append(
+                {
+                    "severity": "minor",
+                    "category": "技术栈一致性",
+                    "rule_key": "cross_material_language_match",
+                    "desc": f"源代码检测到使用 {code_language} 语言，但说明文档中未发现相关技术栈描述。",
+                    "suggest": f"在说明文档的运行环境或技术架构部分提及 {code_language} 相关技术栈。",
+                    **_anchor(field="技术栈", section="跨材料一致性", hint="检查说明文档是否提及源代码使用的编程语言", material_area="跨材料技术栈比对"),
+                }
+            )
+
+    return {"issues": issues, "metadata": {"observed": observed}}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from app.core.services.review_rulebook import dimension_rulebook_from_profile, parse_dimension_rule_items_from_form
@@ -100,7 +101,34 @@ def _normalize_rulebook_meta(raw: dict[str, Any] | None, *, preset_key: str) -> 
     }
 
 
+GLOBAL_REVIEW_PROFILE_PATH = Path("config") / "global_review_profile.json"
+
+
+def _load_global_review_profile() -> dict[str, Any] | None:
+    if not GLOBAL_REVIEW_PROFILE_PATH.exists():
+        return None
+    try:
+        import json
+        return json.loads(GLOBAL_REVIEW_PROFILE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def save_global_review_profile(profile: dict[str, Any]) -> None:
+    import json
+    GLOBAL_REVIEW_PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    GLOBAL_REVIEW_PROFILE_PATH.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def default_review_profile() -> dict[str, Any]:
+    global_profile = _load_global_review_profile()
+    if global_profile:
+        base = normalize_review_profile(global_profile)
+        return {
+            **base,
+            "dimension_rulebook": dimension_rulebook_from_profile(base),
+            "rulebook_meta": _normalize_rulebook_meta(base, preset_key=base.get("preset_key", "balanced_default")),
+        }
     return {
         **dict(PRESET_MAP["balanced_default"]["profile"]),
         "preset_key": "balanced_default",

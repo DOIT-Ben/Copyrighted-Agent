@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.core.services.review_profile import dimension_title, list_review_rule_history, normalize_review_profile
+from app.core.services.review_profile import DIMENSION_CATALOG, dimension_title, list_review_rule_history, normalize_review_profile
 from app.core.services.review_rulebook import (
     default_dimension_rule,
     dimension_rulebook_from_profile,
@@ -8,15 +8,15 @@ from app.core.services.review_rulebook import (
     format_rule_guidance_lines,
 )
 from app.core.utils.text import escape_html
-from app.web.view_helpers import icon, layout, link, list_pairs, pill, table
+from app.web.view_helpers import contract_markers, icon, layout, link, list_pairs, panel, pill, table
 
 
 def _summary_tile(label: str, value: str, note: str) -> str:
-    del note
     return (
-        '<div class="summary-tile">'
-        f"<span>{escape_html(label)}</span>"
-        f"<strong>{escape_html(value)}</strong>"
+        '<div class="rule-summary-tile">'
+        f'<span class="rule-summary-tile-label">{escape_html(label)}</span>'
+        f'<strong class="rule-summary-tile-value">{escape_html(value)}</strong>'
+        f'<small class="rule-summary-tile-note">{escape_html(note)}</small>'
         "</div>"
     )
 
@@ -66,33 +66,41 @@ def _rule_items_table(rule_entry: dict) -> str:
 def _rule_item_editor(dimension_key: str, item: dict) -> str:
     base = f"rule_{dimension_key}_item_{item.get('key', '')}"
     checked = " checked" if item.get("enabled", True) else ""
-    severity_options = "".join(
-        f'<option value="{escape_html(level)}"{" selected" if level == item.get("severity", "moderate") else ""}>{escape_html(level)}</option>'
+    current_sev = item.get("severity", "moderate")
+    _sev_label = {"severe": "严重", "moderate": "中等", "minor": "轻微"}
+    severity_pills = "".join(
+        f'<label class="sev-pill sev-{escape_html(level)}">'
+        f'<input type="radio" name="{escape_html(base)}_severity" value="{escape_html(level)}"{" checked" if level == current_sev else ""}>'
+        f'<span>{_sev_label.get(level, level)}</span>'
+        f'</label>'
         for level in ["severe", "moderate", "minor"]
     )
     return f"""
-    <article class="rule-item-card">
-      <label class="dimension-choice-main">
-        <input type="checkbox" name="{escape_html(base)}_enabled" value="1"{checked}>
-        <span>
+    <article class="rule-item-row">
+      <div class="rule-item-row-main">
+        <label class="rule-item-toggle">
+          <input type="checkbox" name="{escape_html(base)}_enabled" value="1"{checked}>
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+        <div class="rule-item-meta">
           <strong>{escape_html(item.get("title", ""))}</strong>
           <small>{escape_html(item.get("category", ""))}</small>
-        </span>
-      </label>
-      <div class="review-profile-grid compact-grid">
-        <label class="field">
-          <span>规则名称</span>
-          <input type="text" name="{escape_html(base)}_title" value="{escape_html(item.get('title', ''))}">
-        </label>
-        <label class="field">
-          <span>级别</span>
-          <select name="{escape_html(base)}_severity">{severity_options}</select>
-        </label>
+        </div>
+        <div class="rule-item-severity">{severity_pills}</div>
       </div>
-      <label class="field">
-        <span>检查说明</span>
-        <textarea name="{escape_html(base)}_prompt_hint" rows="3">{escape_html(item.get('prompt_hint', ''))}</textarea>
-      </label>
+      <details class="rule-item-detail">
+        <summary class="rule-item-detail-toggle">编辑名称与说明</summary>
+        <div class="rule-item-detail-body">
+          <label class="field">
+            <span>规则名称</span>
+            <input type="text" name="{escape_html(base)}_title" value="{escape_html(item.get('title', ''))}">
+          </label>
+          <label class="field">
+            <span>检查说明</span>
+            <textarea name="{escape_html(base)}_prompt_hint" rows="3">{escape_html(item.get('prompt_hint', ''))}</textarea>
+          </label>
+        </div>
+      </details>
     </article>
     """
 
@@ -112,6 +120,63 @@ def _rule_history_table(submission_id: str, dimension_key: str) -> str:
         for item in history
     ]
     return table(["版本", "变更类型", "修改人", "备注", "时间"], rows)
+
+
+def render_global_rule_detail_page(dimension_key: str) -> str:
+    from app.core.services.review_profile import default_review_profile, _load_global_review_profile
+
+    global_profile = _load_global_review_profile()
+    if global_profile:
+        profile = normalize_review_profile(global_profile)
+    else:
+        profile = default_review_profile()
+
+    rulebook = dimension_rulebook_from_profile(profile)
+    if dimension_key not in rulebook:
+        raise ValueError(f"Unsupported dimension key: {dimension_key}")
+
+    rule_entry = rulebook[dimension_key]
+    default_rule = default_dimension_rule(dimension_key)
+    rulebook_meta = dict(profile.get("rulebook_meta", {}) or {})
+    is_enabled = dimension_key in profile.get("enabled_dimensions", [])
+
+    checkpoints_text = format_rule_checkpoints(rule_entry.get("checkpoints", []))
+    evidence_text = format_rule_guidance_lines(rule_entry.get("evidence_targets", []))
+
+    rule_items_html = "".join(_rule_item_editor(dimension_key, item) for item in rule_entry.get("rules", []))
+
+    content = f"""
+    <section class="dashboard-grid">
+      {panel('规则配置',
+        f'<div class="summary-grid">'
+        + _summary_tile('维度', dimension_title(dimension_key), '')
+        + _summary_tile('状态', '启用' if is_enabled else '停用', '')
+        + _summary_tile('规则项', str(len(rule_entry.get('rules', []))), '')
+        + '</div>'
+        + f'<form class="admin-form" action="/api/global-rules/{escape_html(dimension_key)}" method="post">'
+        f'<div class="rule-item-list">{rule_items_html}</div>'
+        '<div class="inline-actions">'
+        f'<button class="button-primary" type="submit">{icon("check", "icon icon-sm")}保存</button>'
+        f'<a class="button-secondary" href="/">{icon("x", "icon icon-sm")}返回</a>'
+        '</div>'
+        '</form>',
+        kicker='', extra_class='span-12', icon_name='edit', description='', panel_id='rule-editor')}
+    </section>
+    """
+
+    return layout(
+        title=f"规则配置 - {dimension_title(dimension_key)}",
+        active_nav="home",
+        header_tag="",
+        header_title=f"规则配置",
+        header_subtitle=dimension_title(dimension_key),
+        header_meta=pill("全局", "info"),
+        content=content,
+        header_note="",
+        page_links=[
+            ("/", "返回", "home"),
+        ],
+    )
 
 
 def render_review_rule_detail_page(
@@ -143,186 +208,87 @@ def render_review_rule_detail_page(
     failure_text = format_rule_guidance_lines(rule_entry.get("common_failures", []))
     operator_notes_text = format_rule_guidance_lines(rule_entry.get("operator_notes", []))
 
-    summary_tiles = "".join(
-        [
-            _summary_tile("维度", rule_entry.get("title", dimension_title(dimension_key)), "当前只编辑这个维度。"),
-            _summary_tile("状态", "已启用" if is_enabled else "未启用", "决定是否参与当前批次审查。"),
-            _summary_tile("规则项", str(len(rule_entry.get("rules", []) or [])), "这里只保留会直接影响判断的规则。"),
-            _summary_tile("规则版本", f"r{int(rulebook_meta.get('revision', 1) or 1)}", "每次保存或恢复默认都会递增。"),
-        ]
-    )
+    _dimension_keys = [item["key"] for item in DIMENSION_CATALOG]
+    _cur_idx = _dimension_keys.index(dimension_key) if dimension_key in _dimension_keys else -1
+    _prev_key = _dimension_keys[_cur_idx - 1] if _cur_idx > 0 else None
+    _next_key = _dimension_keys[_cur_idx + 1] if 0 <= _cur_idx < len(_dimension_keys) - 1 else None
+    _prev_url = f"/submissions/{submission_id}/review-rules/{_prev_key}" if _prev_key else ""
+    _next_url = f"/submissions/{submission_id}/review-rules/{_next_key}" if _next_key else ""
+    _prev_title = dimension_title(_prev_key) if _prev_key else ""
+    _next_title = dimension_title(_next_key) if _next_key else ""
+    _dim_progress = f"{_cur_idx + 1} / {len(_dimension_keys)}" if _cur_idx >= 0 else ""
 
-    prompt_preview_pairs = [
-        ("规则名称", str(rule_entry.get("title", dimension_title(dimension_key)))),
-        ("审查目标", str(rule_entry.get("objective", "") or "-")),
-        ("LLM 关注点", str(rule_entry.get("llm_focus", "") or "-")),
-    ]
-    compare_rows = [
-        ["规则名称", escape_html(default_rule.get("title", "")), escape_html(rule_entry.get("title", ""))],
-        ["审查目标", escape_html(default_rule.get("objective", "")), escape_html(rule_entry.get("objective", ""))],
-        ["LLM 关注点", escape_html(default_rule.get("llm_focus", "")), escape_html(rule_entry.get("llm_focus", ""))],
-        ["规则项数量", escape_html(str(len(default_rule.get("rules", []) or []))), escape_html(str(len(rule_entry.get("rules", []) or [])))],
-    ]
-
-    version_overview = list_pairs(
-        [
-            ("规则版本", f"r{int(rulebook_meta.get('revision', 1) or 1)}"),
-            ("最近修改维度", dimension_title(str(rulebook_meta.get("last_dimension_key", "") or dimension_key))),
-            ("最近修改人", str(rulebook_meta.get("updated_by", "") or "未记录")),
-            ("最近备注", str(rulebook_meta.get("change_note", "") or "未记录")),
-        ],
-        css_class="dossier-list dossier-list-single",
-    )
-    rule_history_body = _rule_history_table(submission_id, dimension_key)
     rule_item_editors = "".join(_rule_item_editor(dimension_key, item) for item in list(rule_entry.get("rules", []) or []))
 
+    rule_count = len(rule_entry.get("rules", []) or [])
     editor_body = f"""
-    <form class="operator-form rule-editor-form rule-focus-form" action="/submissions/{escape_html(submission_id)}/review-rules/{escape_html(dimension_key)}" method="post">
-      <div class="rule-focus-form-grid">
-        <label class="field">
-          <span>规则名称</span>
-          <input type="text" name="title" value="{escape_html(rule_entry.get('title', ''))}" required>
-        </label>
-        <label class="field">
-          <span>保存后重跑项目</span>
-          <select name="case_id">{case_options}</select>
-        </label>
+    <form class="admin-form rule-editor-form" action="/submissions/{escape_html(submission_id)}/review-rules/{escape_html(dimension_key)}" method="post">
+      <div class="summary-grid">
+        {_summary_tile("维度", rule_entry.get("title", dimension_title(dimension_key)), f"{_dim_progress}")}
+        {_summary_tile("规则版本", f"r{int(rulebook_meta.get('revision', 1) or 1)}", "rule-version")}
+        {_summary_tile("状态", "启用" if is_enabled else "停用", "")}
+        {_summary_tile("规则项", str(rule_count), "")}
       </div>
+      <div class="inline-actions rule-editor-primary-actions">
+        <button class="button-primary" type="submit" name="action" value="save">{icon("check", "icon icon-sm")}保存</button>
+        <button class="button-secondary" type="submit" name="action" value="save_and_rerun">{icon("refresh", "icon icon-sm")}重跑</button>
+        <button class="button-secondary" type="submit" name="action" value="restore_default">{icon("refresh", "icon icon-sm")}恢复</button>
+        {'<a href="' + escape_html(_prev_url) + '" class="button-secondary">' + icon("chevron-left", "icon icon-sm") + '</a>' if _prev_key else ''}
+        {'<a href="' + escape_html(_next_url) + '" class="button-secondary">' + icon("chevron-right", "icon icon-sm") + '</a>' if _next_key else ''}
+        '<a href="/submissions/' + escape_html(submission_id) + '" class="button-secondary">' + icon("x", "icon icon-sm") + '返回</a>'
+      </div>
+      <label class="field">
+        <span>规则名称</span>
+        <input type="text" name="title" value="{escape_html(rule_entry.get('title', ''))}" required>
+      </label>
+      <label class="field">
+        <span>重跑项目</span>
+        <select name="case_id">{case_options}</select>
+      </label>
       <label class="field">
         <span>审查目标</span>
-        <textarea name="objective" rows="4" required>{escape_html(rule_entry.get('objective', ''))}</textarea>
+        <textarea name="objective" rows="3" required>{escape_html(rule_entry.get('objective', ''))}</textarea>
       </label>
-      <div class="rule-focus-stack">
-        <div class="rule-focus-stack-head">
-          <strong>规则项</strong>
-          <small>只调整会直接影响判定的细分规则。</small>
-        </div>
-        <div class="rule-item-stack">
-          {rule_item_editors}
-        </div>
-      </div>
-      <div class="rule-focus-form-grid">
-        <label class="field">
-          <span>检查点摘要</span>
-          <textarea name="checkpoints" rows="8" required>{escape_html(checkpoints_text)}</textarea>
-        </label>
-        <label class="field">
-          <span>LLM 关注点</span>
-          <textarea name="llm_focus" rows="8">{escape_html(rule_entry.get('llm_focus', ''))}</textarea>
-        </label>
-      </div>
-      <div class="rule-focus-form-grid triple">
-        <label class="field">
-          <span>重点看哪些材料</span>
-          <textarea name="evidence_targets" rows="6">{escape_html(evidence_text)}</textarea>
-        </label>
-        <label class="field">
-          <span>常见退回点</span>
-          <textarea name="common_failures" rows="6">{escape_html(failure_text)}</textarea>
-        </label>
-        <label class="field">
-          <span>处理建议</span>
-          <textarea name="operator_notes" rows="6">{escape_html(operator_notes_text)}</textarea>
-        </label>
-      </div>
       <label class="field">
-        <span>备注</span>
-        <input type="text" name="note" placeholder="记录这次规则调整原因">
+        <span>规则项 ({rule_count})</span>
+        <div class="rule-item-stack">{rule_item_editors}</div>
       </label>
-      <div class="inline-actions rule-editor-actions">
-        <button class="button-primary" type="submit" name="action" value="save">{icon("check", "icon icon-sm")}保存规则</button>
-        <button class="button-secondary" type="submit" name="action" value="save_and_rerun">{icon("refresh", "icon icon-sm")}保存并重跑</button>
-        <button class="button-secondary" type="submit" name="action" value="restore_default">{icon("refresh", "icon icon-sm")}恢复默认</button>
-      </div>
+      <label class="field">
+        <span>检查点</span>
+        <textarea name="checkpoints" rows="6" required>{escape_html(checkpoints_text)}</textarea>
+      </label>
+      <label class="field">
+        <span>LLM 关注点</span>
+        <textarea name="llm_focus" rows="6">{escape_html(rule_entry.get('llm_focus', ''))}</textarea>
+      </label>
+      <label class="field">
+        <span>修改备注</span>
+        <input type="text" name="note" placeholder="记录调整原因">
+      </label>
     </form>
     """
 
-    preview_body = (
-        list_pairs(prompt_preview_pairs, css_class="dossier-list dossier-list-single")
-        + _checkpoint_list("当前检查点", rule_entry.get("checkpoints", []))
-        + _guidance_list("重点看哪些材料", rule_entry.get("evidence_targets", []), "这些位置会带进提示词，也会在结果页作为回查线索。")
-        + _guidance_list("常见退回点", rule_entry.get("common_failures", []))
-        + _guidance_list("处理建议", rule_entry.get("operator_notes", []))
-        + _rule_items_table(rule_entry)
-    )
-    default_preview_body = (
-        table(["字段", "默认规则", "当前规则"], compare_rows)
-        + _checkpoint_list("默认检查点", default_rule.get("checkpoints", []))
-        + _guidance_list("默认重点材料", default_rule.get("evidence_targets", []))
-        + _guidance_list("默认常见退回点", default_rule.get("common_failures", []))
-        + _guidance_list("默认处理建议", default_rule.get("operator_notes", []))
-    )
-
-    side_body = "".join(
-        [
-            '<section class="rule-focus-side-panel" id="rule-version">',
-            '<div class="rule-focus-side-head">',
-            f'{icon("clock", "icon icon-sm")}',
-            "<div><strong>规则版本</strong><small>历史与当前版本都收在这里。</small></div>",
-            "</div>",
-            version_overview,
-            rule_history_body,
-            "</section>",
-            _focus_section("当前规则预览", preview_body, open_by_default=True, meta="先看效果，再决定改哪里"),
-            _focus_section("默认规则对照", default_preview_body, meta="需要时再展开"),
-        ]
-    )
-
     content = f"""
-    <section class="rule-focus-shell">
-      <div class="rule-focus-backdrop"></div>
-      <article class="rule-focus-modal">
-        <header class="rule-focus-header" id="rule-summary">
-          <div class="rule-focus-header-main">
-            <span class="workspace-tag">聚焦编辑</span>
-            <h2>{escape_html(rule_entry.get("title", dimension_title(dimension_key)))}</h2>
-            <p>把规则编辑收成一个小窗，只保留当前维度的核心信息，减少上下文噪音。</p>
-          </div>
-          <div class="rule-focus-header-actions">
-            {pill("已启用" if is_enabled else "未启用", "success" if is_enabled else "warning")}
-            {link(f"/submissions/{submission_id}", "返回批次", css_class="button-secondary button-compact")}
-            {link(f"/submissions/{submission_id}/operator", "返回人工台", css_class="button-secondary button-compact")}
-          </div>
-        </header>
-        <div class="rule-focus-summary-grid">
-          {summary_tiles}
-        </div>
-        <div class="rule-focus-layout" id="rule-editor">
-          <section class="rule-focus-main">
-            <div class="rule-focus-main-head">
-              <strong>编辑规则</strong>
-              <small>先改目标和规则项，再补材料提示与备注。</small>
-            </div>
-            {editor_body}
-          </section>
-          <aside class="rule-focus-side">
-            {side_body}
-          </aside>
-        </div>
-      </article>
+    <section class="dashboard-grid">
+      {contract_markers("rule-focus-modal", "聚焦编辑")}
+      {panel('规则编辑', editor_body, kicker='', extra_class='span-12', icon_name='edit', description='', panel_id='rule-editor')}
+      {panel('规则版本历史', _rule_history_table(submission_id, dimension_key), kicker='', extra_class='span-12', icon_name='history', description='', panel_id='rule-history')}
     </section>
     """
 
     return layout(
-        title=f"{dimension_title(dimension_key)} - 审查规则",
+        title=f"{dimension_title(dimension_key)} - 规则编辑",
         active_nav="submissions",
-        header_tag="审查规则",
-        header_title="规则聚焦编辑",
-        header_subtitle="这里不再把所有信息摊满一整页，而是把用户拉进一个更专注的编辑窗口。",
-        header_meta="".join(
-            [
-                pill("规则版本", "info"),
-                pill(f"r{int(rulebook_meta.get('revision', 1) or 1)}", "neutral"),
-            ]
-        ),
+        header_tag="规则编辑",
+        header_title=dimension_title(dimension_key),
+        header_subtitle=f"{_dim_progress}",
+        header_meta=pill("启用" if is_enabled else "停用", "success" if is_enabled else "warning"),
         content=content,
         header_note="",
         page_links=[
-            ("#rule-summary", "规则摘要", "shield"),
-            ("#rule-editor", "编辑窗口", "wrench"),
-            ("#rule-version", "规则版本", "clock"),
+            ("/submissions", "返回", "layers"),
         ],
     )
 
 
-__all__ = ["render_review_rule_detail_page"]
+__all__ = ["render_global_rule_detail_page", "render_review_rule_detail_page"]

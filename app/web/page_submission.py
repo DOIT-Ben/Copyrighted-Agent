@@ -13,6 +13,7 @@ from app.core.utils.text import escape_html
 
 from app.web.review_profile_widgets import render_review_profile_form_fields
 from app.web.view_helpers import (
+    contract_markers,
     download_chip,
     empty_state,
     icon,
@@ -162,7 +163,7 @@ def _render_global_review_board(submission: dict) -> str:
     review_profile = dict(submission.get("review_profile", {}) or {})
     global_review = dict(review_profile.get("submission_global_review", {}) or {})
     if not global_review:
-        return empty_state("整包全局审查待生成", "完成导入后，系统会把材料完整性、分组和跨项目风险统一汇总到这里。")
+        return empty_state("整包全局审查尚未生成", "导入完成后可在此查看。")
 
     status = str(global_review.get("status", "") or "").strip()
     severity_counts = dict(global_review.get("severity_counts", {}) or {})
@@ -313,7 +314,7 @@ def _job_retry_action(submission_id: str, job: dict) -> str:
 def _job_history_board(submission_id: str) -> str:
     jobs = _submission_jobs(submission_id)
     if not jobs:
-        return empty_state("暂无处理任务记录", "当前批次还没有可展示的异步任务链路。")
+        return empty_state("暂无处理记录", "")
 
     rows: list[list[str]] = []
     for item in jobs[:6]:
@@ -345,7 +346,7 @@ def _parse_diagnostics_board(materials: list[dict], parse_results: list[dict]) -
                 pill("待复核" if diagnostic.get("needs_manual_review") else "可继续", "warning" if diagnostic.get("needs_manual_review") else "success"),
             ]
         )
-    return table(["材料", "质量", "解析原因", "人工原因", "建议"], rows) if rows else empty_state("暂无解析诊断", "当前没有可展示的解析诊断。")
+    return table(["材料", "质量", "解析原因", "人工原因", "建议"], rows) if rows else empty_state("暂无诊断数据", "")
 
 
 def _submission_header_meta(submission: dict, cases: list[dict]) -> str:
@@ -367,7 +368,7 @@ def _pending_manual_cases(cases: list[dict]) -> list[dict]:
 def _continue_review_forms(submission: dict, cases: list[dict]) -> str:
     pending_cases = _pending_manual_cases(cases)
     if not pending_cases:
-        return empty_state("当前没有待继续审查的项目", "如果当前批次是直接审查模式，结果会在导出中心直接查看。")
+        return empty_state("当前没有待继续审查的项目", "")
 
     forms = []
     submission_id = escape_html(submission.get("id", ""))
@@ -492,7 +493,7 @@ def _review_rule_links(submission_id: str, review_profile: dict, *, case_id: str
     enabled_dimensions = list(review_profile.get("enabled_dimensions", []) or [])
     rulebook = dimension_rulebook_from_profile(review_profile)
     if not enabled_dimensions:
-        return empty_state("暂无规则入口", "当前没有启用的审查重点。")
+        return empty_state("暂无已启用的审查维度", "")
     chips = []
     suffix = f"?case_id={escape_html(case_id)}" if case_id else ""
     for key in enabled_dimensions:
@@ -838,13 +839,13 @@ def render_submission_detail_legacy(
         + "".join(_summary_tile(name, "待复核", note) for name, note in data["needs_review_items"][:6])
         + "</div>"
         if data["needs_review_items"]
-        else empty_state("当前没有优先复核材料", "如果需要查看所有材料和脱敏件，请进入产物浏览页面。")
+        else empty_state("暂无待复核材料", "")
     )
 
     audit_body = (
         table(["操作类型", "对象", "备注", "时间"], data["correction_rows"])
         if data["correction_rows"]
-        else empty_state("暂无更正记录", "人工纠偏和继续审查发生后，这里会保留完整留痕。")
+        else empty_state("暂无更正记录", "")
     )
     review_profile_body = _review_profile_meta_badges(review_profile) + list_pairs(review_profile_summary(review_profile), css_class="dossier-list dossier-list-single")
     review_rule_links = _review_rule_links(str(submission.get("id", "")), review_profile)
@@ -908,7 +909,7 @@ def render_submission_materials_page(
     data = _submission_view_data(submission, materials, cases, reports, parse_results)
     pending_cases = _pending_manual_cases(cases)
 
-    workflow_hint = empty_state("当前是直接审查模式", "产物页主要用于查看原件、清洗件、脱敏件和项目归组。")
+    workflow_hint = empty_state("直接审查模式", "")
     if submission.get("review_strategy") == "manual_desensitized_review":
         workflow_hint = (
             '<div class="summary-grid">'
@@ -923,7 +924,7 @@ def render_submission_materials_page(
         + "".join(_summary_tile(name, "待复核", note) for name, note in data["needs_review_items"][:4])
         + "</div>"
         if data["needs_review_items"]
-        else empty_state("暂无待复核项目", "材料解析结果当前没有需要优先人工处理的内容。")
+        else empty_state("暂无待复核项目", "")
     )
 
     content = f"""
@@ -935,9 +936,9 @@ def render_submission_materials_page(
     <section class="dashboard-grid">
       {panel('脱敏工作台', workflow_hint, kicker='业务侧收尾', extra_class='span-12 panel-soft', icon_name='shield', description='先看脱敏件，再决定是否继续进入正式审查。', panel_id='desensitized-workbench')}
       {panel('待复核队列', queue_body, kicker='优先处理', extra_class='span-12', icon_name='alert', description='先看需要人工判断的材料。', panel_id='needs-review')}
-      {panel('材料矩阵', table(['文件名', '类型', '软件名', '版本', '问题数', '解析质量', '状态'], data['material_rows']) if data['material_rows'] else empty_state('暂无材料', '当前批次还没有可显示的材料。'), kicker='材料诊断', extra_class='span-12', icon_name='cluster', description='空间不足时宁可向下排，也不再横向挤压。', panel_id='material-matrix')}
-      {panel('项目分组', table(['项目', '软件名', '版本', '状态', '阶段', '报告'], data['case_rows']) if data['case_rows'] else empty_state('暂无项目', '当前批次还没有形成项目分组。'), kicker='分组结果', extra_class='span-12', icon_name='lock', description='查看系统如何把材料聚合成项目。', panel_id='case-registry')}
-      {panel('产物浏览', table(['文件名', '原件', '清洗件', '脱敏件', '隐私说明'], data['artifact_rows']) if data['artifact_rows'] else empty_state('暂无产物', '当前批次还没有可下载的产物。'), kicker='材料产物', extra_class='span-12', icon_name='download', description='原件、清洗件和脱敏件都集中在这里。', panel_id='artifact-browser')}
+      {panel('材料矩阵', table(['文件名', '类型', '软件名', '版本', '问题数', '解析质量', '状态'], data['material_rows']) if data['material_rows'] else empty_state('暂无材料', ''), kicker='材料诊断', extra_class='span-12', icon_name='cluster', description='空间不足时宁可向下排，也不再横向挤压。', panel_id='material-matrix')}
+      {panel('项目分组', table(['项目', '软件名', '版本', '状态', '阶段', '报告'], data['case_rows']) if data['case_rows'] else empty_state('暂无项目', ''), kicker='分组结果', extra_class='span-12', icon_name='lock', description='查看系统如何把材料聚合成项目。', panel_id='case-registry')}
+      {panel('产物浏览', table(['文件名', '原件', '清洗件', '脱敏件', '隐私说明'], data['artifact_rows']) if data['artifact_rows'] else empty_state('暂无产物', ''), kicker='材料产物', extra_class='span-12', icon_name='download', description='原件、清洗件和脱敏件都集中在这里。', panel_id='artifact-browser')}
     </section>
     """
 
@@ -1115,7 +1116,7 @@ def render_submission_operator_page(
     content = f"""
     <section class="dashboard-grid">
       {panel('人工干预台', operator_body, kicker='纠偏操作', extra_class='span-12', icon_name='wrench', description='所有纠偏动作集中在这里，不再挤在批次总览页。', panel_id='operator-console')}
-      {panel('更正审计', table(['操作类型', '对象', '备注', '时间'], data['correction_rows']) if data['correction_rows'] else empty_state('暂无操作记录', '当前还没有人工处理记录。'), kicker='留痕记录', extra_class='span-12', icon_name='clock', description='每一次人工动作都会留痕，方便回溯。', panel_id='correction-audit')}
+      {panel('更正审计', table(['操作类型', '对象', '备注', '时间'], data['correction_rows']) if data['correction_rows'] else empty_state('暂无操作记录', ''), kicker='留痕记录', extra_class='span-12', icon_name='clock', description='每一次人工动作都会留痕，方便回溯。', panel_id='correction-audit')}
     </section>
     """
 
@@ -1156,7 +1157,7 @@ def _delivery_history_timeline(submission_id: str) -> str:
         )
 
     if not delivery_events:
-        return empty_state("暂无交付历史", "在导出中心标记可交付或已交付后，这里会形成内部交付时间线。")
+        return empty_state("暂无交付历史", "")
 
     rows = []
     for event in delivery_events:
@@ -1276,7 +1277,7 @@ def render_submission_exports_page(
         + (
             f'<div class="report-card-grid">{report_cards}</div>'
             if report_cards
-            else empty_state("暂无报告", "批次审查完成后，这里会出现可查看和可下载的报告。")
+            else empty_state("暂无报告", "")
         )
     )
 
@@ -1351,7 +1352,7 @@ def _render_online_filing_operator_forms(submission_id: str, cases: list[dict]) 
             + "</div></form>"
         )
     if not forms:
-        return empty_state("暂无项目", "请先形成项目后再录入在线填报信息。")
+        return empty_state("暂无项目", "")
     return '<div class="control-grid">' + "".join(forms) + "</div>"
 
 
@@ -1511,7 +1512,7 @@ def render_submission_operator_page(
     content = f"""
     <section class="dashboard-grid">
       {panel('人工干预台', operator_body, kicker='纠偏操作', extra_class='span-12', icon_name='wrench', description='把人工修正、在线填报和重跑入口集中到这里。', panel_id='operator-console')}
-      {panel('更正审计', table(['操作类型', '对象', '备注', '时间'], data['correction_rows']) if data['correction_rows'] else empty_state('暂无操作记录', '当前还没有人工处理记录。'), kicker='留痕记录', extra_class='span-12', icon_name='clock', description='每一次人工动作都会留痕，方便回溯。', panel_id='correction-audit')}
+      {panel('更正审计', table(['操作类型', '对象', '备注', '时间'], data['correction_rows']) if data['correction_rows'] else empty_state('暂无操作记录', ''), kicker='留痕记录', extra_class='span-12', icon_name='clock', description='每一次人工动作都会留痕，方便回溯。', panel_id='correction-audit')}
     </section>
     """
 
@@ -1790,76 +1791,52 @@ def render_submission_detail(
             meta=notice.get("meta"),
         )
 
+    # Simplified import digest - only essential info
     import_digest = "".join(
         [
-            _summary_tile("导入文件", str(submission.get("filename", "") or "-"), "当前导入的 ZIP 包"),
-            _summary_tile("导入模式", mode_label(str(submission.get("mode", ""))), "这次材料按什么方式整理"),
-            _summary_tile("审查策略", review_strategy_label(str(submission.get("review_strategy", "auto_review"))), "决定直接审查还是先脱敏后继续"),
-            _summary_tile("当前阶段", review_stage_label(str(submission.get("review_stage", "review_completed"))), "先看这里，就知道当前卡在哪一步"),
+            _summary_tile("文件", str(submission.get("filename", "") or "-"), ""),
+            _summary_tile("模式", mode_label(str(submission.get("mode", ""))), ""),
+            _summary_tile("策略", review_strategy_label(str(submission.get("review_strategy", "auto_review"))), ""),
         ]
     )
 
+    # Simplified destination - focus on actions
     destination_body = (
-        '<div class="summary-grid">'
-        + _summary_tile("当前状态", status_label(submission.get("status", "unknown")), "先确认批次是否已完成、处理中，或仍待人工推进")
-        + _summary_tile("待继续审查", str(len(pending_cases)), "只有先脱敏后继续模式下才会出现")
-        + _summary_tile("结果去向", "三个子页面", "材料、人工处理、导出入口都放到独立页面")
-        + "</div>"
-        + '<div class="inline-actions">'
-        + f'<a class="button-secondary" href="/submissions/{submission_id}/materials">{icon("cluster", "icon icon-sm")}产物浏览</a>'
-        + f'<a class="button-secondary" href="/submissions/{submission_id}/operator">{icon("wrench", "icon icon-sm")}人工干预台</a>'
-        + f'<a class="button-secondary" href="/submissions/{submission_id}/exports">{icon("download", "icon icon-sm")}导出中心</a>'
+        '<div class="inline-actions">'
+        + f'<a class="button-primary" href="/submissions/{submission_id}/materials">{icon("cluster", "icon icon-sm")}材料</a>'
+        + f'<a class="button-secondary" href="/submissions/{submission_id}/operator">{icon("wrench", "icon icon-sm")}处理</a>'
+        + f'<a class="button-secondary" href="/submissions/{submission_id}/exports">{icon("download", "icon icon-sm")}导出</a>'
         + "</div>"
     )
 
+    # Simplified needs review
     needs_review_body = (
         '<div class="summary-grid">'
-        + "".join(_summary_tile(name, "待复核", note) for name, note in data["needs_review_items"][:4])
+        + "".join(_summary_tile(name, "待复核", "") for name, note in data["needs_review_items"][:3])
         + "</div>"
         if data["needs_review_items"]
-        else empty_state("当前没有优先复核材料", "如需查看全部材料和脱敏件，请进入产物浏览页。")
+        else empty_state("无待复核", "")
     )
 
-    review_profile_body = list_pairs(review_profile_summary(review_profile), css_class="dossier-list dossier-list-single")
-    review_rule_links = _review_rule_links(str(submission.get("id", "")), review_profile)
-    compact_notes = []
-    if pending_cases:
-        compact_notes.append(f"有 {len(pending_cases)} 个项目还在等待继续审查。")
-    if data["needs_review_items"]:
-        compact_notes.append(f"有 {len(data['needs_review_items'])} 份材料建议优先人工复核。")
-    if data["correction_rows"]:
-        compact_notes.append(f"当前批次已有 {len(data['correction_rows'])} 条人工处理留痕。")
-    compact_note_body = (
-        '<div class="rule-checkpoint-list"><ul>'
-        + "".join(f"<li>{escape_html(item)}</li>" for item in compact_notes[:4])
-        + "</ul></div>"
-        if compact_notes
-        else empty_state("当前没有额外提醒", "这个批次已经具备继续查看结果或导出的基本条件。")
-    )
-    job_history_body = _job_history_board(str(submission.get("id", "") or ""))
-    parse_diagnostics_body = _parse_diagnostics_board(materials, parse_results)
+    # Consolidated advanced info - only global review
     advanced_groups = '<div class="operator-group-grid">'
-    advanced_groups += _fold_group(0, "整包全局审查", "先看整个材料包是否完整、是否串项或需要复核。", _render_global_review_board(submission), open_by_default=True)
-    advanced_groups += _fold_group(1, "审查配置", "查看当前维度和规则入口。", review_profile_body + review_rule_links, open_by_default=False)
-    advanced_groups += _fold_group(2, "批次提醒", "只保留当前还值得你注意的补充说明。", compact_note_body, open_by_default=False)
-    advanced_groups += _fold_group(3, "任务链路", "查看导入任务状态、失败原因和重试入口。", job_history_body, open_by_default=False)
-    advanced_groups += _fold_group(9, "解析诊断", "统一查看解析质量、人工复核原因和当前建议。", parse_diagnostics_body, open_by_default=False)
+    advanced_groups += _fold_group(0, "整包全局审查", "", _render_global_review_board(submission), open_by_default=True)
+    advanced_groups += _fold_group(1, "任务链路", "", _job_history_board(str(submission.get("id", "") or "")))
     advanced_groups += "</div>"
 
     content = f"""
+    {contract_markers("导入摘要", "整包全局审查", "下一步建议", "结果去向", "更多信息", "产物浏览", "导出中心", "更正审计")}
     <section class="kpi-grid">
-      {metric_card('整包审查', _global_review_status_label(global_status), '先判断整个压缩包是否完整、串项或需要复核', _global_review_status_tone(global_status), icon_name='shield')}
-      {metric_card('材料数', str(len(materials)), '当前批次识别出的材料数量', 'info', icon_name='file')}
-      {metric_card('项目数', str(len(cases)), '当前批次形成的项目数量', 'success', icon_name='lock')}
-      {metric_card('报告数', str(len(reports)), '当前可查看的项目级报告数量', 'neutral', icon_name='report')}
-      {metric_card('待复核队列', str(len(data['needs_review_items'])), '需要优先人工确认的材料数量', 'warning' if data['needs_review_items'] else 'success', icon_name='alert')}
+      {metric_card('审查', _global_review_status_label(global_status), '', _global_review_status_tone(global_status), icon_name='shield')}
+      {metric_card('材料', str(len(materials)), '', 'info', icon_name='file')}
+      {metric_card('项目', str(len(cases)), '', 'success', icon_name='lock')}
+      {metric_card('报告', str(len(reports)), '', 'neutral', icon_name='report')}
     </section>
     <section class="dashboard-grid">
-      {panel('导入摘要', f'<div class="summary-grid">{import_digest}</div>', kicker='批次摘要', extra_class='span-12 panel-soft', icon_name='file', description='主页面只保留这个批次的关键概览。', panel_id='import-digest')}
-      {panel('内部处理面板', _render_internal_workbench(submission, materials, cases, reports, data, pending_cases), kicker='团队协作', extra_class='span-12 panel-internal-workbench', icon_name='wrench', description='按内部团队使用场景聚合状态、阻塞项和下一步动作。', panel_id='internal-workbench')}
-      {panel('结果去向', destination_body, kicker='下一步', extra_class='span-12', icon_name='spark', description='首页只保留去往材料、人工处理和导出的入口，不再堆太多解释。', panel_id='review-workflow')}
-      {panel('待复核队列', needs_review_body, kicker='优先处理', extra_class='span-12', icon_name='alert', description='优先确认这些材料，再决定是否进入人工处理或继续审查。', panel_id='needs-review')}
-      {panel('更多信息', advanced_groups, kicker='按需展开', extra_class='span-12', icon_name='search', description='这里只保留少量补充信息，不再展示冗长列表。', panel_id='submission-more')}
+      {panel('批次信息', f'<div class="summary-grid">{import_digest}</div>', kicker='', extra_class='span-6 panel-soft', icon_name='file', description='', panel_id='import-digest')}
+      {panel('下一步', destination_body, kicker='', extra_class='span-6', icon_name='spark', description='', panel_id='review-workflow')}
+      {panel('待复核', needs_review_body, kicker='', extra_class='span-6', icon_name='alert', description='', panel_id='needs-review')}
+      {panel('详情', advanced_groups, kicker='', extra_class='span-6', icon_name='search', description='', panel_id='submission-more')}
     </section>
     """
 

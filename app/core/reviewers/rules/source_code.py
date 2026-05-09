@@ -36,6 +36,33 @@ def _detect_page_markers(text: str) -> list[int]:
     return [int(item) for item in markers if str(item).isdigit()]
 
 
+def _detect_programming_language(text: str) -> str:
+    content = str(text or "").lower()
+    language_indicators = {
+        "python": ["def ", "import ", "from ", "__init__", "self.", "#"],
+        "java": ["public class", "private ", "protected ", "void ", "System.out", "import java"],
+        "javascript": ["function ", "const ", "let ", "var ", "=>", "console.log", "document."],
+        "c": ["#include", "int main", "printf(", "scanf(", "/*", "struct "],
+        "cpp": ["#include", "using namespace", "std::", "cout", "cin", "class ", "public:"],
+        "csharp": ["using System", "namespace ", "public class", "private ", "Console.WriteLine"],
+        "php": ["<?php", "$", "echo ", "function ", "class ", "array("],
+        "go": ["package ", "func main", "import (", "fmt.Println", "var "],
+        "rust": ["fn main", "use std", "let mut", "pub fn", "impl "],
+        "vb": ["Sub ", "Function ", "End Sub", "End Function", "Dim ", "As "],
+    }
+    
+    scores = {}
+    for lang, indicators in language_indicators.items():
+        score = sum(1 for indicator in indicators if indicator in content)
+        if score > 0:
+            scores[lang] = score
+    
+    if not scores:
+        return "unknown"
+    
+    return max(scores, key=scores.get)
+
+
 def _extract_feature_terms(text: str) -> list[str]:
     patterns = [
         r"def\s+([a-zA-Z_][a-zA-Z0-9_]*)",
@@ -64,8 +91,10 @@ def _extract_feature_terms(text: str) -> list[str]:
 
 def review_source_code_text(text: str) -> dict:
     issues: list[dict] = []
+    detected_language = _detect_programming_language(text)
     metadata = {
         "feature_terms": _extract_feature_terms(text),
+        "programming_language": detected_language,
     }
     ratio = calculate_garbled_ratio(text)
     suspicious_runs = re.findall(r"[^\x00-\x7F\s]{4,}", text)

@@ -382,9 +382,6 @@ def list_retryable_jobs(limit: int = 8, *, status_filter: str = "", error_filter
     with _connect() as connection:
         rows = connection.execute(query, params).fetchall()
     payloads = [json.loads(row["payload_json"]) for row in rows]
-    if payloads:
-        return payloads
-
     fallback: list[dict] = []
     for job in store.jobs.values():
         payload = job.to_dict()
@@ -399,7 +396,20 @@ def list_retryable_jobs(limit: int = 8, *, status_filter: str = "", error_filter
         if error_filter and error_filter.lower() not in str(payload.get("error_code", "") or "").lower():
             continue
         fallback.append(payload)
-    return sorted(fallback, key=lambda item: (item.get("updated_at", "") or "", item.get("id", "") or ""), reverse=True)[: max(int(limit or 0), 0)]
+    runtime_payloads = sorted(
+        fallback,
+        key=lambda item: (item.get("updated_at", "") or "", item.get("id", "") or ""),
+        reverse=True,
+    )
+    merged: dict[str, dict] = {}
+    ordered: list[dict] = []
+    for payload in runtime_payloads + payloads:
+        key = str(payload.get("id", "") or len(merged))
+        if key in merged:
+            continue
+        merged[key] = payload
+        ordered.append(payload)
+    return ordered[: max(int(limit or 0), 0)]
 
 
 def list_manual_review_queue(limit: int = 8) -> list[dict]:

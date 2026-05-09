@@ -83,22 +83,29 @@ def review_document_text(text: str) -> dict:
 
     has_environment = ("运行环境" in text) or ("环境要求" in text)
     has_install = ("安装说明" in text) or ("初始化步骤" in text)
-    if not has_environment or not has_install:
-        missing = []
-        if not has_environment:
-            missing.append("运行环境")
-        if not has_install:
-            missing.append("安装说明/初始化步骤")
+    has_function = ("功能描述" in text) or ("主要功能" in text) or ("系统功能" in text) or ("软件功能" in text)
+    has_process = ("使用流程" in text) or ("操作流程" in text) or ("业务流程" in text) or ("系统流程" in text)
+    
+    required_sections = {
+        "运行环境": has_environment,
+        "安装说明": has_install,
+        "功能描述": has_function,
+        "使用流程": has_process,
+    }
+    missing_sections = [name for name, present in required_sections.items() if not present]
+    
+    if missing_sections:
         issues.append(
             {
                 "severity": "severe",
                 "category": "必备章节",
                 "rule_key": "doc_required_sections",
-                "desc": f"说明文档缺少必备章节：{'、'.join(missing)}。",
-                **_anchor(field="必备章节", section="运行环境/安装说明", hint="检查说明文档是否包含运行环境与安装说明章节", material_area="设计文档目录与正文"),
+                "desc": f"说明文档缺少必备章节：{'、'.join(missing_sections)}。",
+                "suggest": "补充完整的软著说明文档应包含：功能描述、运行环境、安装说明、使用流程等核心章节。",
+                **_anchor(field="必备章节", section="目录结构", hint="检查说明文档是否包含功能描述、运行环境、安装说明、使用流程等标准章节", material_area="设计文档目录与正文"),
             }
         )
-    else:
+    if has_environment:
         has_hardware = _contains_any(text, ["处理器", "CPU", "内存", "硬盘", "存储", "磁盘"])
         has_software_env = _contains_any(text, ["操作系统", "Windows", "Linux", "数据库", "运行时", "依赖环境", "Python", "JDK", ".NET"])
         if not has_hardware or not has_software_env:

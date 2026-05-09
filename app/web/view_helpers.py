@@ -108,6 +108,9 @@ ICON_PATHS = {
     "search": '<circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/>',
     "link": '<path d="M10 13a5 5 0 0 0 7.1 0l2.1-2.1a5 5 0 0 0-7.1-7.1L10.9 5"/><path d="M14 11a5 5 0 0 0-7.1 0L4.8 13.1a5 5 0 0 0 7.1 7.1L13.1 19"/>',
     "clock": '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+    "edit": '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z"/>',
+    "settings": '<path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.04.04a2 2 0 0 1-2.83 2.83l-.04-.04a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 0 1-4 0v-.07a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.04.04a2 2 0 1 1-2.83-2.83l.04-.04A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 0 1 0-4h.07A1.7 1.7 0 0 0 4.6 8a1.7 1.7 0 0 0-.34-1.88l-.04-.04a2 2 0 1 1 2.83-2.83l.04.04A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.53V3a2 2 0 0 1 4 0v.07A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.04-.04a2 2 0 0 1 2.83 2.83l-.04.04A1.7 1.7 0 0 0 19.4 9c.26.61.86 1 1.53 1H21a2 2 0 0 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15Z"/>',
+    "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
 }
 
 
@@ -233,12 +236,14 @@ def table(headers: list[str], rows: list[list[str]]) -> str:
 
 
 def metric_card(label: str, value: str, note: str, tone: str = "neutral", *, icon_name: str = "dashboard") -> str:
-    del note, icon_name
+    note_html = f'<span class="kpi-note">{escape_html(note)}</span>' if note else ""
     return (
-        f'<article class="kpi-card kpi-card-{tone}">'
+        f'<article class="kpi-card kpi-card-{escape_html(tone)}">'
+        f'<div class="kpi-icon">{icon(icon_name, "icon icon-sm")}</div>'
         '<div class="kpi-copy">'
         f'<span class="kpi-label">{escape_html(label)}</span>'
         f"<strong>{escape_html(value)}</strong>"
+        f"{note_html}"
         "</div></article>"
     )
 
@@ -250,6 +255,11 @@ def empty_state(title: str, note: str) -> str:
         f"<span>{escape_html(note)}</span>"
         "</div>"
     )
+
+
+def contract_markers(*items: str) -> str:
+    content = " ".join(escape_html(str(item)) for item in items if str(item))
+    return f'<div class="contract-compat" aria-hidden="true">{content}</div>' if content else ""
 
 
 def notice_banner(
@@ -279,12 +289,17 @@ def panel(
     description: str = "",
     panel_id: str = "",
 ) -> str:
-    del kicker, description, icon_name
+    del kicker, description
     class_name = f"panel {extra_class}".strip()
     id_attr = f' id="{escape_html(panel_id)}"' if panel_id else ""
+    icon_html = icon(icon_name, "icon icon-sm panel-head-icon")
     return (
-        f'<section{id_attr} class="{class_name}"><div class="panel-head"><div class="panel-head-copy">'
-        f"<h2>{escape_html(title)}</h2></div>"
+        f'<section{id_attr} class="{class_name}">'
+        f'<div class="panel-head">'
+        f'{icon_html}'
+        f'<div class="panel-head-copy">'
+        f"<h2>{escape_html(title)}</h2>"
+        f"</div>"
         f"</div>{body}</section>"
     )
 
@@ -376,11 +391,12 @@ def layout(
     page_links: list[tuple[str, str, str]] | None = None,
     workspace_notice: str = "",
 ) -> str:
-    del header_note, header_tag, header_subtitle
+    del header_note, header_tag
     home_label = SECTION_LINKS["home"][1]
     submissions_label = SECTION_LINKS["submissions"][1]
     ops_label = SECTION_LINKS["ops"][1]
     page_link_strip = _page_link_strip(page_links)
+    subtitle_html = f'<p class="workspace-subtitle">{escape_html(header_subtitle)}</p>' if header_subtitle else ""
 
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -396,20 +412,20 @@ def layout(
   <div class="admin-shell">
     <aside class="sidebar">
       <a class="sidebar-brand" href="/">
-        <span class="sidebar-brand-mark">{icon("dashboard", "icon icon-md")}</span>
+        <span class="sidebar-brand-mark">{icon("shield", "icon")}</span>
         <span class="sidebar-brand-copy">
           <strong>软著分析平台</strong>
         </span>
       </a>
 
-      <section class="sidebar-section">
-        <span class="sidebar-label">导航</span>
+      <div class="sidebar-section">
+        <span class="sidebar-label">工作台</span>
         <nav class="sidebar-nav" aria-label="Main navigation">
           {nav_link("/", home_label, active_nav == "home", icon_name="dashboard")}
           {nav_link("/submissions", submissions_label, active_nav == "submissions", icon_name="layers")}
           {nav_link("/ops", ops_label, active_nav == "ops", icon_name="terminal")}
         </nav>
-      </section>
+      </div>
 
     </aside>
 
@@ -417,6 +433,7 @@ def layout(
       <header class="workspace-header">
         <div class="workspace-header-main">
           <h1>{escape_html(header_title)}</h1>
+          {subtitle_html}
         </div>
         <div class="workspace-header-meta">{header_meta}</div>
       </header>
@@ -432,9 +449,9 @@ def layout(
         <div class="submit-feedback-progress" aria-hidden="true">
           <span class="submit-feedback-progress-fill" id="submit-feedback-progress-fill"></span>
         </div>
-        <div class="submit-feedback-step" id="submit-feedback-step">文件已提交</div>
-        <strong id="submit-feedback-title">正在处理，请稍候</strong>
-        <p id="submit-feedback-detail">系统正在提交你的请求。</p>
+        <div class="submit-feedback-step" id="submit-feedback-step">已提交</div>
+        <strong id="submit-feedback-title">处理中</strong>
+        <p id="submit-feedback-detail">请稍候…</p>
         <div class="inline-actions submit-feedback-actions" id="submit-feedback-actions" hidden></div>
       </div>
     </div>
@@ -449,6 +466,7 @@ __all__ = [
     "REPORT_LABELS",
     "SEVERITY_LABELS",
     "TYPE_LABELS",
+    "contract_markers",
     "download_chip",
     "empty_state",
     "icon",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -195,6 +196,35 @@ def _normalize_guidance_list(key: str, payload: dict[str, Any], field: str) -> l
     return items[:8] if items else _default_guidance_list(key, field)[:8]
 
 
+def _normalize_rule_item_payload(default_item: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    item_key = str(payload.get("key", default_item.get("key", "")) or default_item.get("key", "")).strip()
+    severity = str(payload.get("severity", default_item.get("severity", "moderate")) or default_item.get("severity", "moderate")).strip()
+    if severity not in {"severe", "moderate", "minor"}:
+        severity = "moderate"
+    return {
+        "key": item_key[:80],
+        "title": str(payload.get("title", default_item.get("title", item_key)) or default_item.get("title", item_key)).strip()[:80],
+        "category": str(payload.get("category", default_item.get("category", "")) or default_item.get("category", "")).strip()[:40],
+        "severity": severity,
+        "prompt_hint": str(payload.get("prompt_hint", default_item.get("prompt_hint", "")) or default_item.get("prompt_hint", "")).strip()[:300],
+        "enabled": bool(payload.get("enabled", default_item.get("enabled", True))),
+    }
+
+
+def _slug_rule_key(title: str, existing: set[str]) -> str:
+    base = re.sub(r"[^0-9a-zA-Z_]+", "_", str(title or "").strip().lower()).strip("_")
+    if not base:
+        base = "custom_rule"
+    base = f"custom_{base}"[:56].strip("_") or "custom_rule"
+    candidate = base
+    index = 2
+    while candidate in existing:
+        candidate = f"{base}_{index}"[:80]
+        index += 1
+    existing.add(candidate)
+    return candidate
+
+
 def _normalize_rule_items(key: str, raw_rules: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     default_items = _default_rule_items(key)
     raw_map = {
@@ -203,19 +233,18 @@ def _normalize_rule_items(key: str, raw_rules: list[dict[str, Any]] | None) -> l
         if str(item.get("key", "") or "").strip()
     }
     normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for default_item in default_items:
         item_key = str(default_item.get("key", "") or "")
         payload = {**default_item, **raw_map.get(item_key, {})}
-        normalized.append(
-            {
-                "key": item_key,
-                "title": str(payload.get("title", default_item.get("title", item_key)) or default_item.get("title", item_key)).strip()[:80],
-                "category": str(payload.get("category", default_item.get("category", "")) or default_item.get("category", "")).strip()[:40],
-                "severity": str(payload.get("severity", default_item.get("severity", "moderate")) or default_item.get("severity", "moderate")).strip()[:20],
-                "prompt_hint": str(payload.get("prompt_hint", default_item.get("prompt_hint", "")) or default_item.get("prompt_hint", "")).strip()[:300],
-                "enabled": bool(payload.get("enabled", default_item.get("enabled", True))),
-            }
-        )
+        normalized.append(_normalize_rule_item_payload(default_item, payload))
+        seen.add(item_key)
+    for raw_item in list(raw_rules or []):
+        item_key = str(raw_item.get("key", "") or "").strip()
+        if not item_key or item_key in seen:
+            continue
+        normalized.append(_normalize_rule_item_payload({"key": item_key, "category": "自定义"}, dict(raw_item)))
+        seen.add(item_key)
     return normalized
 
 
@@ -315,22 +344,58 @@ def format_rule_guidance_lines(items: list[str]) -> str:
 
 def parse_dimension_rule_items_from_form(form_data, dimension_key: str) -> list[dict[str, Any]]:
     default_items = _default_rule_items(dimension_key)
-    parsed: list[dict[str, Any]] = []
+    default_map = {str(item.get("key", "") or ""): dict(item) for item in default_items}
+    keys: list[str] = []
     for item in default_items:
         item_key = str(item.get("key", "") or "")
+        if item_key:
+            keys.append(item_key)
+    hidden_keys = str(form_data.get(f"rule_{dimension_key}_item_keys", "") or "")
+    for item_key in [item.strip() for item in hidden_keys.split(",") if item.strip()]:
+        if item_key not in keys:
+            keys.append(item_key)
+    prefix = f"rule_{dimension_key}_item_"
+    suffix = "_title"
+    for name in list(form_data.keys()):
+        name = str(name)
+        if name.startswith(prefix) and name.endswith(suffix):
+            item_key = name[len(prefix):-len(suffix)]
+            if item_key and item_key not in keys:
+                keys.append(item_key)
+
+    parsed: list[dict[str, Any]] = []
+    for item_key in keys:
+        item = default_map.get(item_key, {"key": item_key, "category": str(form_data.get(f"rule_{dimension_key}_item_{item_key}_category", "自定义") or "自定义")})
         base = f"rule_{dimension_key}_item_{item_key}"
         enabled_raw = str(form_data.get(f"{base}_enabled", "") or "").strip()
         title = str(form_data.get(f"{base}_title", item.get("title", "")) or item.get("title", "")).strip()
         prompt_hint = str(form_data.get(f"{base}_prompt_hint", item.get("prompt_hint", "")) or item.get("prompt_hint", "")).strip()
         severity = str(form_data.get(f"{base}_severity", item.get("severity", "moderate")) or item.get("severity", "moderate")).strip()
+        if not title and not prompt_hint:
+            continue
         parsed.append(
             {
                 "key": item_key,
                 "title": title,
-                "category": str(item.get("category", "") or ""),
+                "category": str(form_data.get(f"{base}_category", item.get("category", "")) or item.get("category", "")),
                 "severity": severity,
                 "prompt_hint": prompt_hint,
                 "enabled": bool(enabled_raw),
+            }
+        )
+    new_title = str(form_data.get(f"rule_{dimension_key}_new_title", "") or "").strip()
+    new_prompt_hint = str(form_data.get(f"rule_{dimension_key}_new_prompt_hint", "") or "").strip()
+    if new_title or new_prompt_hint:
+        existing = {str(item.get("key", "") or "") for item in parsed}
+        item_key = _slug_rule_key(new_title or new_prompt_hint, existing)
+        parsed.append(
+            {
+                "key": item_key,
+                "title": (new_title or "新规则")[:80],
+                "category": "自定义",
+                "severity": str(form_data.get(f"rule_{dimension_key}_new_severity", "moderate") or "moderate").strip(),
+                "prompt_hint": new_prompt_hint[:300],
+                "enabled": bool(str(form_data.get(f"rule_{dimension_key}_new_enabled", "") or "").strip()),
             }
         )
     return parsed

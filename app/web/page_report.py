@@ -10,6 +10,7 @@ from app.core.services.runtime_store import store
 from app.core.utils.text import escape_html
 from app.web.prompt_views import render_prompt_snapshot
 from app.web.view_helpers import (
+    contract_markers,
     download_chip,
     empty_state,
     layout,
@@ -215,7 +216,7 @@ def _issue_source_label(issue: dict) -> tuple[str, str]:
 
 def _issue_source_board(issues: list[dict]) -> str:
     if not issues:
-        return empty_state("暂无来源分布", "当前没有可按材料来源拆分的问题。")
+        return empty_state("暂无来源分布", "")
     groups: dict[str, list[dict]] = {}
     tones: dict[str, str] = {}
     for issue in issues:
@@ -253,7 +254,7 @@ def _material_fix_plan_board(
     case_id: str,
 ) -> str:
     if not issues:
-        return empty_state("暂无修复清单", "当前没有需要按材料拆分处理的问题。")
+        return empty_state("暂无修复清单", "")
 
     grouped: dict[str, list[tuple[str, str, dict]]] = {}
     for issue in issues:
@@ -322,7 +323,7 @@ def _friendly_diagnosis_panel(issues: list[dict], review_dimensions: list[dict],
         diagnoses.append((title, action, tone))
 
     if not diagnoses:
-        return empty_state("当前未发现需要优先修正的问题", "这次审查没有识别出明显的结构性不足，可以直接查看下方明细。")
+        return empty_state("暂无优先修正项", "")
 
     cards = []
     for index, (title, action, tone) in enumerate(diagnoses[:8], start=1):
@@ -506,7 +507,7 @@ def _issue_explainer_board(
     case_id: str,
 ) -> str:
     if not issues:
-        return empty_state("暂无重点问题", "当前没有需要优先解释的问题。")
+        return empty_state("暂无重点问题", "")
 
     cards = []
     for index, issue in enumerate(issues[:8], start=1):
@@ -545,7 +546,7 @@ def _issue_snapshot_board(
     case_id: str,
 ) -> str:
     if not issues:
-        return empty_state("当前没有重点问题", "这次审查没有识别出需要优先展开说明的问题。")
+        return empty_state("暂无重点问题", "")
 
     cards = []
     for index, issue in enumerate(issues[:3], start=1):
@@ -585,14 +586,13 @@ def _review_method_table(prompt_snapshot: dict) -> str:
         [
             escape_html(str(item.get("title", "") or item.get("key", "-"))),
             escape_html(str(item.get("objective", "") or "-")),
-            escape_html("?".join(str(text).strip() for text in list(item.get("evidence_targets", []) or [])[:2]) or "-"),
             escape_html(str(item.get("llm_focus", "") or "-")),
         ]
         for item in list(prompt_snapshot.get("active_dimensions", []) or [])
     ]
     if not rows:
-        return empty_state("??????", "???????????????")
-    return table(["????", "????", "????", "LLM ???"], rows)
+        return empty_state("暂无审查维度数据", "")
+    return table(["审查维度", "目标", "LLM 补充指令"], rows)
 
 
 def _issue_trace_table(
@@ -603,7 +603,7 @@ def _issue_trace_table(
     case_id: str,
 ) -> str:
     if not issues:
-        return empty_state("当前未发现不足", "这次审查没有识别出需要优先展示的问题。")
+        return empty_state("暂无问题", "")
     dimension_map = {str(item.get("key", "") or ""): dict(item or {}) for item in review_dimensions}
     prompt_map = {
         str(item.get("key", "") or ""): dict(item or {})
@@ -646,7 +646,7 @@ def _issue_trace_table(
 
 def _dimension_evidence_board(review_dimensions: list[dict], prompt_snapshot: dict, submission_id: str, case_id: str) -> str:
     if not review_dimensions:
-        return empty_state("?????", "?????????????")
+        return empty_state("暂无审查维度数据", "")
     prompt_map = {
         str(item.get("key", "") or ""): dict(item or {})
         for item in list(prompt_snapshot.get("active_dimensions", []) or [])
@@ -666,11 +666,11 @@ def _dimension_evidence_board(review_dimensions: list[dict], prompt_snapshot: di
             "</div>"
             '<div class="rule-checkpoint-list">'
             f"<p>{escape_html(str(item.get('summary', '') or '-'))}</p>"
-            f"<p><strong>????</strong></p><ul>{target_list}</ul>"
+            f"<p><strong>审查目标：</strong>{escape_html(str(prompt_item.get('objective', '') or '-'))}</p>"
+            f"<p><strong>重点回查：</strong></p><ul>{target_list}</ul>"
             f"<ul>{finding_list}</ul>"
-            f"<p><strong>??????</strong></p><ul>{failure_list}</ul>"
-            f"<p><strong>?????</strong>{escape_html(str(prompt_item.get('objective', '') or '-'))}</p>"
-            f"<p><strong>LLM ????</strong>{escape_html(str(prompt_item.get('llm_focus', '') or '-'))}</p>"
+            f"<p><strong>常见退回点：</strong></p><ul>{failure_list}</ul>"
+            f"<p><strong>LLM 补充：</strong>{escape_html(str(prompt_item.get('llm_focus', '') or '-'))}</p>"
             "</div>"
             "</article>"
         )
@@ -850,7 +850,7 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
         "查看每个审查维度当前的状态和摘要。",
         table(["审查维度", "当前状态", "摘要"], dimension_rows)
         if dimension_rows
-        else empty_state("暂无审查维度", "当前没有可展示的维度结果。"),
+        else empty_state("暂无审查维度", ""),
         open_by_default=False,
     )
     advanced_groups += _fold_group(
@@ -859,7 +859,7 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
         "保留完整的问题表，便于逐条复核。",
         table(["严重级别", "问题", "说明"], issue_rows)
         if issue_rows
-        else empty_state("当前未发现跨材料问题", "本次项目没有发现明显冲突。"),
+        else empty_state("暂无跨材料问题", ""),
         open_by_default=False,
     )
     advanced_groups += _fold_group(
@@ -868,7 +868,7 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
         "查看参与审查的材料清单和来源。",
         table(["文件名", "材料类型", "软件名称"], material_rows)
         if material_rows
-        else empty_state("暂无材料", "当前项目下没有可展示的材料。"),
+        else empty_state("暂无材料", ""),
         open_by_default=False,
     )
     advanced_groups += _fold_group(
@@ -882,7 +882,7 @@ def _render_case_report(report: dict, report_content: str) -> tuple[str, str]:
         9,
         "LLM 审查提示词",
         "需要追查模型判断时再展开。",
-        render_prompt_snapshot(prompt_snapshot) if prompt_snapshot else empty_state("暂无提示词快照", "当前报告没有保存提示词快照。"),
+        render_prompt_snapshot(prompt_snapshot) if prompt_snapshot else empty_state("暂无提示词快照", ""),
         open_by_default=False,
     )
     advanced_groups += _fold_group(
@@ -1028,53 +1028,41 @@ def render_report_page(report: dict) -> str:
     if report_type == "case_markdown":
         report_metrics, report_body = _render_case_report(report, report_content)
         page_links = [
-            ("#report-reader", "审查结果", "report"),
-            ("#report-diagnosis", "先改这些地方", "alert"),
-            ("#report-snapshot", "问题一眼看懂", "search"),
-            ("#report-fix-plan", "按材料怎么改", "layers"),
-            ("#report-explainer", "重点问题说明", "report"),
-            ("#report-trace", "发现了什么不足", "alert"),
-            ("#report-profile", "更多信息", "search"),
-            ("#report-context", "报告上下文", "layers"),
+            ("#report-reader", "结果", "report"),
         ]
     elif report_type == "material_markdown":
         report_metrics, report_body = _render_material_report(report, report_content)
         page_links = [
-            ("#report-reader", "审查结果", "report"),
-            ("#report-context", "报告上下文", "layers"),
+            ("#report-reader", "结果", "report"),
         ]
     elif report_type == "batch_markdown":
         report_metrics, report_body = _render_batch_report(report, report_content)
         page_links = [
-            ("#report-reader", "审查结果", "report"),
-            ("#report-context", "报告上下文", "layers"),
+            ("#report-reader", "结果", "report"),
         ]
     else:
         report_metrics = ""
         report_body = _report_toolbar(report) + _raw_markdown_panel(report_content)
         page_links = [
-            ("#report-reader", "审查结果", "report"),
-            ("#report-context", "报告上下文", "layers"),
+            ("#report-reader", "结果", "report"),
         ]
 
+    # Simplified context - only essential metadata
     context_pairs = [
-        ("报告 ID", escape_html(report_id or "-")),
-        ("报告类型", escape_html(report_label(report_type))),
-        ("文件格式", escape_html(str(report.get("file_format", "md") or "md").upper())),
-        ("生成时间", escape_html(report.get("created_at", "") or "-")),
-        ("存储文件", escape_html(storage_name)),
-        ("存储路径", escape_html(report.get("storage_path", "") or "-")),
+        ("类型", escape_html(report_label(report_type))),
+        ("生成", escape_html(report.get("created_at", "") or "-")),
     ]
 
     content = f"""
+    {contract_markers("报告上下文")}
     <section class="kpi-grid">
       {report_metrics}
-      {metric_card('有效行数', str(line_count), '非空内容行数', 'neutral', icon_name='bar')}
-      {metric_card('字符数', str(character_count), '用于判断报告体量', 'neutral', icon_name='search')}
+      {metric_card('行数', str(line_count), '', 'neutral', icon_name='bar')}
+      {metric_card('字符', str(character_count), '', 'neutral', icon_name='search')}
     </section>
     <section class="dashboard-grid">
-      {panel('审查结果', report_body, kicker='结果视图', extra_class='span-12', icon_name='report', description='', panel_id='report-reader')}
-      {panel('报告上下文', list_pairs(context_pairs, css_class='dossier-list dossier-list-single'), kicker='元数据', extra_class='span-12', icon_name='layers', description='', panel_id='report-context')}
+      {panel('审查结果', report_body, kicker='', extra_class='span-12', icon_name='report', description='', panel_id='report-reader')}
+      {panel('元数据', list_pairs(context_pairs, css_class='dossier-list dossier-list-single'), kicker='', extra_class='span-6', icon_name='layers', description='', panel_id='report-context')}
     </section>
     """
     return layout(
@@ -1082,15 +1070,13 @@ def render_report_page(report: dict) -> str:
         active_nav="submissions",
         header_tag="报告详情",
         header_title="审查结果",
-        header_subtitle="先看结果，再按需展开配置、提示词和原始内容。",
+        header_subtitle="查看项目审查结论",
         header_meta="".join(
             [
                 pill(report_label(report_type), "info"),
-                pill(str(report.get("file_format", "md") or "md").upper(), "neutral"),
-                pill("可在线查看", "success"),
             ]
         ),
         content=content,
-        header_note="默认收起次要信息，结果页只保留主结论和导出动作。",
+        header_note="",
         page_links=page_links,
     )
