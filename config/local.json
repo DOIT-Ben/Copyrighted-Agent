@@ -5,12 +5,12 @@
   "sqlite_path": "data/runtime/soft_review.db",
   "log_path": "data/runtime/logs/app.jsonl",
   "retention_days": 14,
-  "ai_enabled": true,
-  "ai_provider": "external_http",
+  "ai_enabled": false,
+  "ai_provider": "mock",
   "ai_require_desensitized": true,
   "ai_timeout_seconds": 30,
-  "ai_endpoint": "http://127.0.0.1:18011/review",
-  "ai_model": "minimax-m2.7-highspeed",
-  "ai_api_key_env": "MINIMAX_API_KEY",
+  "ai_endpoint": "",
+  "ai_model": "",
+  "ai_api_key_env": "",
   "ai_fallback_to_mock": true
 }

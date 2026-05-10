@@ -154,6 +154,8 @@ cli.py, src/            legacy CLI 代码，仅保留作迁移参考
 - `config/local.json`
 - `SOFT_REVIEW_*` 环境变量覆盖
 
+仓库内置的 `config/local.json` 默认使用 mock provider；真实模型链路请通过 `scripts\start_real_bridge.ps1`、`scripts\start_uv_web.ps1` 或环境变量显式开启。
+
 示例配置：
 
 - `config/local.example.json`

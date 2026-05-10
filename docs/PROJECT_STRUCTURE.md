@@ -4,7 +4,10 @@ This repository is now organized around the Web MVP in `app/`.
 
 ## Runtime Application
 
-- `app/api/`: HTTP routes and local server entrypoint.
+- `app/api/`: HTTP route modules, security middleware, file transfer helpers, async submission jobs, and the local server entrypoint.
+  - `main.py`: thin local server entrypoint and app factory.
+  - `routes.py`: composition root for registering HTTP route modules.
+  - `startup.py`: startup self-check, store loading, and interrupted job recovery.
 - `app/core/domain/`: dataclasses and enums shared across the system.
 - `app/core/parsers/`: document parsing, text cleanup, page segmentation, and parse quality checks.
 - `app/core/privacy/`: desensitization and AI-safe payload preparation.
@@ -18,7 +21,7 @@ This repository is now organized around the Web MVP in `app/`.
 ## Configuration And Runtime Data
 
 - `config/local.example.json`: safe local configuration template.
-- `config/local.json`: checked-in local default that uses environment-variable based secrets only.
+- `config/local.json`: checked-in local default that runs in mock mode; real providers are enabled explicitly by scripts or `SOFT_REVIEW_*` environment variables.
 - `data/runtime/`: local SQLite database, logs, parsed artifacts, and generated reports, ignored by Git.
 - `input/` and `output/`: local sample materials and exports, ignored by Git.
 

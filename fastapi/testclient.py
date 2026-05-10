@@ -11,6 +11,8 @@ class _UploadedFile:
 
 
 class TestClient:
+    __test__ = False
+
     def __init__(self, app):
         self.app = app
 
@@ -34,4 +36,3 @@ class TestClient:
             form_data=data or {},
             files=prepared_files,
         )
-

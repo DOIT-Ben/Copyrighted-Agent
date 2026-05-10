@@ -21,6 +21,18 @@ def test_load_app_config_uses_safe_defaults():
 
 @pytest.mark.unit
 @pytest.mark.contract
+def test_checked_in_local_config_defaults_to_mock_provider():
+    load_app_config = require_symbol("app.core.services.app_config", "load_app_config")
+    config = load_app_config(config_path="config/local.json")
+
+    assert config.ai_enabled is False
+    assert config.ai_provider == "mock"
+    assert config.ai_endpoint == ""
+    assert config.ai_api_key_env == ""
+
+
+@pytest.mark.unit
+@pytest.mark.contract
 def test_load_app_config_allows_env_override():
     load_app_config = require_symbol("app.core.services.app_config", "load_app_config")
     original_provider = os.environ.get("SOFT_REVIEW_AI_PROVIDER")

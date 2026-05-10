@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import cgi
 import inspect
-import io
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from urllib.parse import parse_qs
 
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
@@ -37,6 +34,40 @@ class Request:
     form_data: dict
     files: dict
     app: "FastAPI"
+
+
+def _decode_multipart_value(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="ignore")
+    return str(value)
+
+
+def _parse_multipart_form(environ, content_type: str) -> tuple[dict, dict]:
+    from python_multipart import parse_form
+
+    form_data = {}
+    files = {}
+
+    def on_field(field):
+        form_data[_decode_multipart_value(field.field_name)] = _decode_multipart_value(field.value)
+
+    def on_file(file):
+        file_object = file.file_object
+        file_object.seek(0)
+        files[_decode_multipart_value(file.field_name)] = UploadFile(
+            filename=_decode_multipart_value(file.file_name),
+            content=file_object.read(),
+            content_type=_decode_multipart_value(file.content_type) or "application/octet-stream",
+        )
+
+    headers = {
+        "Content-Type": content_type.encode("latin-1", errors="ignore"),
+        "Content-Length": str(environ.get("CONTENT_LENGTH", "0") or "0").encode("ascii", errors="ignore"),
+    }
+    parse_form(headers, environ["wsgi.input"], on_field, on_file)
+    return form_data, files
 
 
 class _Route:
@@ -191,17 +222,7 @@ class FastAPI:
                 start_response(status_text, response_headers)
                 return [response.body]
             if "multipart/form-data" in content_type:
-                field_storage = cgi.FieldStorage(fp=environ["wsgi.input"], environ=environ, keep_blank_values=True)
-                if field_storage.list:
-                    for item in field_storage.list:
-                        if item.filename:
-                            files[item.name] = UploadFile(
-                                filename=item.filename,
-                                content=item.file.read(),
-                                content_type=item.type or "application/octet-stream",
-                            )
-                        else:
-                            form_data[item.name] = item.value
+                form_data, files = _parse_multipart_form(environ, content_type)
             else:
                 body = environ["wsgi.input"].read(size) if size else b""
                 parsed = parse_qs(body.decode("utf-8", errors="ignore"))
