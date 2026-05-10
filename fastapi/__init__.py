@@ -3,6 +3,7 @@ from __future__ import annotations
 import cgi
 import inspect
 import io
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -179,6 +180,16 @@ class FastAPI:
         files = {}
         content_type = environ.get("CONTENT_TYPE", "")
         if method.upper() == "POST":
+            size = int(environ.get("CONTENT_LENGTH", "0") or "0")
+            upload_limit = int(os.getenv("SOFT_REVIEW_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)) or "0")
+            if "multipart/form-data" in content_type and upload_limit > 0 and size > upload_limit:
+                response = JSONResponse({"detail": f"Upload exceeds size limit: {upload_limit} bytes"}, status_code=413)
+                status_text = "413 Payload Too Large"
+                response_headers = [("Content-Type", getattr(response, "media_type", "application/json"))]
+                for key, value in response.headers.items():
+                    response_headers.append((key, value))
+                start_response(status_text, response_headers)
+                return [response.body]
             if "multipart/form-data" in content_type:
                 field_storage = cgi.FieldStorage(fp=environ["wsgi.input"], environ=environ, keep_blank_values=True)
                 if field_storage.list:
@@ -192,7 +203,6 @@ class FastAPI:
                         else:
                             form_data[item.name] = item.value
             else:
-                size = int(environ.get("CONTENT_LENGTH", "0") or "0")
                 body = environ["wsgi.input"].read(size) if size else b""
                 parsed = parse_qs(body.decode("utf-8", errors="ignore"))
                 form_data = {key: values[-1] for key, values in parsed.items()}
@@ -209,6 +219,7 @@ class FastAPI:
             404: "404 Not Found",
             415: "415 Unsupported Media Type",
             422: "422 Unprocessable Entity",
+            413: "413 Payload Too Large",
             500: "500 Internal Server Error",
         }.get(response.status_code, f"{response.status_code} OK")
         response_headers = [("Content-Type", getattr(response, "media_type", "text/plain; charset=utf-8"))]

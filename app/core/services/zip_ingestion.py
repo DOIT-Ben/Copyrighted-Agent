@@ -5,6 +5,7 @@ import shutil
 import zipfile
 from pathlib import Path
 
+from app.core.services.app_config import load_app_config
 from app.core.utils.text import ensure_dir
 
 
@@ -105,10 +106,27 @@ def _should_ignore_member(member_name: str) -> bool:
     return any(part.lower() in IGNORED_DIR_NAMES for part in member_path.parts)
 
 
-def safe_extract_zip(zip_path: str | Path, destination: str | Path) -> list[Path]:
+def safe_extract_zip(
+    zip_path: str | Path,
+    destination: str | Path,
+    *,
+    max_members: int | None = None,
+    max_member_bytes: int | None = None,
+    max_total_uncompressed_bytes: int | None = None,
+) -> list[Path]:
     zip_path = Path(zip_path)
     destination = ensure_dir(destination).resolve()
     extracted: list[Path] = []
+    config = load_app_config()
+    member_limit = int(max_members if max_members is not None else config.max_zip_members)
+    member_byte_limit = int(max_member_bytes if max_member_bytes is not None else config.max_zip_member_bytes)
+    total_byte_limit = int(
+        max_total_uncompressed_bytes
+        if max_total_uncompressed_bytes is not None
+        else config.max_zip_total_uncompressed_bytes
+    )
+    extracted_member_count = 0
+    total_uncompressed_bytes = 0
 
     with zipfile.ZipFile(zip_path, "r") as archive:
         for member in archive.infolist():
@@ -122,6 +140,14 @@ def safe_extract_zip(zip_path: str | Path, destination: str | Path) -> list[Path
                 continue
             if member_path.suffix.lower() in BLOCKED_SUFFIXES:
                 raise ValueError(f"Blocked executable content in archive: {member_name}")
+            extracted_member_count += 1
+            if member_limit > 0 and extracted_member_count > member_limit:
+                raise ValueError(f"ZIP member count exceeds limit: {member_limit}")
+            if member_byte_limit > 0 and member.file_size > member_byte_limit:
+                raise ValueError(f"ZIP member exceeds size limit: {member_name}")
+            total_uncompressed_bytes += int(member.file_size or 0)
+            if total_byte_limit > 0 and total_uncompressed_bytes > total_byte_limit:
+                raise ValueError(f"ZIP uncompressed size exceeds limit: {total_byte_limit}")
 
             safe_relative_path = _safe_member_path(member_name)
             final_path = (destination / safe_relative_path).resolve()

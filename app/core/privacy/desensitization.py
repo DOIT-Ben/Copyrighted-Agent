@@ -63,6 +63,31 @@ AI_SAFE_MATERIAL_KEYS = {
     "legacy_doc_bucket",
 }
 AI_SAFE_COLLECTION_KEYS = {"material_inventory", "material_type_counts", "material_count"}
+AI_SAFE_ISSUE_KEYS = {
+    "severity",
+    "category",
+    "rule_key",
+    "dimension_key",
+    "field_label",
+    "section_label",
+    "anchor_hint",
+}
+AI_UNSAFE_ISSUE_KEYS = {
+    "evidence_anchor",
+    "evidence_excerpt",
+    "evidence_match_text",
+    "evidence_path",
+    "evidence_page",
+    "material_name",
+    "original_filename",
+    "file_name",
+    "path",
+    "observed",
+    "expected",
+    "actual",
+    "raw_text",
+    "matched_text",
+}
 
 
 def _build_label_rule(label: str, placeholder: str) -> RedactionRule:
@@ -203,6 +228,68 @@ def desensitize_text(text: str, metadata: dict[str, str] | None = None) -> dict:
         "summary": summary,
         "matches": matches,
     }
+
+
+def _safe_issue_text(value: object, *, limit: int = 240) -> str:
+    if value in (None, ""):
+        return ""
+    text = desensitize_text(str(value))["text"]
+    text = re.sub(r"(当前识别到[：:]).*?(?=。|$)", r"\1[已脱敏: 规则证据摘要]", text)
+    text = re.sub(r"(observed\s*[：:])[^。；;\n]+", r"\1[redacted rule evidence]", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:limit]
+
+
+def _safe_issue_payload(issue: dict) -> dict:
+    safe_issue: dict[str, object] = {}
+    for key in AI_SAFE_ISSUE_KEYS:
+        if key in issue and issue.get(key) not in (None, ""):
+            safe_issue[key] = _safe_issue_text(issue.get(key), limit=120)
+    if issue.get("desc"):
+        safe_issue["desc"] = _safe_issue_text(issue.get("desc"), limit=260)
+    if issue.get("suggest"):
+        safe_issue["suggest"] = _safe_issue_text(issue.get("suggest"), limit=220)
+    anchor = dict(issue.get("evidence_anchor") or {}) if isinstance(issue.get("evidence_anchor"), dict) else {}
+    material_area = anchor.get("material_area") or issue.get("material_area")
+    if material_area:
+        safe_issue["material_area"] = _safe_issue_text(material_area, limit=100)
+    unsafe_present = any(key in issue and issue.get(key) not in (None, "") for key in AI_UNSAFE_ISSUE_KEYS)
+    if unsafe_present:
+        safe_issue["evidence_redacted"] = True
+    return safe_issue
+
+
+def build_ai_safe_rule_results(rule_results: dict) -> dict:
+    issues = list((rule_results or {}).get("issues", []) or [])
+    safe_issues = [_safe_issue_payload(dict(issue or {})) for issue in issues[:100] if isinstance(issue, dict)]
+    severity_counts: dict[str, int] = {}
+    for issue in safe_issues:
+        severity = str(issue.get("severity") or "unknown")
+        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+    return {
+        "privacy_policy": AI_SAFE_POLICY,
+        "llm_safe": True,
+        "issue_count": len(issues),
+        "included_issue_count": len(safe_issues),
+        "severity_counts": severity_counts,
+        "issues": safe_issues,
+    }
+
+
+def is_ai_safe_rule_results(rule_results: dict) -> bool:
+    if not isinstance(rule_results, dict):
+        return False
+    if rule_results.get("privacy_policy") != AI_SAFE_POLICY or rule_results.get("llm_safe") is not True:
+        return False
+    for issue in list(rule_results.get("issues", []) or []):
+        if not isinstance(issue, dict):
+            return False
+        if any(key in issue for key in AI_UNSAFE_ISSUE_KEYS):
+            return False
+        for value in issue.values():
+            if isinstance(value, (dict, list)):
+                return False
+    return True
 
 
 def _legacy_build_ai_safe_case_payload(case_payload: dict) -> dict:

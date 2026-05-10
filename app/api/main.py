@@ -16,7 +16,7 @@ from app.core.domain.enums import JobStatus
 from app.core.domain.models import Job
 from app.core.pipelines.submission_pipeline import ingest_submission
 from app.core.services.app_config import load_app_config
-from app.core.services.app_logging import log_event, read_log_text
+from app.core.services.app_logging import log_event, read_log_tail
 from app.core.services.corrections import (
     assign_material_to_case,
     change_material_type,
@@ -157,9 +157,17 @@ def _harden_response(request: Request, response: Response) -> Response:
 
 
 def _save_uploaded_zip(upload: UploadFile) -> Path:
-    uploads_dir = ensure_dir(Path(load_app_config().data_root) / "uploads")
-    target = uploads_dir / f"{slug_id('upload')}_{upload.filename}"
-    target.write_bytes(upload.content)
+    config = load_app_config()
+    content = bytes(upload.content or b"")
+    if config.max_upload_bytes > 0 and len(content) > config.max_upload_bytes:
+        raise HTTPException(413, f"ZIP 文件超过上传限制：{config.max_upload_bytes} bytes")
+    original_name = Path(str(upload.filename or "upload.zip")).name
+    safe_name = _download_filename_fallback(original_name)
+    if not safe_name.lower().endswith(".zip"):
+        safe_name = f"{safe_name}.zip"
+    uploads_dir = ensure_dir(Path(config.data_root) / "uploads")
+    target = uploads_dir / f"{slug_id('upload')}_{safe_name}"
+    target.write_bytes(content)
     return target
 
 
@@ -1197,8 +1205,9 @@ def create_app(testing: bool = False):
     @app.get("/downloads/logs/app")
     def download_app_log(request: Request):
         del request
-        log_text = read_log_text().encode("utf-8")
-        log_event("download_app_log", {})
+        config = load_app_config()
+        log_text = read_log_tail(max_bytes=config.max_log_download_bytes).encode("utf-8")
+        log_event("download_app_log", {"max_bytes": config.max_log_download_bytes})
         return _download_response(log_text, "app.jsonl", "application/jsonl; charset=utf-8")
 
     @app.get("/downloads/ops/provider-probe/latest")

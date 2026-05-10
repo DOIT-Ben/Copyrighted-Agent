@@ -35,3 +35,16 @@ def read_log_text() -> str:
     if not target.exists():
         return ""
     return target.read_text(encoding="utf-8")
+
+
+def read_log_tail(max_bytes: int | None = None) -> str:
+    target = _log_path()
+    if not target.exists():
+        return ""
+    byte_limit = int(max_bytes or load_app_config().max_log_download_bytes)
+    if byte_limit <= 0 or target.stat().st_size <= byte_limit:
+        return target.read_text(encoding="utf-8")
+    with target.open("rb") as handle:
+        handle.seek(-byte_limit, 2)
+        payload = handle.read(byte_limit)
+    return payload.decode("utf-8", errors="ignore")

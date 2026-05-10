@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.core.privacy.desensitization import is_ai_safe_case_payload
+from app.core.privacy.desensitization import build_ai_safe_rule_results, is_ai_safe_case_payload, is_ai_safe_rule_results
 from app.core.reviewers.ai.adapters import (
     build_rule_summary,
     external_http_error_code,
@@ -61,10 +61,12 @@ def generate_case_ai_review(
     settings = config or load_app_config()
     requested_provider = str(provider or settings.ai_provider or "mock").strip().lower() or "mock"
     active_provider = resolve_case_ai_provider(requested_provider, config=settings)
-    issue_count = len(rule_results.get("issues", []))
+    original_rule_results = dict(rule_results or {})
+    external_rule_results = build_ai_safe_rule_results(original_rule_results) if active_provider != "mock" else original_rule_results
+    issue_count = len(original_rule_results.get("issues", []))
     prompt_snapshot = build_ai_prompt_snapshot(
         case_payload,
-        rule_results,
+        external_rule_results,
         review_profile,
         requested_provider=requested_provider,
     )
@@ -84,6 +86,8 @@ def generate_case_ai_review(
 
     if settings.ai_require_desensitized and not is_ai_safe_case_payload(case_payload):
         raise ValueError("Non-mock AI provider requires desensitized payload")
+    if settings.ai_require_desensitized and not is_ai_safe_rule_results(external_rule_results):
+        raise ValueError("Non-mock AI provider requires desensitized rule results")
 
     log_event(
         "ai_provider_call_started",
@@ -97,17 +101,17 @@ def generate_case_ai_review(
 
     try:
         if active_provider == "safe_stub":
-            result = review_with_safe_stub(case_payload, rule_results, requested_provider)
+            result = review_with_safe_stub(case_payload, external_rule_results, requested_provider)
         elif active_provider == "external_http":
             result = review_with_external_http(
                 case_payload,
-                rule_results,
+                external_rule_results,
                 requested_provider,
                 settings,
                 review_profile=review_profile,
             )
         else:
-            result = _mock_review(case_payload, rule_results, requested_provider, "unsupported_provider_fallback")
+            result = _mock_review(case_payload, original_rule_results, requested_provider, "unsupported_provider_fallback")
     except Exception as exc:
         error_code = str(exc).strip()
         if active_provider == "external_http":

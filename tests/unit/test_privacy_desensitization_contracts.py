@@ -71,3 +71,62 @@ def test_build_ai_safe_case_payload_keeps_safe_material_inventory_only():
     assert "original_filename" not in safe_payload["material_inventory"][0]
     assert "Sensitive Product" not in str(safe_payload)
     assert is_ai_safe_case_payload(safe_payload) is True
+
+
+def test_build_ai_safe_rule_results_removes_external_evidence_values():
+    build_ai_safe_rule_results = require_symbol("app.core.privacy.desensitization", "build_ai_safe_rule_results")
+    is_ai_safe_rule_results = require_symbol("app.core.privacy.desensitization", "is_ai_safe_rule_results")
+
+    safe_results = build_ai_safe_rule_results(
+        {
+            "issues": [
+                {
+                    "severity": "severe",
+                    "category": "一致性",
+                    "rule_key": "software_name_exact_match",
+                    "desc": "不同材料中的软件名称不一致。当前识别到：设计文档=Sensitive Product；协议=Other Product。",
+                    "suggest": "统一软件名称。",
+                    "original_filename": "Sensitive Product 合作协议.docx",
+                    "evidence_excerpt": "Sensitive Product V1.0 belongs to Sensitive Company",
+                    "evidence_anchor": {"material_area": "合作协议正文", "matched_text": "Sensitive Product"},
+                }
+            ]
+        }
+    )
+
+    rendered = str(safe_results)
+    assert safe_results["llm_safe"] is True
+    assert safe_results["issues"][0]["evidence_redacted"] is True
+    assert "original_filename" not in safe_results["issues"][0]
+    assert "evidence_excerpt" not in safe_results["issues"][0]
+    assert "Sensitive Product" not in rendered
+    assert "Other Product" not in rendered
+    assert is_ai_safe_rule_results(safe_results) is True
+
+
+def test_generate_case_ai_review_external_prompt_uses_safe_rule_results():
+    AppConfig = require_symbol("app.core.services.app_config", "AppConfig")
+    build_ai_safe_case_payload = require_symbol("app.core.privacy.desensitization", "build_ai_safe_case_payload")
+    generate_case_ai_review = require_symbol("app.core.reviewers.ai.service", "generate_case_ai_review")
+
+    safe_case = build_ai_safe_case_payload({"software_name": "Sensitive Product", "version": "V1.0"})
+    result = generate_case_ai_review(
+        safe_case,
+        {
+            "issues": [
+                {
+                    "severity": "severe",
+                    "rule_key": "software_name_exact_match",
+                    "desc": "当前识别到：设计文档=Sensitive Product；协议=Other Product。",
+                    "evidence_excerpt": "Sensitive Product raw evidence",
+                }
+            ]
+        },
+        provider="safe_stub",
+        config=AppConfig(ai_enabled=True, ai_provider="safe_stub"),
+    )
+
+    prompt_text = str(result.get("prompt_snapshot", {}))
+    assert "Sensitive Product" not in prompt_text
+    assert "Other Product" not in prompt_text
+    assert "evidence_excerpt" not in prompt_text

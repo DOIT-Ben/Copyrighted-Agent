@@ -26,6 +26,11 @@ class AppConfig:
     ai_model: str = ""
     ai_api_key_env: str = ""
     ai_fallback_to_mock: bool = True
+    max_upload_bytes: int = 50 * 1024 * 1024
+    max_zip_members: int = 300
+    max_zip_member_bytes: int = 25 * 1024 * 1024
+    max_zip_total_uncompressed_bytes: int = 200 * 1024 * 1024
+    max_log_download_bytes: int = 2 * 1024 * 1024
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -92,6 +97,29 @@ def load_app_config(config_path: str | Path | None = None) -> AppConfig:
         os.getenv("SOFT_REVIEW_AI_FALLBACK_TO_MOCK", file_payload.get("ai_fallback_to_mock")),
         True,
     )
+    max_upload_bytes = _int_from_value(
+        os.getenv("SOFT_REVIEW_MAX_UPLOAD_BYTES", file_payload.get("max_upload_bytes", 50 * 1024 * 1024)),
+        50 * 1024 * 1024,
+    )
+    max_zip_members = _int_from_value(
+        os.getenv("SOFT_REVIEW_MAX_ZIP_MEMBERS", file_payload.get("max_zip_members", 300)),
+        300,
+    )
+    max_zip_member_bytes = _int_from_value(
+        os.getenv("SOFT_REVIEW_MAX_ZIP_MEMBER_BYTES", file_payload.get("max_zip_member_bytes", 25 * 1024 * 1024)),
+        25 * 1024 * 1024,
+    )
+    max_zip_total_uncompressed_bytes = _int_from_value(
+        os.getenv(
+            "SOFT_REVIEW_MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES",
+            file_payload.get("max_zip_total_uncompressed_bytes", 200 * 1024 * 1024),
+        ),
+        200 * 1024 * 1024,
+    )
+    max_log_download_bytes = _int_from_value(
+        os.getenv("SOFT_REVIEW_MAX_LOG_DOWNLOAD_BYTES", file_payload.get("max_log_download_bytes", 2 * 1024 * 1024)),
+        2 * 1024 * 1024,
+    )
 
     return AppConfig(
         host=host,
@@ -108,4 +136,9 @@ def load_app_config(config_path: str | Path | None = None) -> AppConfig:
         ai_model=ai_model,
         ai_api_key_env=ai_api_key_env,
         ai_fallback_to_mock=ai_fallback_to_mock,
+        max_upload_bytes=max_upload_bytes,
+        max_zip_members=max_zip_members,
+        max_zip_member_bytes=max_zip_member_bytes,
+        max_zip_total_uncompressed_bytes=max_zip_total_uncompressed_bytes,
+        max_log_download_bytes=max_log_download_bytes,
     )
